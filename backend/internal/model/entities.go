@@ -1,0 +1,89 @@
+package model
+
+import "time"
+
+type User struct {
+	ID        int64
+	Email     string
+	Name      string
+	Role      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type APIKey struct {
+	ID        int64
+	UserID    int64
+	KeyHash   string
+	Label     string
+	CreatedAt time.Time
+	RevokedAt *time.Time
+}
+
+type Tier struct {
+	ID        int64
+	Code      string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ServiceItem struct {
+	ID        int64
+	Code      string
+	Name      string
+	Unit      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type TierDefaultItem struct {
+	ID            int64
+	TierID        int64
+	ServiceItemID int64
+	IncludedUnits int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type Subscription struct {
+	ID        int64
+	UserID    int64
+	TierID    int64
+	Status    string
+	StartedAt time.Time
+	EndedAt   *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type SubscriptionOverride struct {
+	ID             int64
+	SubscriptionID int64
+	ServiceItemID  int64
+	IncludedUnits  int64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type UnitPrice struct {
+	ID                 int64
+	ServiceItemID      int64
+	TierID             *int64
+	PricePerUnitMicros int64
+	Currency           string
+	EffectiveFrom      time.Time
+	EffectiveTo        *time.Time
+	CreatedAt          time.Time
+}
+
+type UsageRecord struct {
+	ID            int64
+	UserID        int64
+	APIKeyID      *int64
+	ServiceItemID int64
+	Quantity      int64
+	UsageAt       time.Time
+	MetadataJSON  *string
+	CreatedAt     time.Time
+}

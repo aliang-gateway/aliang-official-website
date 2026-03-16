@@ -1,0 +1,25 @@
+export const metadata = {
+  title: "Docs | AI API Portal",
+  description:
+    "Documentation for using the AI API Portal, including pricing, account setup, and API request basics.",
+};
+
+## Docs
+
+This documentation section is authored in MDX so new documentation pages can be added without hardcoding JSX placeholders.
+
+### Getting started
+
+1. Create a user from the **Account** page.
+2. Issue an API key and store it securely.
+3. Use the key with `X-API-Key` for protected backend routes.
+
+### Public pricing
+
+- Browse available tiers on **Pricing**.
+- Run a tier estimate to preview configured included units and total micros-based pricing.
+- Missing unit prices are called out in the UI so incomplete pricing configuration is visible.
+
+### API quick note
+
+For local backend development, ensure the frontend has `NEXT_PUBLIC_API_BASE_URL` configured. The frontend proxy routes depend on it.

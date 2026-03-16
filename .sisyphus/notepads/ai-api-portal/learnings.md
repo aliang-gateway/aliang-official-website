@@ -1,0 +1,31 @@
+# Learnings (append-only)
+
+- 2026-03-15: Scaffolded frontend via `npx create-next-app@latest . --ts --app --eslint --use-npm --yes` in `frontend/` and standardized on npm commands (`npm -C frontend ...`).
+- 2026-03-15: Added minimal App Router shell with top-level nav links (`/`, `/pricing`, `/announcements`, `/docs`) to validate route scaffolding without extra UI scope.
+- 2026-03-15: Backend scaffold uses Go stdlib only; `GET /healthz` implemented with JSON response `{\"status\":\"ok\"}` and `PORT` env fallback to `8080`.
+- 2026-03-15: Verification commands that passed: `npm -C frontend run build`, `go test ./...` (from `backend/`), and `PORT=18080 go run .` + curl health check.
+- 2026-03-15: Added backend SQLite persistence using pure-Go driver `modernc.org/sqlite` with `DB_PATH` env var defaulting to `./data.db` and startup migration execution before HTTP server boot.
+- 2026-03-15: Implemented embedded SQL migrations under `backend/migrations/*.sql` with `schema_migrations` tracking table and lexicographic filename ordering via `ApplyMigrations`.
+- 2026-03-15: Added migration verification test `internal/db/migrate_test.go` asserting idempotent migration runs and required table existence (`users`, `api_keys`, `tiers`, `service_items`, `tier_default_items`, `subscriptions`, `subscription_overrides`, `unit_prices`, `usage_records`).
+
+- 2026-03-15: Implemented minimal backend auth via `X-User-Id` header lookup against `users` table; added `RequireUser` and `RequireAdmin` middleware for route-level guards.
+- 2026-03-15: Added API key lifecycle service (`internal/apikey`) with format `ak_` + 32 random bytes hex, SHA-256 hash-at-rest, and one-time plaintext return on creation.
+- 2026-03-15: Added backend HTTP routes for `POST /users`, `POST /api-keys`, `DELETE /api-keys/{id}`, and admin guard check endpoint `GET /admin/ping`.
+- 2026-03-15: Added public backend endpoints `GET /public/tiers` and `POST /public/estimate`; estimate uses active price precedence (tier-specific `unit_prices.tier_id = tier.id` first, then global `tier_id IS NULL`) and reports per-item `missing_price` instead of failing when price rows are absent.
+- 2026-03-15: Added `internal/httpapi/routes_test.go` with `httptest` coverage for unauthenticated public access, tiers payload shape, estimate total calculation (`included_units * price_per_unit_micros`), global fallback pricing, and missing-price item behavior.
+- 2026-03-15: Implemented authenticated subscription endpoints in `internal/httpapi/routes.go`: `POST /subscription` (tier selection + per-service-item overrides + active-subscription replacement) and `GET /subscription` (active tier + effective quotas where overrides replace defaults); added focused `httptest` coverage in `internal/httpapi/subscription_test.go` for create, override reflection, and replacement semantics.
+- 2026-03-15: Added admin-only unit price management endpoints in `internal/httpapi/routes.go`: `GET /admin/unit-prices` (active rows only), `PUT /admin/unit-prices` (set/update by ending prior active row(s) then inserting new), and `DELETE /admin/unit-prices` (deactivate current active row(s)); all mounted with `authenticated(auth.RequireAdmin(...))`.
+- 2026-03-15: For `unit_prices` writes, using `time.Now().UTC().Format(time.RFC3339Nano)` for `effective_from`/`effective_to` avoids `(service_item_id, tier_id, effective_from)` unique collisions when tests perform rapid successive updates.
+- 2026-03-15: Added API-key-protected `POST /api/ai/request` using `X-API-Key` with hash lookup (`apikey.AuthenticateKey`), effective quota resolution (`subscription_overrides` over `tier_default_items`), active-window usage sum from `subscriptions.started_at`, and success-path `usage_records` insert including `api_key_id`.
+- 2026-03-15: Frontend pricing integration now uses same-origin Next.js proxy routes (`/api/public/tiers`, `/api/public/estimate`) that relay to `${NEXT_PUBLIC_API_BASE_URL}/public/*`, keeping browser calls CORS-safe while preserving backend status + JSON payloads.
+- 2026-03-15: `frontend/app/pricing/page.tsx` is now a client page that loads tiers from the public proxy, supports tier selection, triggers estimate requests, renders total price from micros, and explicitly flags `missing_price` items in the estimate panel.
+- 2026-03-15: Added minimal account UX with localStorage keys `user_id` and `api_key_ids:<userId>` (IDs only, never plaintext key), plus same-origin authenticated proxies: `POST /api/users`, `POST /api/api-keys`, `DELETE /api/api-keys/[id]`, `GET|POST /api/subscription`; common UX gotcha remains missing `NEXT_PUBLIC_API_BASE_URL` causing proxy 500 errors.
+- 2026-03-15: Next App Router MDX route support works with `@next/mdx` + `pageExtensions` including `md`/`mdx`; route-level `page.mdx` files can export `metadata` for basic SEO (title/description).
+- 2026-03-15: Security invariant reminder — never persist plaintext API keys in browser storage; only transiently display on creation and persist non-secret metadata (e.g., key IDs).
+- 2026-03-15: `X-User-Id` header auth is intentionally minimal for this scaffold but is forgeable; treat as non-production and avoid exposing privileged/admin operations without stronger identity verification.
+- 2026-03-15: Removed unplanned `GET /admin/ping` route from `backend/internal/httpapi/routes.go` to satisfy Final Wave F1 scope constraints.
+- 2026-03-15: Deleted `adminPingResponse` and `handleAdminPing` so `/admin/ping` artifacts no longer exist/compile in backend.
+- 2026-03-15: Final Wave F1 scope check confirmed `/admin/ping` backend surface is removed from route registration.
+- 2026-03-15: Final Wave F1 scope cleanup kept planned admin endpoints (`/admin/unit-prices`) unchanged while removing ping artifacts.
+- 2026-03-15: Final Wave F3 replaced forgeable `X-User-Id` auth with server-issued bearer session tokens (`Authorization: Bearer <session_token>`) stored as SHA-256 hash in new `sessions` table with expiry/revocation checks in middleware.
+- 2026-03-15: `POST /users` now returns one-time `session_token` and enforces admin bootstrap hardening: creating `role="admin"` requires `X-Admin-Bootstrap-Secret` matching `ADMIN_BOOTSTRAP_SECRET`; empty/mismatch secrets are rejected with 403.
