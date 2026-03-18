@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
+	"ai-api-portal/backend/internal/config"
 	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/httpapi"
+	"ai-api-portal/backend/internal/mailer"
+	"ai-api-portal/backend/internal/user"
 )
 
 type healthResponse struct {
@@ -22,27 +25,19 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
 }
 
-func getPort() string {
-	port := os.Getenv("PORT")
-	if port == "" {
-		return "8080"
-	}
-	return port
-}
-
-func getDBPath() string {
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		return "./data.db"
-	}
-	return dbPath
-}
-
 func main() {
+	configPath := flag.String("config", "./config.yaml", "path to backend YAML config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	database, err := db.Open(ctx, getDBPath())
+	database, err := db.Open(ctx, cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
 	}
@@ -56,11 +51,35 @@ func main() {
 		log.Fatalf("failed to apply migrations: %v", err)
 	}
 
+	opts := user.ServiceOptions{AllowedEmailDomains: cfg.Register.AllowedEmailDomains}
+	if cfg.SMTP.Enabled {
+		sender, err := mailer.NewSMTPSender(mailer.SMTPConfig{
+			Host:     cfg.SMTP.Host,
+			Port:     cfg.SMTP.Port,
+			Username: cfg.SMTP.Username,
+			Password: cfg.SMTP.Password,
+			From:     cfg.SMTP.From,
+			FromName: cfg.SMTP.FromName,
+		})
+		if err != nil {
+			log.Fatalf("failed to init smtp sender: %v", err)
+		}
+		opts.MailSender = sender
+	}
+	userSvc := user.NewServiceWithOptions(database, opts)
+
+	if cfg.Redis.Enabled {
+		log.Printf("redis configured at %s (db=%d)", cfg.Redis.Addr, cfg.Redis.DB)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
-	httpapi.RegisterRoutes(mux, database)
+	httpapi.RegisterRoutesWithOptions(mux, database, httpapi.RoutesOptions{
+		UserService:          userSvc,
+		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,
+	})
 
-	addr := ":" + getPort()
+	addr := ":" + cfg.Server.Port
 	log.Printf("backend server listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)

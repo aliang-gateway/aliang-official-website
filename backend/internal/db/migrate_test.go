@@ -67,4 +67,15 @@ func TestApplyMigrationsCreatesRequiredTables(t *testing.T) {
 			t.Fatalf("expected users.role column to exist")
 		}
 	})
+
+	t.Run("users_table_has_password_hash_column", func(t *testing.T) {
+		var count int
+		err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'password_hash';`).Scan(&count)
+		if err != nil {
+			t.Fatalf("password_hash column existence query failed: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("expected users.password_hash column to exist")
+		}
+	})
 }
