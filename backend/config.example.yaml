@@ -1,0 +1,26 @@
+server:
+  port: "8080"
+
+database:
+  path: "./data.db"
+
+auth:
+  admin_bootstrap_secret: ""
+
+register:
+  allowed_email_domains: []
+
+smtp:
+  enabled: false
+  host: "smtp.example.com"
+  port: 587
+  username: "noreply@example.com"
+  password: "change-me"
+  from: "noreply@example.com"
+  from_name: "AI API Portal"
+
+redis:
+  enabled: false
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0

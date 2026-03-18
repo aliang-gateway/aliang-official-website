@@ -203,12 +203,11 @@ func TestAdminUnitPriceEndpointsRequireAdmin(t *testing.T) {
 func TestAdminUnitPriceLifecycleSetListDeactivate(t *testing.T) {
 	ctx := context.Background()
 	database := setupTestDB(t)
-	t.Setenv("ADMIN_BOOTSTRAP_SECRET", "test-admin-secret")
 	insertTier(t, ctx, database, "pro", "Pro")
 	serviceItemID := insertServiceItem(t, ctx, database, "tokens_in", "Input Tokens", "token")
 
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, database)
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
 	_, adminSessionToken := createUserViaAPI(t, mux, "admin@example.com", "Admin", "admin", "test-admin-secret")
 
 	setGlobalV1Req := httptest.NewRequest(http.MethodPut, "/admin/unit-prices", bytes.NewReader([]byte(`{"service_item_code":"tokens_in","price_per_unit_micros":1000}`)))
@@ -380,12 +379,11 @@ func TestAdminUnitPriceLifecycleSetListDeactivate(t *testing.T) {
 func TestAdminSetUnitPriceValidation(t *testing.T) {
 	ctx := context.Background()
 	database := setupTestDB(t)
-	t.Setenv("ADMIN_BOOTSTRAP_SECRET", "test-admin-secret")
 	insertTier(t, ctx, database, "pro", "Pro")
 	insertServiceItem(t, ctx, database, "tokens_in", "Input Tokens", "token")
 
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, database)
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
 	_, adminSessionToken := createUserViaAPI(t, mux, "admin2@example.com", "Admin Two", "admin", "test-admin-secret")
 
 	testCases := []struct {

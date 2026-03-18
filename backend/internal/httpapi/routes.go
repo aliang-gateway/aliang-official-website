@@ -7,18 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"ai-api-portal/backend/internal/apikey"
 	"ai-api-portal/backend/internal/auth"
+	"ai-api-portal/backend/internal/user"
 )
 
 type routes struct {
-	db     *sql.DB
-	apiKey *apikey.Service
+	db                   *sql.DB
+	apiKey               *apikey.Service
+	userSvc              *user.Service
+	adminBootstrapSecret string
+}
+
+type RoutesOptions struct {
+	UserService          *user.Service
+	AdminBootstrapSecret string
 }
 
 type createUserRequest struct {
@@ -33,6 +40,97 @@ type createUserResponse struct {
 	Name         string `json:"name"`
 	Role         string `json:"role"`
 	SessionToken string `json:"session_token"`
+}
+
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type registerRequest struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type verifyEmailRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type resetPasswordRequest struct {
+	Email       string `json:"email"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password"`
+}
+
+type loginUserResponse struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+}
+
+type loginResponse struct {
+	User         loginUserResponse `json:"user"`
+	SessionToken string            `json:"session_token"`
+}
+
+type updateProfileRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type changePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+type setInitialPasswordRequest struct {
+	NewPassword string `json:"new_password"`
+}
+
+type redeemCardRequest struct {
+	CardCode string `json:"card_code"`
+}
+
+type profileConfigRequest struct {
+	ProfileName   string `json:"profile_name"`
+	ProfileType   string `json:"profile_type"`
+	IsActive      bool   `json:"is_active"`
+	ContentFormat string `json:"content_format"`
+	ContentText   string `json:"content_text"`
+}
+
+type walletResponse struct {
+	Wallet user.Wallet `json:"wallet"`
+}
+
+type walletTransactionsResponse struct {
+	Transactions []user.WalletTransaction `json:"transactions"`
+}
+
+type listProfileConfigsResponse struct {
+	Profiles []user.ProfileConfig `json:"profiles"`
+}
+
+type sessionResponse struct {
+	ID        int64  `json:"id"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+	IsRevoked bool   `json:"is_revoked"`
+}
+
+type listSessionsResponse struct {
+	Sessions []sessionResponse `json:"sessions"`
+}
+
+type revokeSessionResponse struct {
+	Revoked bool `json:"revoked"`
 }
 
 type createAPIKeyRequest struct {
@@ -157,10 +255,46 @@ type errorResponse struct {
 }
 
 func RegisterRoutes(mux *http.ServeMux, database *sql.DB) {
-	r := &routes{db: database, apiKey: apikey.NewService(database)}
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{})
+}
+
+func RegisterRoutesWithUserService(mux *http.ServeMux, database *sql.DB, userSvc *user.Service) {
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{UserService: userSvc})
+}
+
+func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts RoutesOptions) {
+	userSvc := opts.UserService
+	if userSvc == nil {
+		userSvc = user.NewService(database)
+	}
+	r := &routes{
+		db:                   database,
+		apiKey:               apikey.NewService(database),
+		userSvc:              userSvc,
+		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
+	}
 	authenticated := auth.RequireUser(database)
 
 	mux.HandleFunc("POST /users", r.handleCreateUser)
+	mux.HandleFunc("POST /auth/register", r.handleRegister)
+	mux.HandleFunc("POST /auth/verify-email", r.handleVerifyEmail)
+	mux.HandleFunc("POST /auth/forgot-password", r.handleForgotPassword)
+	mux.HandleFunc("POST /auth/reset-password", r.handleResetPassword)
+	mux.HandleFunc("POST /auth/login", r.handleLogin)
+	mux.Handle("GET /user/me", authenticated(http.HandlerFunc(r.handleGetMe)))
+	mux.Handle("PUT /user/me", authenticated(http.HandlerFunc(r.handleUpdateMe)))
+	mux.Handle("PUT /user/password", authenticated(http.HandlerFunc(r.handleChangePassword)))
+	mux.Handle("POST /user/password", authenticated(http.HandlerFunc(r.handleSetInitialPassword)))
+	mux.Handle("GET /wallet", authenticated(http.HandlerFunc(r.handleGetWallet)))
+	mux.Handle("GET /wallet/transactions", authenticated(http.HandlerFunc(r.handleListWalletTransactions)))
+	mux.Handle("POST /wallet/redeem", authenticated(http.HandlerFunc(r.handleRedeemCard)))
+	mux.Handle("POST /profiles", authenticated(http.HandlerFunc(r.handleCreateProfileConfig)))
+	mux.Handle("GET /profiles", authenticated(http.HandlerFunc(r.handleListProfileConfigs)))
+	mux.Handle("GET /profiles/{id}", authenticated(http.HandlerFunc(r.handleGetProfileConfig)))
+	mux.Handle("PUT /profiles/{id}", authenticated(http.HandlerFunc(r.handleUpdateProfileConfig)))
+	mux.Handle("DELETE /profiles/{id}", authenticated(http.HandlerFunc(r.handleDeleteProfileConfig)))
+	mux.Handle("DELETE /session", authenticated(http.HandlerFunc(r.handleLogout)))
+	mux.Handle("GET /sessions", authenticated(http.HandlerFunc(r.handleListSessions)))
 	mux.HandleFunc("GET /public/tiers", r.handlePublicTiers)
 	mux.HandleFunc("POST /public/estimate", r.handlePublicEstimate)
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
@@ -196,7 +330,7 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if payload.Role == "admin" {
-		expectedSecret := strings.TrimSpace(os.Getenv("ADMIN_BOOTSTRAP_SECRET"))
+		expectedSecret := r.adminBootstrapSecret
 		providedSecret := strings.TrimSpace(req.Header.Get("X-Admin-Bootstrap-Secret"))
 		if expectedSecret == "" || providedSecret == "" || providedSecret != expectedSecret {
 			writeError(w, http.StatusForbidden, "admin bootstrap secret required")
@@ -245,6 +379,547 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, createUserResponse{ID: id, Email: payload.Email, Name: payload.Name, Role: payload.Role, SessionToken: plaintextSessionToken})
+}
+
+func (r *routes) handleRegister(w http.ResponseWriter, req *http.Request) {
+	var payload registerRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	result, err := r.userSvc.Register(req.Context(), payload.Email, payload.Name, payload.Password)
+	if errors.Is(err, user.ErrEmailTaken) {
+		writeError(w, http.StatusConflict, "email already taken")
+		return
+	}
+	if errors.Is(err, user.ErrInvalidEmailDomain) {
+		writeError(w, http.StatusForbidden, "email domain is not allowed")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, result)
+}
+
+func (r *routes) handleVerifyEmail(w http.ResponseWriter, req *http.Request) {
+	var payload verifyEmailRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	err := r.userSvc.VerifyEmail(req.Context(), payload.Email, payload.Code)
+	if errors.Is(err, user.ErrInvalidCode) {
+		writeError(w, http.StatusUnauthorized, "invalid verification code")
+		return
+	}
+	if errors.Is(err, user.ErrCodeExpired) {
+		writeError(w, http.StatusUnauthorized, "verification code expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify email")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"verified": true})
+}
+
+func (r *routes) handleForgotPassword(w http.ResponseWriter, req *http.Request) {
+	var payload forgotPasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	if err := r.userSvc.RequestPasswordReset(req.Context(), payload.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to request password reset")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"sent": true})
+}
+
+func (r *routes) handleResetPassword(w http.ResponseWriter, req *http.Request) {
+	var payload resetPasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	err := r.userSvc.ResetPasswordByCode(req.Context(), payload.Email, payload.Code, payload.NewPassword)
+	if errors.Is(err, user.ErrInvalidCode) {
+		writeError(w, http.StatusUnauthorized, "invalid verification code")
+		return
+	}
+	if errors.Is(err, user.ErrCodeExpired) {
+		writeError(w, http.StatusUnauthorized, "verification code expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"reset": true})
+}
+
+func (r *routes) handleLogin(w http.ResponseWriter, req *http.Request) {
+	var payload loginRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.Email = strings.TrimSpace(payload.Email)
+	payload.Password = strings.TrimSpace(payload.Password)
+	if payload.Email == "" || payload.Password == "" {
+		writeError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+
+	authUser, err := r.userSvc.Login(req.Context(), payload.Email, payload.Password)
+	if errors.Is(err, user.ErrInvalidCredentials) {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	if errors.Is(err, user.ErrEmailNotVerified) {
+		writeError(w, http.StatusForbidden, "email not verified")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to login")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, loginResponse{
+		User: loginUserResponse{
+			ID:    authUser.ID,
+			Email: authUser.Email,
+			Name:  authUser.Name,
+			Role:  authUser.Role,
+		},
+		SessionToken: authUser.SessionToken,
+	})
+}
+
+func (r *routes) handleGetMe(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	profile, err := r.userSvc.GetProfile(req.Context(), authUser.ID)
+	if errors.Is(err, user.ErrUserNotFound) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, profile)
+}
+
+func (r *routes) handleUpdateMe(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload updateProfileRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Email = strings.TrimSpace(payload.Email)
+	if payload.Name == "" || payload.Email == "" {
+		writeError(w, http.StatusBadRequest, "name and email are required")
+		return
+	}
+
+	if err := r.userSvc.UpdateProfile(req.Context(), authUser.ID, payload.Name, payload.Email); err != nil {
+		if errors.Is(err, user.ErrEmailTaken) {
+			writeError(w, http.StatusConflict, "email already taken")
+			return
+		}
+		if errors.Is(err, user.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to update profile")
+		return
+	}
+
+	profile, err := r.userSvc.GetProfile(req.Context(), authUser.ID)
+	if errors.Is(err, user.ErrUserNotFound) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, profile)
+}
+
+func (r *routes) handleChangePassword(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload changePasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.OldPassword = strings.TrimSpace(payload.OldPassword)
+	payload.NewPassword = strings.TrimSpace(payload.NewPassword)
+	if payload.OldPassword == "" || payload.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "old_password and new_password are required")
+		return
+	}
+
+	if err := r.userSvc.ChangePassword(req.Context(), authUser.ID, payload.OldPassword, payload.NewPassword); err != nil {
+		if errors.Is(err, user.ErrWrongPassword) || errors.Is(err, user.ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, "wrong current password")
+			return
+		}
+		if errors.Is(err, user.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to change password")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"changed": true})
+}
+
+func (r *routes) handleSetInitialPassword(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload setInitialPasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.NewPassword = strings.TrimSpace(payload.NewPassword)
+	if payload.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "new_password is required")
+		return
+	}
+
+	if err := r.userSvc.SetInitialPassword(req.Context(), authUser.ID, payload.NewPassword); err != nil {
+		if errors.Is(err, user.ErrPasswordAlreadySet) {
+			writeError(w, http.StatusConflict, "password already set, use change password instead")
+			return
+		}
+		if errors.Is(err, user.ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to set password")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"set": true})
+}
+
+func (r *routes) handleGetWallet(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	wallet, err := r.userSvc.GetWallet(req.Context(), authUser.ID)
+	if errors.Is(err, user.ErrUserNotFound) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get wallet")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, walletResponse{Wallet: *wallet})
+}
+
+func (r *routes) handleRedeemCard(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload redeemCardRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	wallet, err := r.userSvc.RedeemCard(req.Context(), authUser.ID, payload.CardCode)
+	if errors.Is(err, user.ErrCardNotFound) {
+		writeError(w, http.StatusNotFound, "recharge card not found")
+		return
+	}
+	if errors.Is(err, user.ErrCardAlreadyRedeemed) {
+		writeError(w, http.StatusConflict, "recharge card already redeemed")
+		return
+	}
+	if errors.Is(err, user.ErrCardExpired) {
+		writeError(w, http.StatusConflict, "recharge card expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to redeem card")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, walletResponse{Wallet: *wallet})
+}
+
+func (r *routes) handleListWalletTransactions(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	limit := parseQueryLimit(req.URL.Query().Get("limit"), 20)
+	txs, err := r.userSvc.ListWalletTransactions(req.Context(), authUser.ID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list wallet transactions")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, walletTransactionsResponse{Transactions: txs})
+}
+
+func (r *routes) handleCreateProfileConfig(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload profileConfigRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	cfg, err := r.userSvc.CreateProfileConfig(
+		req.Context(),
+		authUser.ID,
+		payload.ProfileName,
+		payload.ProfileType,
+		payload.ContentFormat,
+		payload.ContentText,
+		payload.IsActive,
+	)
+	if errors.Is(err, user.ErrInvalidProfileData) {
+		writeError(w, http.StatusBadRequest, "invalid profile data")
+		return
+	}
+	if errors.Is(err, user.ErrProfileNameTaken) {
+		writeError(w, http.StatusConflict, "profile name already taken")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create profile")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, cfg)
+}
+
+func (r *routes) handleGetProfileConfig(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	profileID, err := parsePathID(req.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid profile id")
+		return
+	}
+
+	cfg, err := r.userSvc.GetProfileConfig(req.Context(), authUser.ID, profileID)
+	if errors.Is(err, user.ErrProfileNotFound) {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (r *routes) handleListProfileConfigs(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	profileType := strings.TrimSpace(req.URL.Query().Get("type"))
+	profiles, err := r.userSvc.ListProfileConfigs(req.Context(), authUser.ID, profileType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list profiles")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, listProfileConfigsResponse{Profiles: profiles})
+}
+
+func (r *routes) handleUpdateProfileConfig(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	profileID, err := parsePathID(req.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid profile id")
+		return
+	}
+
+	var payload profileConfigRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	cfg, err := r.userSvc.UpdateProfileConfig(
+		req.Context(),
+		authUser.ID,
+		profileID,
+		payload.ProfileName,
+		payload.ProfileType,
+		payload.ContentFormat,
+		payload.ContentText,
+		payload.IsActive,
+	)
+	if errors.Is(err, user.ErrProfileNotFound) {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	if errors.Is(err, user.ErrInvalidProfileData) {
+		writeError(w, http.StatusBadRequest, "invalid profile data")
+		return
+	}
+	if errors.Is(err, user.ErrProfileNameTaken) {
+		writeError(w, http.StatusConflict, "profile name already taken")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (r *routes) handleDeleteProfileConfig(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	profileID, err := parsePathID(req.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid profile id")
+		return
+	}
+
+	err = r.userSvc.DeleteProfileConfig(req.Context(), authUser.ID, profileID)
+	if errors.Is(err, user.ErrProfileNotFound) {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (r *routes) handleLogout(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	token, err := extractBearerToken(req.Header.Get("Authorization"))
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "missing bearer token")
+		return
+	}
+
+	if err := r.userSvc.Logout(req.Context(), authUser.ID, token); err != nil {
+		if errors.Is(err, user.ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to logout")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, revokeSessionResponse{Revoked: true})
+}
+
+func (r *routes) handleListSessions(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	sessions, err := r.userSvc.ListSessions(req.Context(), authUser.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list sessions")
+		return
+	}
+
+	response := listSessionsResponse{Sessions: make([]sessionResponse, 0, len(sessions))}
+	for _, item := range sessions {
+		response.Sessions = append(response.Sessions, sessionResponse{
+			ID:        item.ID,
+			CreatedAt: item.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: item.ExpiresAt.Format(time.RFC3339),
+			IsRevoked: item.RevokedAt != nil,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (r *routes) handleCreateAPIKey(w http.ResponseWriter, req *http.Request) {
@@ -1212,6 +1887,48 @@ func (r *routes) lookupActiveUnitPrice(ctx context.Context, serviceItemID, tierI
 	}
 
 	return result, true, nil
+}
+
+func extractBearerToken(rawAuthHeader string) (string, error) {
+	authHeader := strings.TrimSpace(rawAuthHeader)
+	const bearerPrefix = "Bearer "
+	if !strings.HasPrefix(authHeader, bearerPrefix) {
+		return "", errors.New("missing bearer token")
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	if token == "" {
+		return "", errors.New("missing bearer token")
+	}
+
+	return token, nil
+}
+
+func parsePathID(raw string) (int64, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return 0, errors.New("id is required")
+	}
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errors.New("invalid id")
+	}
+	return id, nil
+}
+
+func parseQueryLimit(raw string, fallback int) int {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	if n > 100 {
+		return 100
+	}
+	return n
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
