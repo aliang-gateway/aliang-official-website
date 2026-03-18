@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#21c45d",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#122017",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Navigation -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-800 px-6 md:px-20 py-4 bg-white dark:bg-slate-900 sticky top-0 z-50">
+<div class="flex items-center gap-3">
+<div class="size-8 flex items-center justify-center bg-primary rounded text-white">
+<span class="material-symbols-outlined">hub</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight">ALiang AI Services</h2>
+</div>
+<div class="hidden md:flex flex-1 justify-end gap-8 items-center">
+<nav class="flex items-center gap-8">
+<a class="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Features</a>
+<a class="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Integrations</a>
+<a class="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Documentation</a>
+<a class="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Pricing</a>
+</nav>
+<div class="flex gap-3">
+<button class="flex min-w-[100px] cursor-pointer items-center justify-center rounded h-10 px-4 bg-primary text-white text-sm font-bold transition-opacity hover:opacity-90">
+                    Get Started
+                </button>
+<button class="flex min-w-[80px] cursor-pointer items-center justify-center rounded h-10 px-4 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700">
+                    Login
+                </button>
+</div>
+</div>
+<button class="md:hidden text-slate-900 dark:text-slate-100">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</header>
+<main class="flex-1">
+<!-- Hero Section -->
+<section class="max-w-7xl mx-auto px-6 md:px-20 py-16 md:py-24">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+<div class="flex flex-col gap-8">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider w-fit">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</span>
+                        99.9% Uptime Guaranteed
+                    </div>
+<div class="flex flex-col gap-4">
+<h1 class="text-slate-900 dark:text-white text-5xl md:text-6xl font-black leading-tight tracking-tight">
+                            Next-Gen AI Gateway for <span class="text-primary">Unmatched Stability</span>
+</h1>
+<p class="text-slate-600 dark:text-slate-400 text-lg md:text-xl leading-relaxed max-w-xl">
+                            Experience the power of official API support with high-performance routing. Your all-in-one bridge to the world's leading AI models, engineered for enterprise-scale workloads.
+                        </p>
+</div>
+<div class="flex flex-wrap gap-4">
+<button class="flex min-w-[160px] cursor-pointer items-center justify-center rounded-lg h-14 px-6 bg-primary text-white text-base font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform">
+                            Get Started Free
+                        </button>
+<button class="flex min-w-[160px] cursor-pointer items-center justify-center rounded-lg h-14 px-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-base font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            View Documentation
+                        </button>
+</div>
+<div class="flex items-center gap-6 pt-4">
+<div class="flex -space-x-3">
+<img alt="" class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-900" data-alt="User avatar 1" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuvpyv70_JvmcOYPve3_zTuCQQ7hOFr8xcOVUteql0Uuo4mGXQhNxuJUtQItOaK7ojcekgjXV-W2fXkLRrqGl-6dkUQDQNgT1ji8KOHdiAnSgc_exYA_LtPy4qFXpvVws642CP5F9ddOsdomb1oa149NjsMmCN3F1hIJJTK9urLkUEYns57sK81JR3dd04GuYs6hkDbH2M2h64kKKUT0P1w9MS5TwkHuRe-_7mqJhtwHpZ4k_zQ38ZqZ0J8spvxi5_8TSYaTwBqZE"/>
+<img alt="" class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-900" data-alt="User avatar 2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBf5PKY_gGJuKfBH4H76cKrzVAmx_y49u0VqMYB0RpsQDbT49cRd1bvc_6s-9dKg-j2yKOJOG8TXcfTecCVbbxXN6wsKQ3J2VwmSfaoTc9I-m_DHjaApJk-XryoG3Dr6NMi-NwWNk0Le8YZs6JwevrPf_CrfzQSSf0d7mjUixhcMbBkkk7nShtO1l0_CrWFdSy5mOwrfaWXQhEzvKPNVpoxJIE_HiOvlDTNSTi-NVxaAIZF2cKqUrXXkPi75IrszT7y6chc84GLTws"/>
+<img alt="" class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-900" data-alt="User avatar 3" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCy7q4jWjPyyT-yOMgPnkOmunOC7S7XNdo13P58ZFCYW3g-RU5o_XuPF1jhyRsMefOqHab4hbQy9tGE6nvXxfMW1q1pcgpBIPMITjmmC6RiG_26rfh8hxUpkmj2vAijoEDYwwmY5xA_rfLall8F7C5D5TqXt1RGrRMBpg9nCEY0FpdnEXr0_Os6Aib7Eqe__x6uqyj4ZqLn9abEbvLwKI_ZmsXISrXEtPJAcvA6fn6zqrX7lhhi1pXU84OeKtomSmPmHtwKeycZhN4"/>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Trusted by 500+ engineering teams</p>
+</div>
+</div>
+<div class="relative">
+<div class="absolute -inset-4 bg-primary/10 rounded-xl blur-3xl"></div>
+<div class="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-2xl">
+<div class="flex items-center gap-1.5 px-4 py-3 bg-slate-800/50 border-b border-slate-800">
+<div class="w-3 h-3 rounded-full bg-red-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-yellow-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-green-500/50"></div>
+<div class="ml-4 text-[10px] font-mono text-slate-500 uppercase tracking-widest">ai-gateway-dashboard</div>
+</div>
+<div class="p-6 font-mono text-xs md:text-sm text-slate-300 space-y-2">
+<div class="flex gap-3"><span class="text-primary">$</span><span>curl -X POST https://api.aliang.ai/v1/chat</span></div>
+<div class="flex gap-3 text-slate-500"><span>&gt;</span><span>Authorization: Bearer AL_KEY_...</span></div>
+<div class="flex gap-3 text-slate-500"><span>&gt;</span><span>Model: claude-3-5-sonnet</span></div>
+<div class="pt-4 text-primary">// Response received in 142ms</div>
+<div class="text-green-400">{</div>
+<div class="pl-4 text-green-400">"status": "success",</div>
+<div class="pl-4 text-green-400">"provider": "anthropic-official",</div>
+<div class="pl-4 text-green-400">"latency": "142ms",</div>
+<div class="pl-4 text-green-400">"tokens": { "prompt": 1024, "completion": 512 }</div>
+<div class="text-green-400">}</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Features Grid -->
+<section class="bg-white dark:bg-slate-900/50 py-20">
+<div class="max-w-7xl mx-auto px-6 md:px-20">
+<div class="text-center max-w-3xl mx-auto mb-16 space-y-4">
+<h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">Engineered for Excellence</h2>
+<p class="text-slate-600 dark:text-slate-400 text-lg">Built to handle enterprise-level workloads with military-grade security and official API integrations.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="group p-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
+<div class="size-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">verified_user</span>
+</div>
+<h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Official API Support</h3>
+<p class="text-slate-600 dark:text-slate-400 leading-relaxed">Direct access to Claude, OpenAI, and more with official credentials. No middleman proxies, just pure performance.</p>
+</div>
+<div class="group p-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
+<div class="size-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">shield_with_heart</span>
+</div>
+<h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Enterprise Stability</h3>
+<p class="text-slate-600 dark:text-slate-400 leading-relaxed">Built-in redundancy and multi-region load balancing for zero-downtime performance when your users need it most.</p>
+</div>
+<div class="group p-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
+<div class="size-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+<h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Rich Feature Set</h3>
+<p class="text-slate-600 dark:text-slate-400 leading-relaxed">Advanced prompt management, real-time rate limiting, and granular cost tracking out of the box.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Integrations -->
+<section class="py-20 bg-background-light dark:bg-background-dark">
+<div class="max-w-7xl mx-auto px-6 md:px-20">
+<div class="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+<div class="space-y-4">
+<h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">One-Click Integrations</h2>
+<p class="text-slate-600 dark:text-slate-400 text-lg max-w-xl">Connect your favorite development tools in seconds with our pre-built gateway adapters.</p>
+</div>
+<a class="text-primary font-bold flex items-center gap-2 hover:underline" href="#">
+                        Explore all 50+ integrations
+                        <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="flex flex-col items-center gap-4 p-8 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-transform hover:-translate-y-1">
+<div class="size-16 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-5xl">terminal</span>
+</div>
+<div class="text-center">
+<h4 class="font-bold text-slate-900 dark:text-white text-lg">Cursor</h4>
+<p class="text-sm text-slate-500">Instant IDE setup</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-4 p-8 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-transform hover:-translate-y-1">
+<div class="size-16 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-5xl">chat</span>
+</div>
+<div class="text-center">
+<h4 class="font-bold text-slate-900 dark:text-white text-lg">Claude</h4>
+<p class="text-sm text-slate-500">Official model hub</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-4 p-8 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-transform hover:-translate-y-1">
+<div class="size-16 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-5xl">neurology</span>
+</div>
+<div class="text-center">
+<h4 class="font-bold text-slate-900 dark:text-white text-lg">OpenAI</h4>
+<p class="text-sm text-slate-500">Global gateway</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-4 p-8 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-transform hover:-translate-y-1">
+<div class="size-16 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-5xl">code_blocks</span>
+</div>
+<div class="text-center">
+<h4 class="font-bold text-slate-900 dark:text-white text-lg">GitHub Copilot</h4>
+<p class="text-sm text-slate-500">AI-powered coding</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA Section -->
+<section class="py-20 px-6">
+<div class="max-w-5xl mx-auto rounded-2xl bg-slate-900 dark:bg-primary/10 border border-slate-800 dark:border-primary/20 p-10 md:p-16 relative overflow-hidden">
+<div class="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-primary/20 rounded-full blur-[100px]"></div>
+<div class="relative z-10 text-center space-y-8">
+<h2 class="text-4xl md:text-5xl font-black text-white dark:text-primary leading-tight">Ready to switch to the most stable AI Gateway?</h2>
+<p class="text-slate-400 dark:text-slate-300 text-lg max-w-2xl mx-auto leading-relaxed">Join thousands of developers building the future with ALiang AI Services. Start today for free, no credit card required.</p>
+<div class="flex flex-col sm:flex-row gap-4 justify-center">
+<button class="flex min-w-[200px] cursor-pointer items-center justify-center rounded-lg h-14 px-8 bg-primary text-white text-lg font-bold shadow-lg shadow-primary/40 hover:scale-[1.02] transition-transform">
+                            Get Started Now
+                        </button>
+<button class="flex min-w-[200px] cursor-pointer items-center justify-center rounded-lg h-14 px-8 border border-slate-700 bg-slate-800 text-white text-lg font-bold hover:bg-slate-700 transition-colors">
+                            Talk to Sales
+                        </button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 py-12">
+<div class="max-w-7xl mx-auto px-6 md:px-20 grid grid-cols-1 md:grid-cols-4 gap-12">
+<div class="col-span-1 md:col-span-1 space-y-4">
+<div class="flex items-center gap-3">
+<div class="size-6 flex items-center justify-center bg-primary rounded text-white">
+<span class="material-symbols-outlined text-sm">hub</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">ALiang AI</h2>
+</div>
+<p class="text-slate-500 text-sm">The world's most reliable bridge to professional AI services.</p>
+</div>
+<div>
+<h4 class="font-bold text-slate-900 dark:text-white mb-6 uppercase text-xs tracking-widest">Product</h4>
+<ul class="space-y-4 text-sm text-slate-500">
+<li><a class="hover:text-primary" href="#">Features</a></li>
+<li><a class="hover:text-primary" href="#">Integrations</a></li>
+<li><a class="hover:text-primary" href="#">Pricing</a></li>
+<li><a class="hover:text-primary" href="#">API Reference</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-bold text-slate-900 dark:text-white mb-6 uppercase text-xs tracking-widest">Resources</h4>
+<ul class="space-y-4 text-sm text-slate-500">
+<li><a class="hover:text-primary" href="#">Documentation</a></li>
+<li><a class="hover:text-primary" href="#">Blog</a></li>
+<li><a class="hover:text-primary" href="#">Support</a></li>
+<li><a class="hover:text-primary" href="#">Status</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-bold text-slate-900 dark:text-white mb-6 uppercase text-xs tracking-widest">Company</h4>
+<ul class="space-y-4 text-sm text-slate-500">
+<li><a class="hover:text-primary" href="#">About</a></li>
+<li><a class="hover:text-primary" href="#">Security</a></li>
+<li><a class="hover:text-primary" href="#">Privacy</a></li>
+<li><a class="hover:text-primary" href="#">Terms</a></li>
+</ul>
+</div>
+</div>
+<div class="max-w-7xl mx-auto px-6 md:px-20 mt-12 pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
+<p class="text-slate-500 text-xs">© 2024 ALiang AI Services Inc. All rights reserved.</p>
+<div class="flex gap-6">
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">public</span></a>
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">alternate_email</span></a>
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">rss_feed</span></a>
+</div>
+</div>
+</footer>
+</div>
+</body></html>
