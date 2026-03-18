@@ -116,7 +116,7 @@ export default function AccountPage() {
         });
         const payload = (await response.json()) as TiersResponse | { error?: string };
         if (!response.ok) {
-          throw new Error((payload as { error?: string }).error ?? "failed to load tiers");
+          throw new Error((payload as { error?: string }).error ?? "加载套餐失败");
         }
         const nextTiers = (payload as TiersResponse).tiers ?? [];
         setTiers(nextTiers);
@@ -124,7 +124,7 @@ export default function AccountPage() {
           setSelectedTierCode(nextTiers[0].code);
         }
       } catch (error) {
-        setTiersError(error instanceof Error ? error.message : "failed to load tiers");
+        setTiersError(error instanceof Error ? error.message : "加载套餐失败");
       } finally {
         setTiersLoading(false);
       }
@@ -190,12 +190,12 @@ export default function AccountPage() {
       });
       const payload = (await response.json()) as SubscriptionResponse | { error?: string };
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "failed to load subscription");
+        throw new Error((payload as { error?: string }).error ?? "加载订阅失败");
       }
       setCurrentSubscription((payload as SubscriptionResponse).subscription);
     } catch (error) {
       setCurrentSubscription(null);
-      setSubscriptionError(error instanceof Error ? error.message : "failed to load subscription");
+      setSubscriptionError(error instanceof Error ? error.message : "加载订阅失败");
     } finally {
       setSubscriptionLoading(false);
     }
@@ -226,7 +226,7 @@ export default function AccountPage() {
 
       const payload = (await response.json()) as CreateUserResponse | { error?: string };
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "failed to create user");
+        throw new Error((payload as { error?: string }).error ?? "创建用户失败");
       }
 
       const nextSessionToken = (payload as CreateUserResponse).session_token;
@@ -236,7 +236,7 @@ export default function AccountPage() {
       setLatestApiKey(null);
       void loadCurrentSubscription();
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "failed to create user");
+      setAuthError(error instanceof Error ? error.message : "创建用户失败");
     }
   };
 
@@ -257,7 +257,7 @@ export default function AccountPage() {
     setLatestApiKey(null);
 
     if (!sessionToken) {
-      setApiKeyError("login required");
+      setApiKeyError("请先登录");
       return;
     }
 
@@ -274,7 +274,7 @@ export default function AccountPage() {
 
       const payload = (await response.json()) as CreateApiKeyResponse | { error?: string };
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "failed to create api key");
+        throw new Error((payload as { error?: string }).error ?? "创建 API 密钥失败");
       }
 
       const created = payload as CreateApiKeyResponse;
@@ -282,14 +282,14 @@ export default function AccountPage() {
       const nextIds = Array.from(new Set([...apiKeyIds, created.id]));
       persistApiKeyIds(nextIds);
     } catch (error) {
-      setApiKeyError(error instanceof Error ? error.message : "failed to create api key");
+      setApiKeyError(error instanceof Error ? error.message : "创建 API 密钥失败");
     }
   };
 
   const handleRevokeApiKey = async (keyId: number) => {
     setApiKeyError(null);
     if (!sessionToken) {
-      setApiKeyError("login required");
+      setApiKeyError("请先登录");
       return;
     }
 
@@ -304,12 +304,12 @@ export default function AccountPage() {
       });
       const payload = (await response.json()) as { revoked?: boolean; error?: string };
       if (!response.ok) {
-        throw new Error(payload.error ?? "failed to revoke api key");
+        throw new Error(payload.error ?? "撤销 API 密钥失败");
       }
 
       persistApiKeyIds(apiKeyIds.filter((id) => id !== keyId));
     } catch (error) {
-      setApiKeyError(error instanceof Error ? error.message : "failed to revoke api key");
+      setApiKeyError(error instanceof Error ? error.message : "撤销 API 密钥失败");
     }
   };
 
@@ -319,11 +319,11 @@ export default function AccountPage() {
     setSubscriptionSuccess(null);
 
     if (!sessionToken) {
-      setSubscriptionError("login required");
+      setSubscriptionError("请先登录");
       return;
     }
     if (!selectedTier) {
-      setSubscriptionError("select a tier");
+      setSubscriptionError("请选择套餐");
       return;
     }
 
@@ -332,7 +332,7 @@ export default function AccountPage() {
       const raw = overrideInputs[item.code] ?? String(item.included_units);
       const parsed = Number.parseInt(raw, 10);
       if (!Number.isInteger(parsed) || parsed < 0) {
-        setSubscriptionError(`invalid included_units for ${item.code}`);
+        setSubscriptionError(`${item.code} 的包含额度无效`);
         return;
       }
       if (parsed !== item.included_units) {
@@ -358,12 +358,12 @@ export default function AccountPage() {
       });
       const payload = (await response.json()) as SubscriptionResponse | { error?: string };
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "failed to save subscription");
+        throw new Error((payload as { error?: string }).error ?? "保存订阅失败");
       }
       setCurrentSubscription((payload as SubscriptionResponse).subscription);
-      setSubscriptionSuccess("Subscription saved.");
+      setSubscriptionSuccess("订阅已保存。");
     } catch (error) {
-      setSubscriptionError(error instanceof Error ? error.message : "failed to save subscription");
+      setSubscriptionError(error instanceof Error ? error.message : "保存订阅失败");
     }
   };
 
@@ -371,59 +371,59 @@ export default function AccountPage() {
     <section className="space-y-6">
       <div className="clay-panel space-y-2 p-5">
         <h2 className="section-title">
-          <span className="gradient-text">Account</span>
+          <span className="gradient-text">账户管理</span>
         </h2>
         <p className="section-subtitle">
-          Session auth, API key management, and subscription controls in one clay block workspace.
+          会话认证、API 密钥管理和订阅控制的一站式工作区。
         </p>
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">Login (session token)</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500">登录（会话令牌）</h3>
 
                 <div className="mb-4 block-card p-3 text-sm">
-          Current session token:{" "}
-          <span className="font-mono break-all">{isHydrated && sessionToken ? sessionToken : "(none)"}</span>
+          当前会话令牌：{" "}
+          <span className="font-mono break-all">{isHydrated && sessionToken ? sessionToken : "（无）"}</span>
         </div>
 
         <form className="mb-4 grid gap-3" onSubmit={handleCreateUser}>
-          <p className="text-sm font-semibold text-gray-300">Create user</p>
+          <p className="text-sm font-semibold text-gray-300">创建用户</p>
           <input
             className="field"
             type="email"
-            placeholder="email"
+            placeholder="邮箱"
             value={createEmail}
             onChange={(event) => setCreateEmail(event.target.value)}
           />
           <input
             className="field"
             type="text"
-            placeholder="name"
+            placeholder="姓名"
             value={createName}
             onChange={(event) => setCreateName(event.target.value)}
           />
           <select className="field" value={createRole} onChange={(event) => setCreateRole(event.target.value)}>
-            <option value="user">user</option>
-            <option value="admin">admin</option>
+            <option value="user">用户</option>
+            <option value="admin">管理员</option>
           </select>
           <button type="submit" className="btn-primary w-fit">
-            Create user and store session token
+            创建用户并保存会话令牌
           </button>
         </form>
 
         <button type="button" onClick={handleLogout} className="btn-ghost">
-          Logout
+          退出登录
         </button>
 
         {authError ? <p className="mt-3 text-sm text-red-500">{authError}</p> : null}
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">API keys</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500">API 密钥</h3>
         <form className="mb-3 flex flex-wrap items-end gap-3" onSubmit={handleCreateApiKey}>
           <div className="flex-1 space-y-1">
             <label htmlFor="api-key-label" className="text-sm font-medium">
-              Label (optional)
+              标签（可选）
             </label>
             <input
               id="api-key-label"
@@ -434,25 +434,25 @@ export default function AccountPage() {
             />
           </div>
           <button type="submit" className="btn-primary">
-            Create API key
+            创建 API 密钥
           </button>
         </form>
 
         {latestApiKey ? (
           <p className="notice mb-3">
-            New API key (shown once): <span className="font-mono break-all">{latestApiKey}</span>
+            新 API 密钥（仅显示一次）： <span className="font-mono break-all">{latestApiKey}</span>
           </p>
         ) : null}
 
         {apiKeyIds.length === 0 ? (
-          <p className="text-sm text-gray-400">No locally tracked key IDs for current session.</p>
+          <p className="text-sm text-gray-400">当前会话没有本地跟踪的密钥 ID。</p>
         ) : (
           <ul className="space-y-2 text-sm">
             {apiKeyIds.map((id) => (
               <li key={id} className="block-card flex items-center justify-between">
-                <span className="font-mono">Key ID: {id}</span>
+                <span className="font-mono">密钥 ID： {id}</span>
                 <button type="button" onClick={() => void handleRevokeApiKey(id)} className="btn-ghost px-2 py-1 text-xs">
-                  Revoke
+                  撤销
                 </button>
               </li>
             ))}
@@ -463,16 +463,16 @@ export default function AccountPage() {
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">Subscription</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500">订阅管理</h3>
 
-        {tiersLoading ? <p className="text-sm">Loading tiers...</p> : null}
-        {tiersError ? <p className="text-sm text-red-500">Failed to load tiers: {tiersError}</p> : null}
+        {tiersLoading ? <p className="text-sm">加载套餐中...</p> : null}
+        {tiersError ? <p className="text-sm text-red-500">加载套餐失败： {tiersError}</p> : null}
 
         {!tiersLoading && !tiersError ? (
           <form className="space-y-4" onSubmit={handleSaveSubscription}>
             <div className="space-y-2">
               <label htmlFor="tier" className="text-sm font-medium">
-                Tier
+                套餐
               </label>
               <select id="tier" className="field" value={selectedTierCode} onChange={(event) => setSelectedTierCode(event.target.value)}>
                 {tiers.map((tier) => (
@@ -485,7 +485,7 @@ export default function AccountPage() {
 
             {selectedTier ? (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-300">Per-item included_units (override defaults)</p>
+                <p className="text-sm font-semibold text-gray-300">单项包含额度（覆盖默认值）</p>
                 <ul className="space-y-2">
                   {selectedTier.default_items.map((item) => (
                     <li key={item.code} className="block-card">
@@ -507,7 +507,7 @@ export default function AccountPage() {
                         />
                         <span className="text-sm text-gray-400">{item.unit}</span>
                       </div>
-                      <div className="mt-1 text-xs text-gray-400">Default: {item.included_units}</div>
+                      <div className="mt-1 text-xs text-gray-400">默认： {item.included_units}</div>
                     </li>
                   ))}
                 </ul>
@@ -516,10 +516,10 @@ export default function AccountPage() {
 
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary">
-                Save subscription
+                保存订阅
               </button>
               <button type="button" onClick={() => void loadCurrentSubscription()} className="btn-ghost">
-                Reload current subscription
+                重新加载当前订阅
               </button>
             </div>
           </form>
@@ -530,15 +530,15 @@ export default function AccountPage() {
 
         <div className="block-card mt-4 text-sm">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="font-semibold">Current subscription</p>
-            {subscriptionLoading ? <span className="text-xs">Loading...</span> : null}
+            <p className="font-semibold">当前订阅</p>
+            {subscriptionLoading ? <span className="text-xs">加载中...</span> : null}
           </div>
           {!currentSubscription ? (
-            <p className="text-gray-400">No active subscription loaded.</p>
+            <p className="text-gray-400">没有加载活跃的订阅。</p>
           ) : (
             <div className="space-y-2">
               <p>
-                Tier: {currentSubscription.tier_name} ({currentSubscription.tier_code})
+                套餐： {currentSubscription.tier_name} ({currentSubscription.tier_code})
               </p>
               <ul className="space-y-1">
                 {currentSubscription.quotas.map((quota) => (

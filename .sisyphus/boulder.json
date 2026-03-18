@@ -1,7 +1,11 @@
 {
   "active_plan": "/Users/mac/MyProgram/AiProgram/nursorwebsite/.sisyphus/plans/ai-api-portal.md",
   "started_at": "2026-03-15T04:45:30.000Z",
-  "session_ids": ["ses_310795f54ffe6V9kRrdVJxyai0"],
+  "session_ids": [
+    "ses_310795f54ffe6V9kRrdVJxyai0",
+    "ses_30e784875ffeEUZmOrH7eH0T2T",
+    "ses_30ae158e3ffeD6RdyhUTXDFyLB"
+  ],
   "plan_name": "ai-api-portal",
   "worktree_path": "/Users/mac/MyProgram/AiProgram/nursorwebsite"
 }

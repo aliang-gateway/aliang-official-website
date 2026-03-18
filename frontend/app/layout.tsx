@@ -1,23 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import ThemeToggle from "./components/ThemeToggle";
-import Logo from "./components/Logo";
+import { Inter } from "next/font/google";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "AI API Portal",
-  description: "Frontend scaffold for AI API Portal",
+  title: "aliang.one - 阿良家的AI",
+  description: "阿良家的AI API网关 - 提供稳定可靠的AI接口服务",
 };
 
 export default function RootLayout({
@@ -27,31 +22,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <div className="portal-shell">
-          <header className="portal-header clay-panel px-6 py-4">
-            <Logo />
-            <nav className="flex flex-wrap gap-2 text-sm">
-              <Link href="/blog" className="nav-pill">
-                Blog
-              </Link>
-              <Link href="/download" className="nav-pill">
-                Download
-              </Link>
-              <Link href="/pricing" className="nav-pill">
-                Pricing
-              </Link>
-            </nav>
-            <div className="flex items-center gap-3">
-              <ThemeToggle />
-              <Link href="/account" className="btn-primary text-xs">
-                Login
-              </Link>
-            </div>
-          </header>
-          <main className="portal-main">{children}</main>
+      <body className={`${inter.variable} antialiased font-sans bg-[var(--stitch-bg)] text-[var(--stitch-text)]`}>
+        <div className="flex min-h-screen flex-col">
+          <SiteHeader />
+          <main className="flex-1">{children}</main>
+          <SiteFooter />
         </div>
       </body>
     </html>

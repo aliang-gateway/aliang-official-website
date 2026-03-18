@@ -18,3 +18,4 @@ frontend/build/
 *.env.test
 *.env.production
 *.pem
+.continue
