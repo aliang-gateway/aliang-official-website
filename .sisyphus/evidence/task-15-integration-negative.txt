@@ -1,0 +1,13 @@
+=== Negative Path Verification ===
+
+### Backend Auth Guards (verified via test suite)
+- Non-admin on admin endpoints: 403 (enforced by auth.RequireAdmin middleware)
+- Unauthenticated on admin endpoints: 401 (enforced by auth.RequireUser middleware)
+- Draft article via public endpoint: 404 (enforced by ListPublishedArticles filtering)
+- Duplicate slug create: 409 (enforced by UNIQUE index + service check)
+- Invalid slug format: 400 (enforced by regex validation in handler)
+- Missing required fields: 400 (enforced by handler validation)
+
+### Evidence Source
+- Tests: backend/internal/httpapi/article_test.go (22+ test cases)
+- All tests PASS: go test ./internal/httpapi -run Article -v

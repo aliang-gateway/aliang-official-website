@@ -60,6 +60,12 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     strong: ({ className = "", ...props }) => (
       <strong className={`text-[var(--portal-ink)] font-semibold ${className}`.trim()} {...props} />
     ),
+    img: ({ className = "", ...props }) => (
+      <img
+        className={`max-w-full h-auto rounded-lg ${className}`.trim()}
+        {...props}
+      />
+    ),
     ...components,
   };
 }

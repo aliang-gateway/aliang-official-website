@@ -1837,7 +1837,11 @@ func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	updated, err := r.articleSvc.GetArticleBySlug(req.Context(), slug)
+	updated, err := r.findAdminArticleBySlug(req.Context(), slug)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return

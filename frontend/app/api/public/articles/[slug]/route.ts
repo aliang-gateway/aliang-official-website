@@ -24,7 +24,7 @@ export async function GET(
 
   const { slug } = await params;
 
-  const upstream = await fetch(`${apiBaseUrl}/public/articles/${slug}`, {
+  const upstream = await fetch(`${apiBaseUrl}/public/articles/${encodeURIComponent(slug)}`, {
     method: request.method,
     headers: {
       "content-type": request.headers.get("content-type") ?? "application/json",
