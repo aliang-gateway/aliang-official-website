@@ -412,6 +412,8 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("GET /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetArticle))))
 	mux.Handle("PUT /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateArticle))))
 	mux.Handle("DELETE /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteArticle))))
+	mux.Handle("POST /admin/articles/{slug}/publish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPublishArticle))))
+	mux.Handle("POST /admin/articles/{slug}/unpublish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUnpublishArticle))))
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 }
 
@@ -1817,6 +1819,56 @@ func (r *routes) handleAdminDeleteArticle(w http.ResponseWriter, req *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Request) {
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if slug == "" {
+		writeError(w, http.StatusBadRequest, "slug is required")
+		return
+	}
+
+	if err := r.articleSvc.PublishArticle(req.Context(), slug); err != nil {
+		if errors.Is(err, article.ErrArticleNotFound) {
+			writeError(w, http.StatusNotFound, "article not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to publish article")
+		return
+	}
+
+	updated, err := r.articleSvc.GetArticleBySlug(req.Context(), slug)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toAdminArticleDTO(*updated))
+}
+
+func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Request) {
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if slug == "" {
+		writeError(w, http.StatusBadRequest, "slug is required")
+		return
+	}
+
+	if err := r.articleSvc.UnpublishArticle(req.Context(), slug); err != nil {
+		if errors.Is(err, article.ErrArticleNotFound) {
+			writeError(w, http.StatusNotFound, "article not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to unpublish article")
+		return
+	}
+
+	updated, err := r.articleSvc.GetArticleBySlug(req.Context(), slug)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toAdminArticleDTO(*updated))
 }
 
 func (r *routes) handleCreateSubscription(w http.ResponseWriter, req *http.Request) {
