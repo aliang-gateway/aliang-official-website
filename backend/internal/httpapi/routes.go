@@ -7,18 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"ai-api-portal/backend/internal/apikey"
+	"ai-api-portal/backend/internal/article"
 	"ai-api-portal/backend/internal/auth"
+	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/user"
 )
 
 type routes struct {
 	db                   *sql.DB
 	apiKey               *apikey.Service
+	articleSvc           *article.Service
 	userSvc              *user.Service
 	adminBootstrapSecret string
 }
@@ -165,6 +170,39 @@ type listPublicTiersResponse struct {
 	Tiers []publicTierResponse `json:"tiers"`
 }
 
+type publicArticleDTO struct {
+	Slug            string  `json:"slug"`
+	Title           string  `json:"title"`
+	Excerpt         *string `json:"excerpt,omitempty"`
+	CoverImageURL   *string `json:"cover_image_url,omitempty"`
+	Tag             *string `json:"tag,omitempty"`
+	ReadTime        *string `json:"read_time,omitempty"`
+	AuthorName      *string `json:"author_name,omitempty"`
+	AuthorAvatarURL *string `json:"author_avatar_url,omitempty"`
+	PublishedAt     string  `json:"published_at"`
+}
+
+type publicArticleListResponse struct {
+	Articles []publicArticleDTO `json:"articles"`
+}
+
+type publicArticleDetailDTO struct {
+	Slug            string  `json:"slug"`
+	Title           string  `json:"title"`
+	Excerpt         *string `json:"excerpt,omitempty"`
+	CoverImageURL   *string `json:"cover_image_url,omitempty"`
+	Tag             *string `json:"tag,omitempty"`
+	ReadTime        *string `json:"read_time,omitempty"`
+	AuthorName      *string `json:"author_name,omitempty"`
+	AuthorAvatarURL *string `json:"author_avatar_url,omitempty"`
+	PublishedAt     string  `json:"published_at"`
+	MDXBody         string  `json:"mdx_body"`
+}
+
+type publicArticleDetailResponse struct {
+	Article publicArticleDetailDTO `json:"article"`
+}
+
 type publicEstimateRequest struct {
 	TierCode string `json:"tier_code"`
 }
@@ -222,6 +260,60 @@ type adminSetUnitPriceRequest struct {
 	Currency           string `json:"currency"`
 }
 
+type adminCreateArticleRequest struct {
+	Slug            string  `json:"slug"`
+	Title           string  `json:"title"`
+	Excerpt         *string `json:"excerpt"`
+	CoverImageURL   *string `json:"cover_image_url"`
+	Tag             *string `json:"tag"`
+	ReadTime        *string `json:"read_time"`
+	AuthorName      *string `json:"author_name"`
+	AuthorAvatarURL *string `json:"author_avatar_url"`
+	AuthorIcon      *string `json:"author_icon"`
+	MDXBody         string  `json:"mdx_body"`
+	Status          string  `json:"status"`
+}
+
+type adminUpdateArticleRequest struct {
+	LegacyID        *int64  `json:"legacy_id"`
+	Slug            *string `json:"slug"`
+	Title           *string `json:"title"`
+	Excerpt         *string `json:"excerpt"`
+	CoverImageURL   *string `json:"cover_image_url"`
+	Tag             *string `json:"tag"`
+	ReadTime        *string `json:"read_time"`
+	AuthorName      *string `json:"author_name"`
+	AuthorAvatarURL *string `json:"author_avatar_url"`
+	AuthorIcon      *string `json:"author_icon"`
+	MDXBody         *string `json:"mdx_body"`
+	Status          *string `json:"status"`
+}
+
+type adminArticleDTO struct {
+	ID              int64   `json:"id"`
+	LegacyID        *int64  `json:"legacy_id"`
+	Slug            string  `json:"slug"`
+	Title           string  `json:"title"`
+	Excerpt         *string `json:"excerpt"`
+	CoverImageURL   *string `json:"cover_image_url"`
+	Tag             *string `json:"tag"`
+	ReadTime        *string `json:"read_time"`
+	AuthorName      *string `json:"author_name"`
+	AuthorAvatarURL *string `json:"author_avatar_url"`
+	AuthorIcon      *string `json:"author_icon"`
+	MDXBody         string  `json:"mdx_body"`
+	Status          string  `json:"status"`
+	PublishedAt     *string `json:"published_at"`
+	CreatedByUserID *int64  `json:"created_by_user_id"`
+	UpdatedByUserID *int64  `json:"updated_by_user_id"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+}
+
+type adminArticleListResponse struct {
+	Articles []adminArticleDTO `json:"articles"`
+}
+
 type aiRequestPayload struct {
 	ServiceItemCode string `json:"service_item_code"`
 	Quantity        int64  `json:"quantity"`
@@ -254,6 +346,14 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+const (
+	adminArticleStatusDraft     = "draft"
+	adminArticleStatusPublished = "published"
+	maxArticleSlugLength        = 128
+)
+
+var articleSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
 func RegisterRoutes(mux *http.ServeMux, database *sql.DB) {
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{})
 }
@@ -270,6 +370,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	r := &routes{
 		db:                   database,
 		apiKey:               apikey.NewService(database),
+		articleSvc:           article.NewService(database),
 		userSvc:              userSvc,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
 	}
@@ -297,6 +398,8 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("GET /sessions", authenticated(http.HandlerFunc(r.handleListSessions)))
 	mux.HandleFunc("GET /public/tiers", r.handlePublicTiers)
 	mux.HandleFunc("POST /public/estimate", r.handlePublicEstimate)
+	mux.HandleFunc("GET /public/articles", r.handlePublicListArticles)
+	mux.HandleFunc("GET /public/articles/{slug}", r.handlePublicGetArticle)
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
 	mux.Handle("GET /subscription", authenticated(http.HandlerFunc(r.handleGetSubscription)))
 	mux.Handle("POST /api-keys", authenticated(http.HandlerFunc(r.handleCreateAPIKey)))
@@ -304,6 +407,11 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("GET /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListUnitPrices))))
 	mux.Handle("PUT /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetUnitPrice))))
 	mux.Handle("DELETE /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeactivateUnitPrice))))
+	mux.Handle("GET /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListArticles))))
+	mux.Handle("POST /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateArticle))))
+	mux.Handle("GET /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetArticle))))
+	mux.Handle("PUT /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateArticle))))
+	mux.Handle("DELETE /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteArticle))))
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 }
 
@@ -1401,6 +1509,316 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
+	articles, err := r.articleSvc.ListPublishedArticles(req.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list articles")
+		return
+	}
+
+	response := publicArticleListResponse{Articles: make([]publicArticleDTO, 0, len(articles))}
+	for _, item := range articles {
+		if item.PublishedAt == nil {
+			continue
+		}
+		response.Articles = append(response.Articles, publicArticleDTO{
+			Slug:            item.Slug,
+			Title:           item.Title,
+			Excerpt:         item.Excerpt,
+			CoverImageURL:   item.CoverImageURL,
+			Tag:             item.Tag,
+			ReadTime:        item.ReadTime,
+			AuthorName:      item.AuthorName,
+			AuthorAvatarURL: item.AuthorAvatarURL,
+			PublishedAt:     item.PublishedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	sort.SliceStable(response.Articles, func(i, j int) bool {
+		return response.Articles[i].PublishedAt > response.Articles[j].PublishedAt
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request) {
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if slug == "" {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+
+	item, err := r.articleSvc.GetArticleBySlug(req.Context(), slug)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get article")
+		return
+	}
+	if item.PublishedAt == nil {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(publicArticleDetailResponse{
+		Article: publicArticleDetailDTO{
+			Slug:            item.Slug,
+			Title:           item.Title,
+			Excerpt:         item.Excerpt,
+			CoverImageURL:   item.CoverImageURL,
+			Tag:             item.Tag,
+			ReadTime:        item.ReadTime,
+			AuthorName:      item.AuthorName,
+			AuthorAvatarURL: item.AuthorAvatarURL,
+			PublishedAt:     item.PublishedAt.UTC().Format(time.RFC3339),
+			MDXBody:         item.MDXBody,
+		},
+	})
+}
+
+func (r *routes) handleAdminListArticles(w http.ResponseWriter, req *http.Request) {
+	articles, err := r.articleSvc.ListArticles(req.Context(), article.ListArticlesFilters{})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list articles")
+		return
+	}
+
+	response := adminArticleListResponse{Articles: make([]adminArticleDTO, 0, len(articles))}
+	for _, item := range articles {
+		response.Articles = append(response.Articles, toAdminArticleDTO(item))
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (r *routes) handleAdminCreateArticle(w http.ResponseWriter, req *http.Request) {
+	adminUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload adminCreateArticleRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.Slug = strings.TrimSpace(payload.Slug)
+	payload.Title = strings.TrimSpace(payload.Title)
+	payload.MDXBody = strings.TrimSpace(payload.MDXBody)
+
+	if payload.Slug == "" || payload.Title == "" || payload.MDXBody == "" {
+		writeError(w, http.StatusBadRequest, "slug, title, and mdx_body are required")
+		return
+	}
+	if err := validateArticleSlug(payload.Slug); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	status, err := normalizeAdminArticleStatus(payload.Status, true)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	adminUserID := adminUser.ID
+	entry := &model.Article{
+		Slug:            payload.Slug,
+		Title:           payload.Title,
+		Excerpt:         trimOptionalString(payload.Excerpt),
+		CoverImageURL:   trimOptionalString(payload.CoverImageURL),
+		Tag:             trimOptionalString(payload.Tag),
+		ReadTime:        trimOptionalString(payload.ReadTime),
+		AuthorName:      trimOptionalString(payload.AuthorName),
+		AuthorAvatarURL: trimOptionalString(payload.AuthorAvatarURL),
+		AuthorIcon:      trimOptionalString(payload.AuthorIcon),
+		MDXBody:         payload.MDXBody,
+		Status:          status,
+		CreatedByUserID: &adminUserID,
+		UpdatedByUserID: &adminUserID,
+	}
+
+	if err := r.articleSvc.CreateArticle(req.Context(), entry); err != nil {
+		if errors.Is(err, article.ErrDuplicateSlug) {
+			writeError(w, http.StatusConflict, "slug already exists")
+			return
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "article") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to create article")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, toAdminArticleDTO(*entry))
+}
+
+func (r *routes) handleAdminGetArticle(w http.ResponseWriter, req *http.Request) {
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if err := validateArticleSlug(slug); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	entry, err := r.findAdminArticleBySlug(req.Context(), slug)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toAdminArticleDTO(*entry))
+}
+
+func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Request) {
+	adminUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if err := validateArticleSlug(slug); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	existing, err := r.findAdminArticleBySlug(req.Context(), slug)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update article")
+		return
+	}
+
+	var payload adminUpdateArticleRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	if payload.Slug != nil {
+		trimmed := strings.TrimSpace(*payload.Slug)
+		if err := validateArticleSlug(trimmed); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		payload.Slug = &trimmed
+	}
+
+	if payload.Title != nil {
+		trimmed := strings.TrimSpace(*payload.Title)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "title cannot be empty")
+			return
+		}
+		payload.Title = &trimmed
+	}
+
+	if payload.MDXBody != nil {
+		trimmed := strings.TrimSpace(*payload.MDXBody)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "mdx_body cannot be empty")
+			return
+		}
+		payload.MDXBody = &trimmed
+	}
+
+	status := ""
+	if payload.Status != nil {
+		status, err = normalizeAdminArticleStatus(*payload.Status, false)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !isValidAdminStatusTransition(existing.Status, status) {
+			writeError(w, http.StatusBadRequest, "invalid status transition")
+			return
+		}
+	}
+
+	adminUserID := adminUser.ID
+	updatedArticle := &model.Article{
+		LegacyID:        payload.LegacyID,
+		Slug:            optionalStringValue(payload.Slug),
+		Title:           optionalStringValue(payload.Title),
+		Excerpt:         trimOptionalString(payload.Excerpt),
+		CoverImageURL:   trimOptionalString(payload.CoverImageURL),
+		Tag:             trimOptionalString(payload.Tag),
+		ReadTime:        trimOptionalString(payload.ReadTime),
+		AuthorName:      trimOptionalString(payload.AuthorName),
+		AuthorAvatarURL: trimOptionalString(payload.AuthorAvatarURL),
+		AuthorIcon:      trimOptionalString(payload.AuthorIcon),
+		MDXBody:         optionalStringValue(payload.MDXBody),
+		Status:          status,
+		UpdatedByUserID: &adminUserID,
+	}
+
+	if err := r.articleSvc.UpdateArticle(req.Context(), slug, updatedArticle); err != nil {
+		if errors.Is(err, article.ErrArticleNotFound) {
+			writeError(w, http.StatusNotFound, "article not found")
+			return
+		}
+		if errors.Is(err, article.ErrDuplicateSlug) {
+			writeError(w, http.StatusConflict, "slug already exists")
+			return
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "invalid article status") {
+			writeError(w, http.StatusBadRequest, "invalid article status")
+			return
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "article") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to update article")
+		return
+	}
+
+	refreshed, err := r.articleSvc.GetArticleByID(req.Context(), updatedArticle.ID)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toAdminArticleDTO(*refreshed))
+}
+
+func (r *routes) handleAdminDeleteArticle(w http.ResponseWriter, req *http.Request) {
+	slug := strings.TrimSpace(req.PathValue("slug"))
+	if err := validateArticleSlug(slug); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := r.articleSvc.DeleteArticle(req.Context(), slug); err != nil {
+		if errors.Is(err, article.ErrArticleNotFound) {
+			writeError(w, http.StatusNotFound, "article not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to delete article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
 func (r *routes) handleCreateSubscription(w http.ResponseWriter, req *http.Request) {
 	user, ok := auth.UserFromContext(req.Context())
 	if !ok {
@@ -1855,6 +2273,113 @@ func validateAndNormalizeCurrency(raw string) (string, error) {
 		}
 	}
 	return raw, nil
+}
+
+func validateArticleSlug(slug string) error {
+	v := strings.TrimSpace(slug)
+	if v == "" {
+		return errors.New("slug is required")
+	}
+	if len(v) > maxArticleSlugLength {
+		return errors.New("slug must be 128 characters or fewer")
+	}
+	if !articleSlugPattern.MatchString(v) {
+		return errors.New("slug must match ^[a-z0-9]+(?:-[a-z0-9]+)*$")
+	}
+	return nil
+}
+
+func normalizeAdminArticleStatus(raw string, defaultDraft bool) (string, error) {
+	status := strings.TrimSpace(strings.ToLower(raw))
+	if status == "" {
+		if defaultDraft {
+			return adminArticleStatusDraft, nil
+		}
+		return "", nil
+	}
+	if status != adminArticleStatusDraft && status != adminArticleStatusPublished {
+		return "", errors.New("invalid article status")
+	}
+	return status, nil
+}
+
+func isValidAdminStatusTransition(from, to string) bool {
+	current := strings.TrimSpace(strings.ToLower(from))
+	next := strings.TrimSpace(strings.ToLower(to))
+
+	if next == "" {
+		return true
+	}
+	if current == "" {
+		current = adminArticleStatusDraft
+	}
+
+	switch current {
+	case adminArticleStatusDraft:
+		return next == adminArticleStatusDraft || next == adminArticleStatusPublished
+	case adminArticleStatusPublished:
+		return next == adminArticleStatusDraft || next == adminArticleStatusPublished
+	default:
+		return false
+	}
+}
+
+func trimOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
+}
+
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func toAdminArticleDTO(item model.Article) adminArticleDTO {
+	var publishedAt *string
+	if item.PublishedAt != nil {
+		formatted := item.PublishedAt.UTC().Format(time.RFC3339)
+		publishedAt = &formatted
+	}
+
+	return adminArticleDTO{
+		ID:              item.ID,
+		LegacyID:        item.LegacyID,
+		Slug:            item.Slug,
+		Title:           item.Title,
+		Excerpt:         item.Excerpt,
+		CoverImageURL:   item.CoverImageURL,
+		Tag:             item.Tag,
+		ReadTime:        item.ReadTime,
+		AuthorName:      item.AuthorName,
+		AuthorAvatarURL: item.AuthorAvatarURL,
+		AuthorIcon:      item.AuthorIcon,
+		MDXBody:         item.MDXBody,
+		Status:          item.Status,
+		PublishedAt:     publishedAt,
+		CreatedByUserID: item.CreatedByUserID,
+		UpdatedByUserID: item.UpdatedByUserID,
+		CreatedAt:       item.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:       item.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func (r *routes) findAdminArticleBySlug(ctx context.Context, slug string) (*model.Article, error) {
+	articles, err := r.articleSvc.ListArticles(ctx, article.ListArticlesFilters{})
+	if err != nil {
+		return nil, err
+	}
+	for idx := range articles {
+		if articles[idx].Slug == slug {
+			item := articles[idx]
+			return &item, nil
+		}
+	}
+	return nil, article.ErrArticleNotFound
 }
 
 type unitPriceRow struct {
