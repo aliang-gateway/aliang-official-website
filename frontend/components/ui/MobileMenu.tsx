@@ -8,19 +8,20 @@ import { cn } from "@/lib/utils";
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
+  links: Array<{ href: string; label: string }>;
   activePath?: string;
+  primaryAction?: { href: string; label: string };
+  secondaryAction?: { href: string; label: string };
 }
 
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/blog", label: "Blog" },
-  { href: "/docs", label: "Document" },
-  { href: "/services", label: "Service" },
-  { href: "/download", label: "Download" },
-  { href: "/pricing", label: "Pricing" },
-];
-
-export function MobileMenu({ isOpen, onClose, activePath }: MobileMenuProps) {
+export function MobileMenu({
+  isOpen,
+  onClose,
+  links,
+  activePath,
+  primaryAction,
+  secondaryAction,
+}: MobileMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function MobileMenu({ isOpen, onClose, activePath }: MobileMenuProps) {
 
         <nav className="p-4">
           <ul className="space-y-1">
-            {navLinks.map((link) => (
+            {links.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
@@ -96,15 +97,28 @@ export function MobileMenu({ isOpen, onClose, activePath }: MobileMenuProps) {
           </ul>
         </nav>
 
-        <div className="border-t border-[var(--stitch-border)] p-4">
-          <Link
-            href="/account"
-            onClick={onClose}
-            className="block w-full rounded bg-[var(--stitch-primary)] py-3 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
-          >
-            Login
-          </Link>
-        </div>
+        {(secondaryAction || primaryAction) && (
+          <div className="space-y-3 border-t border-[var(--stitch-border)] p-4">
+            {secondaryAction && (
+              <Link
+                href={secondaryAction.href}
+                onClick={onClose}
+                className="block w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] py-3 text-center text-sm font-bold text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)]"
+              >
+                {secondaryAction.label}
+              </Link>
+            )}
+            {primaryAction && (
+              <Link
+                href={primaryAction.href}
+                onClick={onClose}
+                className="block w-full rounded bg-[var(--stitch-primary)] py-3 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
+              >
+                {primaryAction.label}
+              </Link>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

@@ -159,35 +159,47 @@ export default function BlogPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden py-16 px-6 md:px-20" style={{ backgroundColor: 'var(--stitch-bg-elevated)', color: 'var(--stitch-text)' }}>
-        <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, var(--stitch-primary) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+      <section className="relative overflow-hidden bg-slate-900 py-16 px-6 text-slate-100 md:px-20">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-20"
+          style={{ backgroundImage: "radial-gradient(circle at 2px 2px, #21c45d 1px, transparent 0)", backgroundSize: "40px 40px" }}
+        />
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 relative z-10">
           <div className="flex flex-col gap-6 lg:w-1/2 text-left">
-            <div className="inline-flex items-center px-3 py-1 rounded-full w-max text-xs font-bold tracking-widest uppercase" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 20%, transparent)', color: 'var(--stitch-primary)' }}>
+            <div
+              className="inline-flex w-max items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
+              style={{ backgroundColor: "rgba(33, 196, 93, 0.2)", color: "#21c45d" }}
+            >
               Edition 2024.Q3
             </div>
-            <h1 className="text-4xl md:text-6xl font-black leading-tight tracking-tighter" style={{ color: 'var(--stitch-text)' }}>
-              The ALiang <br /><span style={{ color: 'var(--stitch-primary)' }}>Tech Radar</span>
+            <h1 className="text-4xl font-black leading-tight tracking-tighter text-white md:text-6xl">
+              The ALiang <br /><span className="text-[var(--stitch-primary)]">Tech Radar</span>
             </h1>
-            <p className="text-lg md:text-xl font-normal max-w-xl leading-relaxed" style={{ color: 'var(--stitch-text-muted)' }}>
+            <p className="max-w-xl text-lg font-normal leading-relaxed text-slate-400 md:text-xl">
               A data-driven visualization of our strategic technology landscape: from high-performance TUN/HTTP proxies to advanced LLM Routing strategies.
             </p>
             <div className="flex flex-wrap gap-4 pt-4">
-              <button type="button" className="flex items-center gap-2 rounded-lg h-12 px-8 font-bold hover:-translate-y-0.5 transition-all shadow-lg" style={{ backgroundColor: 'var(--stitch-primary)', color: 'white', boxShadow: '0 10px 15px -3px color-mix(in srgb, var(--stitch-primary) 20%, transparent)' }}>
+              <button
+                type="button"
+                className="flex h-12 items-center gap-2 rounded-lg bg-[var(--stitch-primary)] px-8 font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-all hover:-translate-y-0.5"
+              >
                 <span>Explore the Radar</span>
                 <MaterialIcon name="explore" size={20} />
               </button>
-              <button type="button" className="flex items-center gap-2 rounded-lg h-12 px-8 font-bold hover:bg-white/10 transition-all border backdrop-blur-sm" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--stitch-text)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+              <button
+                type="button"
+                className="flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-8 font-bold text-white backdrop-blur-sm transition-all hover:bg-white/20"
+              >
                 <span>Methodology</span>
               </button>
             </div>
           </div>
           
           <div className="lg:w-1/2 relative flex justify-center items-center">
-            <div className="relative size-[320px] md:size-[500px] border rounded-full flex items-center justify-center" style={{ borderColor: 'color-mix(in srgb, var(--stitch-primary) 30%, transparent)' }}>
-              <div className="absolute inset-0 border rounded-full scale-75" style={{ borderColor: 'color-mix(in srgb, var(--stitch-primary) 20%, transparent)' }} />
-              <div className="absolute inset-0 border rounded-full scale-50" style={{ borderColor: 'color-mix(in srgb, var(--stitch-primary) 10%, transparent)' }} />
-              <div className="absolute inset-0 border rounded-full scale-[0.25]" style={{ borderColor: 'color-mix(in srgb, var(--stitch-primary) 5%, transparent)' }} />
+            <div className="relative size-[320px] md:size-[500px] border rounded-full flex items-center justify-center" style={{ borderColor: "rgba(33, 196, 93, 0.3)" }}>
+              <div className="absolute inset-0 border rounded-full scale-75" style={{ borderColor: "rgba(33, 196, 93, 0.2)" }} />
+              <div className="absolute inset-0 border rounded-full scale-50" style={{ borderColor: "rgba(33, 196, 93, 0.1)" }} />
+              <div className="absolute inset-0 border rounded-full scale-[0.25]" style={{ borderColor: "rgba(33, 196, 93, 0.05)" }} />
               
               <div className="absolute inset-0 w-full h-full flex items-center justify-center pointer-events-auto z-10">
                 <TechRadar3D 
@@ -199,10 +211,10 @@ export default function BlogPage() {
                 />
               </div>
 
-              <div className="absolute h-px w-full top-1/2" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 10%, transparent)' }} />
-              <div className="absolute w-px h-full left-1/2" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 10%, transparent)' }} />
+              <div className="absolute h-px w-full top-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
+              <div className="absolute w-px h-full left-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
               
-              <div className="z-10 p-4 border rounded-lg font-mono text-sm tracking-widest uppercase absolute bottom-0 right-0" style={{ backgroundColor: 'var(--stitch-bg-elevated)', borderColor: 'color-mix(in srgb, var(--stitch-primary) 50%, transparent)', color: 'var(--stitch-primary)' }}>
+              <div className="absolute bottom-0 right-0 z-10 rounded-lg border border-[var(--stitch-primary)]/50 bg-slate-900 p-4 font-mono text-sm uppercase tracking-widest text-[var(--stitch-primary)]">
                 Active Matrix
               </div>
             </div>
@@ -247,6 +259,7 @@ export default function BlogPage() {
                   width={400}
                   height={300}
                   className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                  unoptimized
                 />
                 <div className="absolute top-4 left-4">
                   <span className="text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 90%, transparent)' }}>
@@ -278,6 +291,7 @@ export default function BlogPage() {
                           width={24}
                           height={24}
                           className="object-cover size-full"
+                          unoptimized
                         />
                       ) : (
                         <MaterialIcon name={article.author.icon || "person"} size={14} />

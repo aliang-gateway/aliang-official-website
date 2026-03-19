@@ -88,7 +88,7 @@ const pricingPlans = [
 
 export default function ServicesPage() {
   return (
-    <main className="flex-1">
+    <>
       <section className="relative overflow-hidden py-20 px-6">
         <div className="mx-auto max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="space-y-8">
@@ -240,6 +240,6 @@ export default function ServicesPage() {
           </div>
         </div>
       </section>
-    </main>
+    </>
   );
 }
