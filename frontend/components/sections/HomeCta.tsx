@@ -26,7 +26,7 @@ export function HomeCta({ variant = "full" }: HomeCtaProps) {
           </p>
           <div className={`flex flex-col justify-center sm:flex-row ${isCompact ? "gap-3" : "gap-4"}`}>
             <Link
-              href="/account"
+              href="/register"
               className={`flex cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/40 transition-transform hover:scale-[1.02] ${isCompact ? "h-12 min-w-[180px] px-6 text-base" : "h-14 min-w-[200px] px-8 text-lg"}`}
             >
               Get Started Now

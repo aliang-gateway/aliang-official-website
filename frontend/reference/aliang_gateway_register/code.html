@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Account | ALiang Gateway</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#21c45d",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#122017",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Header/TopNavBar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-primary/10 px-6 md:px-10 py-3 bg-white dark:bg-background-dark">
+<div class="flex items-center gap-4">
+<div class="size-8 text-primary">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_6_319)">
+<path d="M8.57829 8.57829C5.52816 11.6284 3.451 15.5145 2.60947 19.7452C1.76794 23.9758 2.19984 28.361 3.85056 32.3462C5.50128 36.3314 8.29667 39.7376 11.8832 42.134C15.4698 44.5305 19.6865 45.8096 24 45.8096C28.3135 45.8096 32.5302 44.5305 36.1168 42.134C39.7033 39.7375 42.4987 36.3314 44.1494 32.3462C45.8002 28.361 46.2321 23.9758 45.3905 19.7452C44.549 15.5145 42.4718 11.6284 39.4217 8.57829L24 24L8.57829 8.57829Z" fill="currentColor"></path>
+</g>
+<defs>
+<clippath id="clip0_6_319"><rect fill="white" height="48" width="48"></rect></clippath>
+</defs>
+</svg>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-[-0.015em]">ALiang Gateway</h2>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex flex-1 justify-center items-center py-12 px-4">
+<div class="layout-content-container flex flex-col w-full max-w-[480px] bg-white dark:bg-slate-900/50 p-8 rounded-xl shadow-sm border border-primary/5">
+<div class="flex flex-col gap-2 mb-8 text-center sm:text-left">
+<h1 class="text-slate-900 dark:text-slate-100 text-3xl font-black leading-tight tracking-[-0.033em]">Create Account</h1>
+<p class="text-slate-500 dark:text-slate-400 text-base font-normal">Join ALiang Gateway to get started</p>
+</div>
+<form class="flex flex-col gap-5">
+<!-- Username -->
+<div class="flex flex-col gap-2">
+<label class="text-slate-900 dark:text-slate-100 text-sm font-semibold leading-normal">Username</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">person</span>
+<input class="form-input flex w-full rounded text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-12 pl-10 pr-4 placeholder:text-slate-400 text-base font-normal" placeholder="Enter your username" type="text"/>
+</div>
+</div>
+<!-- Email -->
+<div class="flex flex-col gap-2">
+<label class="text-slate-900 dark:text-slate-100 text-sm font-semibold leading-normal">Email Address</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">mail</span>
+<input class="form-input flex w-full rounded text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-12 pl-10 pr-4 placeholder:text-slate-400 text-base font-normal" placeholder="name@example.com" type="email"/>
+</div>
+</div>
+<!-- Password -->
+<div class="flex flex-col gap-2">
+<label class="text-slate-900 dark:text-slate-100 text-sm font-semibold leading-normal">Password</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">lock</span>
+<input class="form-input flex w-full rounded text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-12 pl-10 pr-4 placeholder:text-slate-400 text-base font-normal" placeholder="Create a password" type="password"/>
+</div>
+</div>
+<!-- Confirm Password -->
+<div class="flex flex-col gap-2">
+<label class="text-slate-900 dark:text-slate-100 text-sm font-semibold leading-normal">Confirm Password</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">verified_user</span>
+<input class="form-input flex w-full rounded text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-12 pl-10 pr-4 placeholder:text-slate-400 text-base font-normal" placeholder="Confirm your password" type="password"/>
+</div>
+</div>
+<!-- Terms & Conditions -->
+<div class="flex items-center gap-3 py-2">
+<input class="size-5 rounded border-slate-300 dark:border-slate-700 text-primary focus:ring-primary bg-white dark:bg-slate-800" id="terms" type="checkbox"/>
+<label class="text-sm text-slate-600 dark:text-slate-400" for="terms">
+                                I agree to the <a class="text-primary hover:underline" href="#">Terms and Conditions</a> and <a class="text-primary hover:underline" href="#">Privacy Policy</a>
+</label>
+</div>
+<!-- Submit Button -->
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded transition-colors shadow-lg shadow-primary/20 mt-2" type="submit">
+                            Create Account
+                        </button>
+</form>
+<!-- Divider -->
+<div class="relative flex items-center gap-4 my-8">
+<div class="h-px grow bg-slate-200 dark:bg-slate-700"></div>
+<span class="text-slate-400 text-xs font-bold uppercase tracking-widest">Or sign up with</span>
+<div class="h-px grow bg-slate-200 dark:bg-slate-700"></div>
+</div>
+<!-- Social Sign-up -->
+<div class="grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 py-3 rounded text-sm font-semibold text-slate-700 dark:text-slate-300 transition-colors">
+<img alt="" class="size-5 dark:invert" data-alt="GitHub logo icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFblbtFxOp5sjNep8_CDolP65bI1daGOHi9nm4-LhGdZZjQrKbnEo5BZxHQ5cyXE9v0jc5wOwAOrmVYiyPS9yyGCmwr4XfdZRqauKVe4-AuFoyupkrtIlroQMcMchr5jb2Ut1eSUZz_JauIRMsEZkuJgryW0ibbyXZhvkWCQK6gpwQSF_LNID-ep-vYEZzvz7NnQLy4QAeDubdWgk3PkWTKYPGqq9Q9t2nwTvpymcICYnmygFmNQa9P98lTYexx-o-VeBgYvDyFBI"/>
+                            GitHub
+                        </button>
+<button class="flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 py-3 rounded text-sm font-semibold text-slate-700 dark:text-slate-300 transition-colors">
+<img alt="" class="size-5" data-alt="Google G logo icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXWZzufP4dn7BvqjZGVY772hzVAjVDNPQy0R4yYjMDsvs4vBl2E3h-v8olb6qm4eq2QejC4TJ4F96PkmmoUKl1q8KcmsEG1FZ82lS4dK3DFNxrxl2YCvqcq2ylckRwicAr1GIyFoaqdP7pKF3mo_AOqcWAbtZ2J_U1w3cLie-GjbvAABXPMJMe1_aviTtDLS-ELAo7ygFSK2l9-wCbY8Q71om7TbUYFUxc1cvyDFrUccUnLrnZQ1SxEY1VJrhVkdRaErnM6neINKQ"/>
+                            Google
+                        </button>
+</div>
+<!-- Footer Link -->
+<p class="text-center mt-8 text-slate-600 dark:text-slate-400 text-sm">
+                        Already have an account? 
+                        <a class="text-primary font-bold hover:underline ml-1" href="#">Log in</a>
+</p>
+</div>
+</main>
+<!-- Footer -->
+<footer class="py-6 text-center text-slate-400 dark:text-slate-500 text-xs">
+                © 2024 ALiang Gateway. All rights reserved.
+            </footer>
+</div>
+</div>
+</body></html>

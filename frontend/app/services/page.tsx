@@ -107,7 +107,7 @@ export default function ServicesPage() {
             </p>
             <div className="flex flex-wrap gap-4">
               <Link
-                href="/account"
+                href="/register"
                 className="rounded-xl bg-[var(--stitch-primary)] px-8 py-4 text-lg font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-all hover:-translate-y-0.5"
               >
                 Get Started Free

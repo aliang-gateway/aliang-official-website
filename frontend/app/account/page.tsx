@@ -368,7 +368,7 @@ export default function AccountPage() {
   };
 
   return (
-    <section className="space-y-6">
+    <section className="portal-shell space-y-6">
       <div className="clay-panel space-y-2 p-5">
         <h2 className="section-title">
           <span className="gradient-text">账户管理</span>
@@ -387,7 +387,7 @@ export default function AccountPage() {
         </div>
 
         <form className="mb-4 grid gap-3" onSubmit={handleCreateUser}>
-          <p className="text-sm font-semibold text-gray-300">创建用户</p>
+          <p className="text-sm font-semibold text-emerald-400">创建用户</p>
           <input
             className="field"
             type="email"
@@ -445,7 +445,7 @@ export default function AccountPage() {
         ) : null}
 
         {apiKeyIds.length === 0 ? (
-          <p className="text-sm text-gray-400">当前会话没有本地跟踪的密钥 ID。</p>
+          <p className="text-sm text-gray-500">当前会话没有本地跟踪的密钥 ID。</p>
         ) : (
           <ul className="space-y-2 text-sm">
             {apiKeyIds.map((id) => (
@@ -485,7 +485,7 @@ export default function AccountPage() {
 
             {selectedTier ? (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-300">单项包含额度（覆盖默认值）</p>
+                <p className="text-sm font-semibold text-emerald-400">单项包含额度（覆盖默认值）</p>
                 <ul className="space-y-2">
                   {selectedTier.default_items.map((item) => (
                     <li key={item.code} className="block-card">
@@ -505,9 +505,9 @@ export default function AccountPage() {
                             }))
                           }
                         />
-                        <span className="text-sm text-gray-400">{item.unit}</span>
+                        <span className="text-sm text-gray-500">{item.unit}</span>
                       </div>
-                      <div className="mt-1 text-xs text-gray-400">默认： {item.included_units}</div>
+                      <div className="mt-1 text-xs text-gray-500">默认： {item.included_units}</div>
                     </li>
                   ))}
                 </ul>
@@ -534,7 +534,7 @@ export default function AccountPage() {
             {subscriptionLoading ? <span className="text-xs">加载中...</span> : null}
           </div>
           {!currentSubscription ? (
-            <p className="text-gray-400">没有加载活跃的订阅。</p>
+            <p className="text-gray-500">没有加载活跃的订阅。</p>
           ) : (
             <div className="space-y-2">
               <p>

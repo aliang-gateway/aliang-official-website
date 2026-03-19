@@ -35,13 +35,18 @@ export function SiteHeader() {
 
   const brandLabel = isHome ? "ALiang AI Services" : "ALiang Gateway";
   const primaryCta = isHome
-    ? { href: "/account", label: "Get Started" }
-    : { href: "/account", label: "Login" };
-  const secondaryCta = isHome ? { href: "/account", label: "Login" } : undefined;
+    ? { href: "/register", label: "Get Started" }
+    : { href: "/login", label: "Login" };
+  const secondaryCta = isHome ? { href: "/login", label: "Login" } : undefined;
 
   const isLinkActive = (href: string) => {
+    // Hash links on home page should NOT be pre-highlighted
     if (href.startsWith("/#")) {
-      return pathname === "/";
+      return false;
+    }
+    // Blog and services pages should NOT show active nav highlighting
+    if (pathname === "/blog" || pathname === "/services") {
+      return false;
     }
     return activePath === href;
   };
@@ -64,7 +69,7 @@ export function SiteHeader() {
             <div
               className={cn(
                 "flex items-center justify-center bg-[var(--stitch-primary)] text-white",
-                isCompactHome ? "size-7 rounded" : "size-8 rounded-lg"
+                isHome ? "size-8 rounded" : isCompactHome ? "size-7 rounded" : "size-8 rounded-lg"
               )}
             >
               <MaterialIcon name="hub" size={isCompactHome ? 18 : 20} />
@@ -84,7 +89,7 @@ export function SiteHeader() {
               key={link.href}
               href={link.href}
               className={cn(
-                `text-sm ${isHome || isCompactHome ? "font-medium" : "font-semibold"} transition-colors`,
+                `text-sm ${isServices || isHome || isCompactHome ? "font-medium" : "font-semibold"} transition-colors`,
                 isLinkActive(link.href)
                   ? "text-[var(--stitch-primary)]"
                   : "text-[var(--stitch-text-muted)] hover:text-[var(--stitch-primary)]"
@@ -110,8 +115,8 @@ export function SiteHeader() {
         <Link
           href={primaryCta.href}
           className={cn(
-            "hidden h-10 cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] text-sm font-bold text-white shadow-sm transition-all hover:bg-[var(--stitch-primary)]/90 md:flex",
-            isHome ? "min-w-[100px] px-4" : isCompactHome ? "h-9 min-w-[80px] rounded px-4" : "min-w-[100px] px-6"
+            "hidden h-10 cursor-pointer items-center justify-center rounded bg-[var(--stitch-primary)] text-sm font-bold text-white shadow-sm transition-all hover:bg-[var(--stitch-primary)]/90 md:flex",
+            isHome ? "min-w-[100px] px-4" : isCompactHome ? "h-9 min-w-[80px] px-4" : "min-w-[100px] px-6 rounded-lg"
           )}
         >
           {primaryCta.label}

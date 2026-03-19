@@ -53,7 +53,7 @@ func RequireUser(database *sql.DB) func(http.Handler) http.Handler {
 				JOIN users u ON u.id = s.user_id
 				WHERE s.token_hash = ?
 					AND s.revoked_at IS NULL
-					AND datetime(s.expires_at) > datetime('now')
+					AND datetime(substr(s.expires_at, 1, 19)) > datetime('now')
 				LIMIT 1;
 			`
 			var user AuthenticatedUser

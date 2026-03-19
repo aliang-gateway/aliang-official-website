@@ -14,7 +14,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+        />
+      </head>
       <body className="antialiased font-sans bg-[var(--stitch-bg)] text-[var(--stitch-text)]">
         <div className="flex min-h-screen flex-col">
           <SiteHeader />

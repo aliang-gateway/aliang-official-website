@@ -53,14 +53,14 @@ export function HomeFeatures({ variant = "full" }: HomeFeaturesProps) {
                 {feature.title}
               </h3>
               <p className={`${isCompact ? "text-sm" : ""} leading-relaxed text-[var(--stitch-text-muted)]`}>
-                {isCompact
-                  ? feature.description
-                      .replace(" No middleman proxies, just pure performance.", "")
-                      .replace(" performance when your users need it most.", ".")
-                      .replace(" real-time ", " ")
-                      .replace(" and granular", "")
-                      .replace(" out of the box", "")
-                  : feature.description}
+                 {isCompact
+                   ? feature.description
+                       .replace(" No middleman proxies, just pure performance.", "")
+                       .replace(" performance when your users need it most.", ".")
+                       .replace(" real-time ", " ")
+                       .replace(" granular ", " ")
+                       .replace(" out of the box", "")
+                   : feature.description}
               </p>
             </div>
           ))}

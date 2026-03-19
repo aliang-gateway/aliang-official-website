@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ALiang Gateway - Admin Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#21c45d",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#122017",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Top Navigation Bar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-primary/10 bg-white dark:bg-slate-900 px-6 py-3 lg:px-10">
+<div class="flex items-center gap-4">
+<div class="size-8 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-3xl">hub</span>
+</div>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight">ALiang Gateway</h2>
+</div>
+<nav class="hidden md:flex flex-1 justify-center gap-8">
+<a class="text-slate-900 dark:text-slate-200 text-sm font-semibold border-b-2 border-primary pb-1" href="#">Overview</a>
+<a class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Configs</a>
+<a class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors" href="#">Logs</a>
+</nav>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex flex-col items-end">
+<span class="text-xs font-bold text-primary uppercase tracking-wider">Active</span>
+<span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Pro Plan</span>
+</div>
+<div class="relative">
+<div class="size-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden">
+<img alt="Admin" class="w-full h-full object-cover" data-alt="User profile avatar of the administrator" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0ifOem3IboWRlIscNfkOO1ioOcCntp-pVYD17hrLoapJjDmzDLN5xshKMPmXG6n1VfjoOttV88cY6X4v7GRjxeeOoCI6nE4EQwX5Wxys0bg0HJGYqunTWWp5w7DX1WuIntVQ7SFL5FOd4E4cCLDuCOgMX_AWmarzOlISPqrMHN151g2lOx-70gOI0zkobvvHNUjqaJ4kyI9-qw8QRlay81zuzVFKS2TCp_sI8v8Ubqrha-qIZN42bHLN1CDViwaAFRwaW9IuLmI4"/>
+</div>
+<div class="absolute -bottom-1 -right-1 size-3 bg-primary border-2 border-white dark:border-slate-900 rounded-full"></div>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- Sidebar -->
+<aside class="hidden lg:flex w-72 flex-col border-r border-primary/5 bg-white dark:bg-slate-900 p-6 gap-8">
+<div class="flex flex-col gap-4">
+<h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Main Menu</h3>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary font-semibold" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">settings_input_component</span>
+<span class="text-sm">Configurations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">bar_chart</span>
+<span class="text-sm">Usage Metrics</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">history</span>
+<span class="text-sm">Audit Logs</span>
+</a>
+</nav>
+</div>
+<div class="mt-auto p-4 rounded-xl bg-slate-900 dark:bg-primary/5 text-white flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<span class="text-xs font-medium text-slate-300">Data Quota</span>
+<span class="text-xs font-bold text-primary">85%</span>
+</div>
+<div class="w-full bg-slate-700 rounded-full h-1.5">
+<div class="bg-primary h-1.5 rounded-full" style="width: 85%"></div>
+</div>
+<p class="text-[10px] text-slate-400">1.7M / 2.0M tokens used this month.</p>
+<button class="mt-2 w-full py-2 bg-primary hover:bg-primary/90 rounded text-xs font-bold transition-colors">Upgrade Plan</button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto p-6 lg:p-8 space-y-8">
+<!-- Quick Stats -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<span class="text-slate-500 dark:text-slate-400 text-sm font-medium">Total API Requests</span>
+<span class="text-primary bg-primary/10 p-1.5 rounded-lg material-symbols-outlined text-sm">api</span>
+</div>
+<div class="text-2xl font-bold">1,248,392</div>
+<div class="flex items-center gap-1 text-primary text-xs font-bold">
+<span class="material-symbols-outlined text-xs">trending_up</span>
+<span>+12.4% vs last week</span>
+</div>
+</div>
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<span class="text-slate-500 dark:text-slate-400 text-sm font-medium">AI Tokens Used</span>
+<span class="text-primary bg-primary/10 p-1.5 rounded-lg material-symbols-outlined text-sm">token</span>
+</div>
+<div class="text-2xl font-bold">850,230</div>
+<div class="flex items-center gap-1 text-primary text-xs font-bold">
+<span class="material-symbols-outlined text-xs">trending_up</span>
+<span>+5.2% vs last week</span>
+</div>
+</div>
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<span class="text-slate-500 dark:text-slate-400 text-sm font-medium">Avg. Latency</span>
+<span class="text-primary bg-primary/10 p-1.5 rounded-lg material-symbols-outlined text-sm">speed</span>
+</div>
+<div class="text-2xl font-bold">245ms</div>
+<div class="flex items-center gap-1 text-red-500 text-xs font-bold">
+<span class="material-symbols-outlined text-xs">trending_up</span>
+<span>+18ms increase</span>
+</div>
+</div>
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<span class="text-slate-500 dark:text-slate-400 text-sm font-medium">Success Rate</span>
+<span class="text-primary bg-primary/10 p-1.5 rounded-lg material-symbols-outlined text-sm">check_circle</span>
+</div>
+<div class="text-2xl font-bold">99.98%</div>
+<div class="flex items-center gap-1 text-primary text-xs font-bold">
+<span class="material-symbols-outlined text-xs">remove</span>
+<span>Stable</span>
+</div>
+</div>
+</div>
+<!-- Charts Row -->
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+<!-- Usage Over Time -->
+<div class="xl:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-lg font-bold">Usage Over Time</h3>
+<select class="text-xs border-slate-200 dark:border-slate-700 bg-transparent rounded-lg focus:ring-primary focus:border-primary">
+<option>Last 7 Days</option>
+<option>Last 24 Hours</option>
+<option>Last 30 Days</option>
+</select>
+</div>
+<div class="h-64 flex items-end gap-2 px-2">
+<!-- Simplified Visual Chart -->
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-1/4 rounded-t-sm" title="Day 1"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-2/4 rounded-t-sm" title="Day 2"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-1/3 rounded-t-sm" title="Day 3"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-3/4 rounded-t-sm" title="Day 4"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-2/3 rounded-t-sm" title="Day 5"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-5/6 rounded-t-sm" title="Day 6"></div>
+<div class="flex-1 bg-primary/40 hover:bg-primary transition-colors h-full rounded-t-sm" title="Day 7"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-1/2 rounded-t-sm" title="Day 8"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-2/3 rounded-t-sm" title="Day 9"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-3/4 rounded-t-sm" title="Day 10"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-1/2 rounded-t-sm" title="Day 11"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary transition-colors h-4/5 rounded-t-sm" title="Day 12"></div>
+</div>
+<div class="flex justify-between mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider px-2">
+<span>May 01</span>
+<span>May 06</span>
+<span>May 12</span>
+</div>
+</div>
+<!-- Model Distribution -->
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-primary/5 shadow-sm">
+<h3 class="text-lg font-bold mb-6">Model Usage Distribution</h3>
+<div class="flex flex-col gap-4">
+<div class="relative pt-1">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">OpenAI</span>
+<span class="text-xs font-bold inline-block text-primary">45%</span>
+</div>
+<div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-primary/10">
+<div class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary" style="width:45%"></div>
+</div>
+</div>
+<div class="relative pt-1">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Claude</span>
+<span class="text-xs font-bold inline-block text-primary">30%</span>
+</div>
+<div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-primary/10">
+<div class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary/70" style="width:30%"></div>
+</div>
+</div>
+<div class="relative pt-1">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Gemini</span>
+<span class="text-xs font-bold inline-block text-primary">15%</span>
+</div>
+<div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-primary/10">
+<div class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary/40" style="width:15%"></div>
+</div>
+</div>
+<div class="relative pt-1">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">Other</span>
+<span class="text-xs font-bold inline-block text-primary">10%</span>
+</div>
+<div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-primary/10">
+<div class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-slate-300" style="width:10%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Configuration Management -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/5 shadow-sm overflow-hidden">
+<div class="p-6 border-b border-primary/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+<div>
+<h3 class="text-lg font-bold">Configuration Management</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400">Manage and sync gateway environment settings.</p>
+</div>
+<button class="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                        New Config
+                    </button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-slate-50 dark:bg-slate-800/50">
+<th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Config Name</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Last Modified</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-primary/5">
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-slate-400">description</span>
+<span class="text-sm font-medium">opencode.json</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">2 hours ago</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+<span class="size-1.5 rounded-full bg-primary"></span>
+                                        Synced
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<div class="flex gap-3">
+<button class="text-primary hover:underline text-sm font-bold">Sync</button>
+<button class="text-slate-500 dark:text-slate-400 hover:text-primary text-sm font-bold">Edit</button>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-slate-400">settings</span>
+<span class="text-sm font-medium">claude-env</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Yesterday</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+<span class="size-1.5 rounded-full bg-primary"></span>
+                                        Synced
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<div class="flex gap-3">
+<button class="text-primary hover:underline text-sm font-bold">Sync</button>
+<button class="text-slate-500 dark:text-slate-400 hover:text-primary text-sm font-bold">Edit</button>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-slate-400">inventory_2</span>
+<span class="text-sm font-medium">gateway-settings.yaml</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">3 days ago</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-600">
+<span class="size-1.5 rounded-full bg-amber-500"></span>
+                                        Modified
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<div class="flex gap-3">
+<button class="text-primary hover:underline text-sm font-bold">Sync</button>
+<button class="text-slate-500 dark:text-slate-400 hover:text-primary text-sm font-bold">Edit</button>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-slate-400">key</span>
+<span class="text-sm font-medium">api-keys.vault</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">1 week ago</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+<span class="size-1.5 rounded-full bg-primary"></span>
+                                        Synced
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<div class="flex gap-3">
+<button class="text-primary hover:underline text-sm font-bold">Sync</button>
+<button class="text-slate-500 dark:text-slate-400 hover:text-primary text-sm font-bold">Edit</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-primary/5 text-center">
+<button class="text-sm font-bold text-slate-500 hover:text-primary transition-colors">View All Files</button>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

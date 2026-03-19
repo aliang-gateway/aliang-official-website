@@ -36,7 +36,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
 
           <div className={`flex flex-wrap ${isCompact ? "gap-3" : "gap-4"}`}>
             <Link
-              href="/account"
+              href="/register"
               className={`flex cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-transform hover:scale-[1.02] ${isCompact ? "h-12 min-w-[140px] px-5 text-sm" : "h-14 min-w-[160px] px-6 text-base"}`}
             >
               Get Started Free
