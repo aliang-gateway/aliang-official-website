@@ -2,6 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { useMDXComponents } from "@/mdx-components";
 
 type PublicArticleDetail = {
@@ -107,7 +109,16 @@ export default async function BlogSlugDetailPage({
 
       <div className="space-y-3">
         <div className="text-[var(--portal-muted)] leading-relaxed space-y-4">
-          <MDXRemote source={article.mdx_body} components={mdxComponents} />
+          <MDXRemote
+            source={article.mdx_body}
+            components={mdxComponents}
+            options={{
+              mdxOptions: {
+                remarkPlugins: [remarkGfm],
+                rehypePlugins: [rehypeHighlight],
+              },
+            }}
+          />
         </div>
       </div>
 
