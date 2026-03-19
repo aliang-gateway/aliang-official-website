@@ -7,10 +7,10 @@ import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import TechRadar3D from "./TechRadar3D";
 
 type Article = {
-  id: number;
+  slug: string;
   title: string;
   tag: string;
-  date: string;
+  publishedAt: string;
   excerpt: string;
   readTime: string;
   image: string;
@@ -19,6 +19,23 @@ type Article = {
     avatar?: string;
     icon?: string;
   };
+};
+
+type PublicArticle = {
+  slug: string;
+  title: string;
+  excerpt: string;
+  cover_image_url: string;
+  tag: string;
+  read_time: string;
+  author_name: string;
+  author_avatar_url?: string;
+  published_at: string;
+};
+
+type PublicArticlesResponse = {
+  articles?: PublicArticle[];
+  error?: string;
 };
 
 type TechBlip = {
@@ -43,49 +60,40 @@ const techBlips: TechBlip[] = [
   { id: "model-eval", name: "模型评测", ring: "adopt", x: 56, y: 43, relatedTags: ["AI评测"], relatedKeywords: ["评测", "模型", "对比"] },
 ];
 
-const articles: Article[] = [
-  {
-    id: 1,
-    title: "The Future of AI Gateways: Orchestrating LLM Workloads",
-    tag: "Academic",
-    date: "Oct 24, 2024",
-    excerpt: "Exploring the shift from traditional API management to intelligent semantic routing and context-aware protocol mediation for generative AI.",
-    readTime: "12 min read",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDZvW-KTF9iWaCFboqP1LY1wawzF4cT4iRinHzzA98gGMHoW3n7E872hDiRLRpFV9Lgk1eUkBp0C5tFk7ciV-h83F-T8rQ9aSL54mq52wn4s2190sPIpfYHaOBWSDoORyyW51t7TAIFmgaixOfVBA5xviZqiAJVLIF21IFo_PU3frHPgmbyRpEyP0JWbCQpCX3T1gwqPFHh_14oe4j9NayqlyvrzjAku3Q-tlX2vEgrbTVb7UjS5NdARfSxXWUkEPTwOCVtUY5B0iw",
+function formatPublishedDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function normalizeArticle(article: PublicArticle): Article {
+  return {
+    slug: article.slug,
+    title: article.title,
+    tag: article.tag,
+    publishedAt: formatPublishedDate(article.published_at),
+    excerpt: article.excerpt,
+    readTime: article.read_time,
+    image: article.cover_image_url,
     author: {
-      name: "Dr. Liang Tech",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCX5whxJVxi2uv3nqHWP4Ln5YBc4S53zCLo05XxpKF_62FQN0wMPA4OX6bFDShEvnJiolfeWpJ-iWYfPOThH9vD-_5OLnlRDtQDS0wy7V91shfl-XV8fMK-pGV7vovaB5nN_NB4Ef3vh6z1shMZSnv2H5M2ch7V7IhoMM0nDFdNegLAdhDpPmISxU77vgwmn97pyrqU0tq0OItNgircp86m_f6lxHCJ3FtsSlWipeXm9J4GMeehImA69qC2Yu47xnpVFcGkmBnccCs"
-    }
-  },
-  {
-    id: 2,
-    title: "Optimizing Latency in TUN Mode: Kernel-Level Performance",
-    tag: "Technical",
-    date: "Oct 18, 2024",
-    excerpt: "A deep dive into user-space network stack optimizations and reducing context switching overhead for high-throughput tunneling.",
-    readTime: "15 min read",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCo7RwdCNWbFTe0iEEfily7t7bdDPmuo5PMltoyf75XR34eizCxJd0rHP3cZgeLjBeeBFIZqh55kskluY1FJZq8_UhtchAx_M8P8s_ciy04OIN_Awx4IoLLM5aiusVhLkjcP0McEGN7oawpuefnBtFSCQ7CnvlJh-ZNxa35MHtBzpZPK9ZszEnZqutl49g3rjFfVGkcFSXReA3Dp2cQl4P1pXnwLNimN9Ntj95PowoyYRwcknrU462tXD0N9LEdfXsL1dD3ZRPu02k",
-    author: {
-      name: "NetOps Team",
-      icon: "person"
-    }
-  },
-  {
-    id: 3,
-    title: "Security Best Practices for LLM API Key Management",
-    tag: "Security",
-    date: "Oct 12, 2024",
-    excerpt: "Ensuring robust protection for sensitive gateway endpoints and preventing token leakage in edge computing environments.",
-    readTime: "8 min read",
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBomKbfjMIYYFfkmA1VLrMwLicACUIX2K7XJ9uLNZStKCR_UB1U6iL42Wjf-h14EWKO-EpJvuY1UCo4R1KP4dJBJVrP7lsDzt3HF7r5Um7-7dZ2b09cS4Opyjdnkv0UDEwWH0A4lGnT2ShbtM5_vJlyRFGqbcgE5PJ-FP3zz2m3HlIbbTBy4Bh3YX2i8vd92n0N0x_ap2rtKQxYKQRo3NS8iMT4auAxa27qkPbupw_4gdI-d-sk8t3uoT_IWLe8nCz6lareHZufdjk",
-    author: {
-      name: "SecOps Intel",
-      icon: "shield"
-    }
-  },
-];
+      name: article.author_name,
+      avatar: article.author_avatar_url,
+      icon: "person",
+    },
+  };
+}
 
 export default function BlogPage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoadingArticles, setIsLoadingArticles] = useState(true);
+  const [articlesError, setArticlesError] = useState<string | null>(null);
   const [selectedBlip, setSelectedBlip] = useState<TechBlip | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -104,7 +112,51 @@ export default function BlogPage() {
       );
       return tagMatched || keywordMatched;
     });
-  }, [selectedBlip]);
+  }, [articles, selectedBlip]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadArticles = async () => {
+      setIsLoadingArticles(true);
+      setArticlesError(null);
+
+      try {
+        const response = await fetch("/api/public/articles", {
+          method: "GET",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          cache: "no-store",
+        });
+
+        const payload = (await response.json()) as PublicArticlesResponse;
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Failed to load articles");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setArticles((payload.articles ?? []).map(normalizeArticle));
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        setArticles([]);
+        setArticlesError(error instanceof Error ? error.message : "Failed to load articles");
+      } finally {
+        if (isMounted) {
+          setIsLoadingArticles(false);
+        }
+      }
+    };
+
+    void loadArticles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedBlip) {
@@ -232,11 +284,40 @@ export default function BlogPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {articles.map((article) => (
+        {isLoadingArticles ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" aria-live="polite" aria-busy="true">
+            {["article-skeleton-1", "article-skeleton-2", "article-skeleton-3"].map((skeletonKey) => (
+              <div
+                key={skeletonKey}
+                className="flex flex-col rounded-xl overflow-hidden border animate-pulse"
+                style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)' }}
+              >
+                <div className="aspect-video" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                <div className="p-6 flex flex-col gap-3">
+                  <div className="h-3 w-2/3 rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                  <div className="h-6 w-full rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                  <div className="h-4 w-full rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                  <div className="h-4 w-4/5 rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : articlesError ? (
+          <div className="py-16 text-center border rounded-xl" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg)' }}>
+            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--stitch-text)' }}>Unable to load publications.</p>
+            <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>{articlesError}</p>
+          </div>
+        ) : articles.length === 0 ? (
+          <div className="py-16 text-center border rounded-xl" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg)' }}>
+            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--stitch-text)' }}>No publications yet.</p>
+            <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>Please check back soon for new articles.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {articles.map((article) => (
             <Link
-              key={article.id}
-              href={`/blog/${article.id}`}
+              key={article.slug}
+              href={`/blog/${article.slug}`}
               className="group flex flex-col rounded-xl overflow-hidden border hover:shadow-xl transition-all duration-300"
               style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)' }}
             >
@@ -257,7 +338,7 @@ export default function BlogPage() {
               <div className="p-6 flex flex-col grow">
                 <div className="flex items-center gap-2 text-xs mb-3 font-medium" style={{ color: 'var(--stitch-text-muted)' }}>
                   <MaterialIcon name="calendar_today" size={14} />
-                  <span>{article.date}</span>
+                  <span>{article.publishedAt}</span>
                   <span className="mx-1">•</span>
                   <MaterialIcon name="schedule" size={14} />
                   <span>{article.readTime}</span>
@@ -291,8 +372,9 @@ export default function BlogPage() {
                 </div>
               </div>
             </Link>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center justify-center mt-16 gap-2">
           <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
@@ -356,9 +438,9 @@ export default function BlogPage() {
             <div className="overflow-y-auto p-6 flex flex-col gap-4">
               {relatedArticles.length > 0 ? (
                 relatedArticles.map((article) => (
-                  <Link key={article.id} href={`/blog/${article.id}`} className="block p-4 rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg-elevated)' }}>
+                  <Link key={article.slug} href={`/blog/${article.slug}`} className="block p-4 rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg-elevated)' }}>
                     <p className="font-bold mb-2 transition-colors hover:text-primary" style={{ color: 'var(--stitch-text)' }}>{article.title}</p>
-                    <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>{article.tag} · {article.date} · {article.readTime}</p>
+                    <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>{article.tag} · {article.publishedAt} · {article.readTime}</p>
                   </Link>
                 ))
               ) : (
