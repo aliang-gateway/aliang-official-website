@@ -1862,7 +1862,11 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	updated, err := r.articleSvc.GetArticleBySlug(req.Context(), slug)
+	updated, err := r.findAdminArticleBySlug(req.Context(), slug)
+	if errors.Is(err, article.ErrArticleNotFound) {
+		writeError(w, http.StatusNotFound, "article not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return
@@ -2080,10 +2084,7 @@ func (r *routes) handleAIRequest(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if usedUnits+payload.Quantity > includedUnits {
-		remainingUnits := includedUnits - usedUnits
-		if remainingUnits < 0 {
-			remainingUnits = 0
-		}
+		remainingUnits := max(includedUnits-usedUnits, 0)
 		writeJSON(w, http.StatusTooManyRequests, aiRequestResponse{
 			Allowed:        false,
 			IncludedUnits:  includedUnits,
@@ -2107,10 +2108,7 @@ func (r *routes) handleAIRequest(w http.ResponseWriter, req *http.Request) {
 	}
 
 	usedAfter := usedUnits + payload.Quantity
-	remainingUnits := includedUnits - usedAfter
-	if remainingUnits < 0 {
-		remainingUnits = 0
-	}
+	remainingUnits := max(includedUnits-usedAfter, 0)
 
 	writeJSON(w, http.StatusOK, aiRequestResponse{
 		Allowed:        true,
