@@ -1,0 +1,22 @@
+server:
+  port: "18080"
+database:
+  path: "./qa-f3.db"
+auth:
+  admin_bootstrap_secret: ""
+register:
+  allowed_email_domains: []
+  require_email_verification: true
+smtp:
+  enabled: false
+  host: ""
+  port: 0
+  username: ""
+  password: ""
+  from: ""
+  from_name: ""
+redis:
+  enabled: false
+  addr: ""
+  password: ""
+  db: 0

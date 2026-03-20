@@ -277,6 +277,16 @@ func TestRegisterVerifyEmailLoginAndDomainRestriction(t *testing.T) {
 		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
 	}
 
+	var registerPayload struct {
+		RequireEmailVerification bool `json:"require_email_verification"`
+	}
+	if err := json.NewDecoder(registerRec.Body).Decode(&registerPayload); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	if !registerPayload.RequireEmailVerification {
+		t.Fatalf("expected register response require_email_verification=true")
+	}
+
 	loginBeforeVerifyReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"new-user@example.com","password":"Password#123"}`)))
 	loginBeforeVerifyRec := httptest.NewRecorder()
 	server.Config.Handler.ServeHTTP(loginBeforeVerifyRec, loginBeforeVerifyReq)
@@ -315,6 +325,89 @@ func TestRegisterVerifyEmailLoginAndDomainRestriction(t *testing.T) {
 	server.Config.Handler.ServeHTTP(blockedDomainRec, blockedDomainReq)
 	if blockedDomainRec.Code != http.StatusForbidden {
 		t.Fatalf("register blocked domain status = %d, body=%s", blockedDomainRec.Code, blockedDomainRec.Body.String())
+	}
+}
+
+func TestRegisterWithoutEmailVerificationAllowsImmediateLogin(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	requireEmailVerification := false
+	userSvc := user.NewServiceWithOptions(database, user.ServiceOptions{RequireEmailVerification: &requireEmailVerification})
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{UserService: userSvc})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"no-verify@example.com","name":"No Verify","password":"Password#123"}`)))
+	registerRec := httptest.NewRecorder()
+	server.Config.Handler.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != http.StatusCreated {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+
+	var registerPayload struct {
+		EmailVerified            bool `json:"email_verified"`
+		RequireEmailVerification bool `json:"require_email_verification"`
+	}
+	if err := json.NewDecoder(registerRec.Body).Decode(&registerPayload); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	if registerPayload.RequireEmailVerification {
+		t.Fatalf("expected register response require_email_verification=false")
+	}
+	if !registerPayload.EmailVerified {
+		t.Fatalf("expected register response email_verified=true when verification disabled")
+	}
+
+	var tokens int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM email_verification_tokens;`).Scan(&tokens); err != nil {
+		t.Fatalf("count verification tokens: %v", err)
+	}
+	if tokens != 0 {
+		t.Fatalf("expected no email verification tokens, got %d", tokens)
+	}
+
+	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"no-verify@example.com","password":"Password#123"}`)))
+	loginRec := httptest.NewRecorder()
+	server.Config.Handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	}
+}
+
+func TestLoginAllowsExistingUnverifiedUserWhenEmailVerificationDisabled(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	password := "Password#123"
+	passwordHash, err := user.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO users(email, name, role, password_hash, email_verified)
+		VALUES (?, ?, 'user', ?, 0);
+	`, "existing-unverified@example.com", "Existing Unverified", passwordHash); err != nil {
+		t.Fatalf("insert unverified user: %v", err)
+	}
+
+	requireEmailVerification := false
+	userSvc := user.NewServiceWithOptions(database, user.ServiceOptions{RequireEmailVerification: &requireEmailVerification})
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{UserService: userSvc})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"existing-unverified@example.com","password":"Password#123"}`)))
+	loginRec := httptest.NewRecorder()
+	server.Config.Handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
 	}
 }
 

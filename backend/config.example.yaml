@@ -9,6 +9,7 @@ auth:
 
 register:
   allowed_email_domains: []
+  require_email_verification: true
 
 smtp:
   enabled: false

@@ -18,9 +18,10 @@ import (
 )
 
 type Service struct {
-	db                  *sql.DB
-	mailSender          MailSender
-	allowedEmailDomains map[string]struct{}
+	db                       *sql.DB
+	mailSender               MailSender
+	allowedEmailDomains      map[string]struct{}
+	requireEmailVerification bool
 }
 
 type MailSender interface {
@@ -32,8 +33,9 @@ type noopMailSender struct{}
 func (noopMailSender) Send(_ context.Context, _, _, _ string) error { return nil }
 
 type ServiceOptions struct {
-	MailSender          MailSender
-	AllowedEmailDomains []string
+	MailSender               MailSender
+	AllowedEmailDomains      []string
+	RequireEmailVerification *bool
 }
 
 type AuthUser struct {
@@ -61,11 +63,12 @@ type SessionInfo struct {
 }
 
 type RegisterResult struct {
-	UserID        int64  `json:"user_id"`
-	Email         string `json:"email"`
-	Name          string `json:"name"`
-	SessionToken  string `json:"session_token"`
-	EmailVerified bool   `json:"email_verified"`
+	UserID                   int64  `json:"user_id"`
+	Email                    string `json:"email"`
+	Name                     string `json:"name"`
+	SessionToken             string `json:"session_token"`
+	EmailVerified            bool   `json:"email_verified"`
+	RequireEmailVerification bool   `json:"require_email_verification"`
 }
 
 type Wallet struct {
@@ -120,7 +123,17 @@ func NewServiceWithOptions(database *sql.DB, opts ServiceOptions) *Service {
 		allowedDomains[d] = struct{}{}
 	}
 
-	return &Service{db: database, mailSender: mailSender, allowedEmailDomains: allowedDomains}
+	requireEmailVerification := true
+	if opts.RequireEmailVerification != nil {
+		requireEmailVerification = *opts.RequireEmailVerification
+	}
+
+	return &Service{
+		db:                       database,
+		mailSender:               mailSender,
+		allowedEmailDomains:      allowedDomains,
+		requireEmailVerification: requireEmailVerification,
+	}
 }
 
 func HashPassword(password string) (string, error) {
@@ -174,7 +187,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthUser,
 		return nil, ErrInvalidCredentials
 	}
 
-	if !emailVerified {
+	if s.requireEmailVerification && !emailVerified {
 		return nil, ErrEmailNotVerified
 	}
 
@@ -419,9 +432,12 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 		return nil, fmt.Errorf("generate session token: %w", err)
 	}
 
-	verificationCode, err := generateVerificationCode()
-	if err != nil {
-		return nil, fmt.Errorf("generate verification code: %w", err)
+	verificationCode := ""
+	if s.requireEmailVerification {
+		verificationCode, err = generateVerificationCode()
+		if err != nil {
+			return nil, fmt.Errorf("generate verification code: %w", err)
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -430,10 +446,15 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	emailVerified := 0
+	if !s.requireEmailVerification {
+		emailVerified = 1
+	}
+
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO users(email, name, role, password_hash, email_verified)
-		VALUES (?, ?, 'user', ?, 0);
-	`, email, name, hash)
+		VALUES (?, ?, 'user', ?, ?);
+	`, email, name, hash, emailVerified)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return nil, ErrEmailTaken
@@ -460,36 +481,43 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO email_verification_tokens(user_id, code, expires_at)
-		VALUES (?, ?, ?);
-	`, userID, verificationCode, time.Now().UTC().Add(30*time.Minute)); err != nil {
-		return nil, fmt.Errorf("create email verification token: %w", err)
-	}
+	if s.requireEmailVerification {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO email_verification_tokens(user_id, code, expires_at)
+			VALUES (?, ?, ?);
+		`, userID, verificationCode, time.Now().UTC().Add(30*time.Minute)); err != nil {
+			return nil, fmt.Errorf("create email verification token: %w", err)
+		}
 
-	subject := "Verify your email"
-	body := "Your verification code is: " + verificationCode
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO email_outbox(to_email, subject, body)
-		VALUES (?, ?, ?);
-	`, email, subject, body); err != nil {
-		return nil, fmt.Errorf("write email outbox: %w", err)
+		subject := "Verify your email"
+		body := "Your verification code is: " + verificationCode
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO email_outbox(to_email, subject, body)
+			VALUES (?, ?, ?);
+		`, email, subject, body); err != nil {
+			return nil, fmt.Errorf("write email outbox: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit register tx: %w", err)
 	}
 
-	if err := s.mailSender.Send(ctx, email, subject, body); err != nil {
-		return nil, fmt.Errorf("send verification email: %w", err)
+	if s.requireEmailVerification {
+		subject := "Verify your email"
+		body := "Your verification code is: " + verificationCode
+		if err := s.mailSender.Send(ctx, email, subject, body); err != nil {
+			return nil, fmt.Errorf("send verification email: %w", err)
+		}
 	}
 
 	return &RegisterResult{
-		UserID:        userID,
-		Email:         email,
-		Name:          name,
-		SessionToken:  plaintext,
-		EmailVerified: false,
+		UserID:                   userID,
+		Email:                    email,
+		Name:                     name,
+		SessionToken:             plaintext,
+		EmailVerified:            !s.requireEmailVerification,
+		RequireEmailVerification: s.requireEmailVerification,
 	}, nil
 }
 

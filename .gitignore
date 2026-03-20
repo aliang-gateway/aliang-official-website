@@ -19,3 +19,12 @@ frontend/build/
 *.env.production
 *.pem
 .continue
+.sisyphus/*
+.agents/
+.serena/
+.specify/
+.claude/
+.ruff_cache/
+.local/
+.play
+.playwright-mcp

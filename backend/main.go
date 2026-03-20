@@ -51,7 +51,10 @@ func main() {
 		log.Fatalf("failed to apply migrations: %v", err)
 	}
 
-	opts := user.ServiceOptions{AllowedEmailDomains: cfg.Register.AllowedEmailDomains}
+	opts := user.ServiceOptions{
+		AllowedEmailDomains:      cfg.Register.AllowedEmailDomains,
+		RequireEmailVerification: cfg.Register.RequireEmailVerification,
+	}
 	if cfg.SMTP.Enabled {
 		sender, err := mailer.NewSMTPSender(mailer.SMTPConfig{
 			Host:     cfg.SMTP.Host,

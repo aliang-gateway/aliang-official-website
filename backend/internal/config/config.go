@@ -30,7 +30,8 @@ type AuthConfig struct {
 }
 
 type RegisterConfig struct {
-	AllowedEmailDomains []string `yaml:"allowed_email_domains"`
+	AllowedEmailDomains      []string `yaml:"allowed_email_domains"`
+	RequireEmailVerification *bool    `yaml:"require_email_verification"`
 }
 
 type SMTPConfig struct {

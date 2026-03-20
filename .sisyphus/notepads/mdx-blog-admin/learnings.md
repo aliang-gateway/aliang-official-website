@@ -20,3 +20,17 @@
 - 2026-03-19: Implemented article list table with status badge, published date formatting, and per-row actions (`Edit`, `Publish`/`Unpublish`, `Delete`) using confirmation dialogs and per-row loading indicators to prevent duplicate submissions.
 - 2026-03-19: Added clear state UX on admin page: initial/loading/empty/error/success states, plus explicit unauthorized blocked workflow messaging when API returns 401/403 or token is missing.
 - 2026-03-19: Frontend verification passes: `npm -C frontend run build` successfully builds route `/admin/articles` and related admin API route handlers.
+
+- 2026-03-20 (F3 QA): Automated gates passed (`go test ./...`, `npm -C frontend run build` after installing frontend deps), but runtime manual QA failed critical flows: `/blog` showed upstream error state, `/blog/{slug}` returned 404, and `/blog/{legacy-id}` redirected to a slug page that also 404s.
+- 2026-03-20 (F3 QA): `/admin/articles` no-token boundary correctly blocked in UI, but non-admin boundary could not be validated as expected 403 because proxy returned 502 (`invalid json response from upstream`), indicating backend/article route availability mismatch in running environment.
+
+
+- 2026-03-20 (F3 rerun): Revalidated live stack after backend mismatch correction; `/api/public/articles` now returns JSON `{"articles":[]}` through frontend proxy and `/blog` renders normal empty-state UI (no upstream JSON parse error).
+- 2026-03-20 (F3 rerun): Browser-level QA completed via Chrome DevTools MCP fallback because Playwright MCP failed to launch in this environment (persistent Chrome session conflict); evidence captured under `.sisyphus/evidence/f3-rerun-*.png`.
+- 2026-03-20 (F3 rerun): Non-admin authorization boundary confirmed end-to-end: real registered user token (default role `user`) against `/api/admin/articles` returns `403 {"error":"admin role required"}`, while missing token remains `401`.
+- 2026-03-20 (F3 rerun): Legacy route `/blog/1` correctly issues 308 redirect to mapped slug `/blog/gpt4o-vs-claude35`; destination currently 404 due absent published article dataset, not runtime/proxy failure.
+- 2026-03-20: Added backend registration toggle `register.require_email_verification` (nullable bool pointer in `backend/internal/config/config.go` + default `true` behavior handled in `user.NewServiceWithOptions`) to preserve existing verification-required flow when config is absent.
+- 2026-03-20: Wired toggle through `backend/main.go` -> `user.ServiceOptions.RequireEmailVerification`, and updated `Service.Register` to conditionally create verification token/email outbox + send verification email only when toggle is enabled; when disabled, users are created with `email_verified=1` and can login immediately.
+- 2026-03-20: Extended register response contract with `require_email_verification` and updated frontend register UX (`frontend/app/register/page.tsx`) to render/require verification step only when backend indicates it; success messaging now branches by toggle.
+- 2026-03-20: Added frontend proxy fallback normalization in `frontend/app/api/auth/register/route.ts` so successful register responses default `require_email_verification` to `true` if older upstream payloads omit the field, keeping backward compatibility.
+- 2026-03-20 (QA fix): `user.Service.Login` must gate `ErrEmailNotVerified` behind `requireEmailVerification`; otherwise disabling verification only affects new registrations and still blocks legacy unverified accounts from logging in.

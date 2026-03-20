@@ -1,5 +1,28 @@
 import { NextResponse } from "next/server";
 
+type RegisterSuccessPayload = {
+  user_id: number;
+  email: string;
+  name: string;
+  session_token: string;
+  email_verified: boolean;
+  require_email_verification?: boolean;
+};
+
+function isRegisterSuccessPayload(payload: unknown): payload is RegisterSuccessPayload {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const data = payload as Record<string, unknown>;
+  return (
+    typeof data.user_id === "number" &&
+    typeof data.email === "string" &&
+    typeof data.name === "string" &&
+    typeof data.session_token === "string" &&
+    typeof data.email_verified === "boolean"
+  );
+}
+
 function getApiBaseUrl() {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (!baseUrl) {
@@ -34,6 +57,15 @@ export async function POST(request: Request) {
 
   try {
     const payload = await upstream.json();
+    if (upstream.ok && isRegisterSuccessPayload(payload)) {
+      return NextResponse.json(
+        {
+          ...payload,
+          require_email_verification: payload.require_email_verification ?? true,
+        },
+        { status: upstream.status },
+      );
+    }
     return NextResponse.json(payload, { status: upstream.status });
   } catch {
     return NextResponse.json(
