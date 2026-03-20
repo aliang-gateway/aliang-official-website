@@ -379,7 +379,7 @@ export default function AccountPage() {
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">登录（会话令牌）</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500 dark:text-emerald-400">登录（会话令牌）</h3>
 
                 <div className="mb-4 block-card p-3 text-sm">
           当前会话令牌：{" "}
@@ -387,7 +387,7 @@ export default function AccountPage() {
         </div>
 
         <form className="mb-4 grid gap-3" onSubmit={handleCreateUser}>
-          <p className="text-sm font-semibold text-emerald-400">创建用户</p>
+          <p className="text-sm font-semibold text-[var(--stitch-text-muted)]">创建用户</p>
           <input
             className="field"
             type="email"
@@ -415,11 +415,11 @@ export default function AccountPage() {
           退出登录
         </button>
 
-        {authError ? <p className="mt-3 text-sm text-red-500">{authError}</p> : null}
+        {authError ? <p className="mt-3 text-sm text-red-500 dark:text-red-400">{authError}</p> : null}
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">API 密钥</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500 dark:text-emerald-400">API 密钥</h3>
         <form className="mb-3 flex flex-wrap items-end gap-3" onSubmit={handleCreateApiKey}>
           <div className="flex-1 space-y-1">
             <label htmlFor="api-key-label" className="text-sm font-medium">
@@ -445,7 +445,7 @@ export default function AccountPage() {
         ) : null}
 
         {apiKeyIds.length === 0 ? (
-          <p className="text-sm text-gray-500">当前会话没有本地跟踪的密钥 ID。</p>
+          <p className="text-sm text-[var(--stitch-text-muted)]">当前会话没有本地跟踪的密钥 ID。</p>
         ) : (
           <ul className="space-y-2 text-sm">
             {apiKeyIds.map((id) => (
@@ -459,14 +459,14 @@ export default function AccountPage() {
           </ul>
         )}
 
-        {apiKeyError ? <p className="mt-3 text-sm text-red-500">{apiKeyError}</p> : null}
+        {apiKeyError ? <p className="mt-3 text-sm text-red-500 dark:text-red-400">{apiKeyError}</p> : null}
       </div>
 
       <div className="block-card">
-        <h3 className="mb-3 text-lg font-semibold text-emerald-500">订阅管理</h3>
+        <h3 className="mb-3 text-lg font-semibold text-emerald-500 dark:text-emerald-400">订阅管理</h3>
 
         {tiersLoading ? <p className="text-sm">加载套餐中...</p> : null}
-        {tiersError ? <p className="text-sm text-red-500">加载套餐失败： {tiersError}</p> : null}
+        {tiersError ? <p className="text-sm text-red-500 dark:text-red-400">加载套餐失败： {tiersError}</p> : null}
 
         {!tiersLoading && !tiersError ? (
           <form className="space-y-4" onSubmit={handleSaveSubscription}>
@@ -485,7 +485,7 @@ export default function AccountPage() {
 
             {selectedTier ? (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-emerald-400">单项包含额度（覆盖默认值）</p>
+                <p className="text-sm font-semibold text-[var(--stitch-text-muted)]">单项包含额度（覆盖默认值）</p>
                 <ul className="space-y-2">
                   {selectedTier.default_items.map((item) => (
                     <li key={item.code} className="block-card">
@@ -505,9 +505,9 @@ export default function AccountPage() {
                             }))
                           }
                         />
-                        <span className="text-sm text-gray-500">{item.unit}</span>
+                        <span className="text-sm text-[var(--stitch-text-muted)]">{item.unit}</span>
                       </div>
-                      <div className="mt-1 text-xs text-gray-500">默认： {item.included_units}</div>
+                      <div className="mt-1 text-xs text-[var(--stitch-text-muted)]">默认： {item.included_units}</div>
                     </li>
                   ))}
                 </ul>
@@ -525,8 +525,8 @@ export default function AccountPage() {
           </form>
         ) : null}
 
-        {subscriptionError ? <p className="mt-3 text-sm text-red-500">{subscriptionError}</p> : null}
-        {subscriptionSuccess ? <p className="mt-3 text-sm text-emerald-500">{subscriptionSuccess}</p> : null}
+        {subscriptionError ? <p className="mt-3 text-sm text-red-500 dark:text-red-400">{subscriptionError}</p> : null}
+        {subscriptionSuccess ? <p className="mt-3 text-sm text-emerald-500 dark:text-emerald-400">{subscriptionSuccess}</p> : null}
 
         <div className="block-card mt-4 text-sm">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -534,7 +534,7 @@ export default function AccountPage() {
             {subscriptionLoading ? <span className="text-xs">加载中...</span> : null}
           </div>
           {!currentSubscription ? (
-            <p className="text-gray-500">没有加载活跃的订阅。</p>
+            <p className="text-[var(--stitch-text-muted)]">没有加载活跃的订阅。</p>
           ) : (
             <div className="space-y-2">
               <p>

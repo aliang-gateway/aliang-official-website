@@ -51,7 +51,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
 
           <div className={`flex items-center ${isCompact ? "gap-4 pt-2" : "gap-6 pt-4"}`}>
           <div className="flex -space-x-3">
-             <Image 
+              <Image 
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuvpyv70_JvmcOYPve3_zTuCQQ7hOFr8xcOVUteql0Uuo4mGXQhNxuJUtQItOaK7ojcekgjXV-W2fXkLRrqGl-6dkUQDQNgT1ji8KOHdiAnSgc_exYA_LtPy4qFXpvVws642CP5F9ddOsdomb1oa149NjsMmCN3F1hIJJTK9urLkUEYns57sK81JR3dd04GuYs6hkDbH2M2h64kKKUT0P1w9MS5TwkHuRe-_7mqJhtwHpZ4k_zQ38ZqZ0J8spvxi5_8TSYaTwBqZE"
                 alt=""
                 width={isCompact ? 32 : 40}
@@ -77,7 +77,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
               />
             </div>
              <p className={`${isCompact ? "text-xs" : "text-sm"} font-medium text-slate-500 dark:text-slate-400`}>
-              {isCompact ? "Trusted by 500+ teams" : "Trusted by 500+ engineering teams"}
+               {isCompact ? "Trusted by 500+ teams" : "Trusted by 500+ engineering teams"}
             </p>
           </div>
         </div>

@@ -1,11 +1,27 @@
 {
-  "active_plan": "/Users/mac/MyProgram/AiProgram/nursorwebsite/.sisyphus/plans/ai-api-portal.md",
-  "started_at": "2026-03-15T04:45:30.000Z",
+  "active_plan": "/Users/mac/.local/share/opencode/worktree/27642ccc2baaa5638bc0af0d96a91eaf124ad166/crisp-mountain/.sisyphus/plans/mdx-blog-admin.md",
+  "started_at": "2026-03-19T08:25:22.363Z",
   "session_ids": [
-    "ses_310795f54ffe6V9kRrdVJxyai0",
-    "ses_30e784875ffeEUZmOrH7eH0T2T",
-    "ses_30ae158e3ffeD6RdyhUTXDFyLB"
+    "ses_2fb609e84ffevgFTLPTcRHLTIW",
+    "ses_2fac8b7f4ffevXGwZdTs8YvMSw",
+    "ses_2fab91d05ffeU2OxJDDuEZcysZ",
+    "ses_2fab91bc6ffeRV0B3nrGxCgsCD",
+    "ses_2faabca27ffeMauBtFo6WS897b",
+    "ses_2faa8601fffeYiTHMVl8zUgfGF",
+    "ses_2faa27638ffejEKgUzEyVxfncD",
+    "ses_2fa98ff43ffeWTDaJYsDT2ju0r",
+    "ses_2fa97cc95ffeB3Q3P3E5iIsEUM",
+    "ses_2fa92fed7ffeOElBZLrb7geazg",
+    "ses_2fa92ba06ffeOpFmdWjyiRB0SR",
+    "ses_2fa8e2cfeffeey4F03B90sAojo",
+    "ses_2fa86aab9ffeS4XoqqEp8SXhkr",
+    "ses_2fa82b10affeVnCF3MZAj9Qqyr",
+    "ses_2fa74f97effelzmoBvX5c9OI05",
+    "ses_2fa73e3efffeddGkWT7bFOdDBC",
+    "ses_2fa7481a5ffehBFW2hPCvx75xI",
+    "ses_2fa6df9c6ffeEHQoGYa9ujG8TC",
+    "ses_2f9f2e7a1ffeniGKwoJ582vuZf"
   ],
-  "plan_name": "ai-api-portal",
-  "worktree_path": "/Users/mac/MyProgram/AiProgram/nursorwebsite"
+  "plan_name": "mdx-blog-admin",
+  "agent": "atlas"
 }

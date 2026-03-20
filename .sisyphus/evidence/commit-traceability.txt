@@ -1,0 +1,21 @@
+=== Commit to Task Mapping ===
+
+| Commit | Task(s) | Message |
+|--------|---------|---------|
+| 5e10ed8 | T1 | feat(backend): add articles schema migration |
+| 24215a4 | T3 | feat(backend): add article service layer |
+| 092e671 | T2 | feat(backend): backfill legacy blog articles |
+| 0cc17ea | T4+T5 | feat(api): add public and admin article endpoints |
+| f90cd0a | T6 | feat(api): add article publish lifecycle endpoints |
+| d66a471 | T7 | test(api): cover public article routes |
+| 4749aac | T8 | test(api): enforce admin article auth and validation; fix unpublish handler |
+| 9373a9e | T9+T10 | feat(frontend): add public and admin articles proxy routes |
+| c804746 | T11 | refactor(frontend): load blog list from public articles API |
+| a946b6b | T12+T13 | feat(frontend): add slug-based MDX blog detail + legacy id redirect |
+| 656c123 | T14 | feat(frontend): add admin article management interface |
+
+Notes:
+- T4+T5 combined: public and admin endpoints were implemented together in same session
+- T9+T10 combined: frontend proxy routes created together (same pattern, minimal risk)
+- T12+T13 combined: slug detail page + legacy redirect required coordinated changes (route conflict resolution)
+- T15: verification-only, no code commit required

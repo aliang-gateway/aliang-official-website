@@ -87,3 +87,24 @@ type UsageRecord struct {
 	MetadataJSON  *string
 	CreatedAt     time.Time
 }
+
+type Article struct {
+	ID              int64
+	LegacyID        *int64
+	Slug            string
+	Title           string
+	Excerpt         *string
+	CoverImageURL   *string
+	Tag             *string
+	ReadTime        *string
+	AuthorName      *string
+	AuthorAvatarURL *string
+	AuthorIcon      *string
+	MDXBody         string
+	Status          string
+	PublishedAt     *time.Time
+	CreatedByUserID *int64
+	UpdatedByUserID *int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}

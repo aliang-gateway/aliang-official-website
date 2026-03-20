@@ -1,0 +1,30 @@
+=== Backend Tests ===
+cd backend && go test ./... -count=1
+Result: ALL PASS (8 packages, 0 failures)
+
+=== Frontend Build ===
+cd frontend && npm run build
+Result: BUILD SUCCESS
+All routes registered:
+- /admin/articles (static)
+- /api/admin/articles (dynamic)
+- /api/admin/articles/[slug] (dynamic)
+- /api/admin/articles/[slug]/publish (dynamic)
+- /api/admin/articles/[slug]/unpublish (dynamic)
+- /api/public/articles (dynamic)
+- /api/public/articles/[slug] (dynamic)
+- /blog (static)
+- /blog/[slug] (dynamic)
+
+=== Git Log (T1-T14) ===
+5e10ed8 feat(backend): add articles schema migration
+24215a4 feat(backend): add article service layer
+092e671 feat(backend): backfill legacy blog articles
+0cc17ea feat(api): add public and admin article endpoints
+f90cd0a feat(api): add article publish lifecycle endpoints
+d66a471 test(api): cover public article routes
+4749aac test(api): enforce admin article auth and validation; fix unpublish handler
+9373a9e feat(frontend): add public and admin articles proxy routes
+c804746 refactor(frontend): load blog list from public articles API
+a946b6b feat(frontend): render blog detail with slug MDX pipeline + legacy redirect
+656c123 feat(frontend): add admin article management interface

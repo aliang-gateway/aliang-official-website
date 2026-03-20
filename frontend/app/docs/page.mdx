@@ -32,20 +32,37 @@ import Link from "next/link";
 
 ## Docs
 
-This documentation section is authored in MDX so new documentation pages can be added without hardcoding JSX placeholders.
+      <div className="text-[var(--portal-muted)] leading-7">
+        This documentation section is authored in MDX so new documentation pages can be
+        added without hardcoding JSX placeholders.
+      </div>
 
 ### <span id="getting-started" className="scroll-mt-28">Getting started</span>
 
-1. Create a user from the **Account** page.
-2. Issue an API key and store it securely.
-3. Use the key with `X-API-Key` for protected backend routes.
+      <ol>
+        <li>Create a user from the <strong>Account</strong> page.</li>
+        <li>Issue an API key and store it securely.</li>
+        <li>Use the key with <code>X-API-Key</code> for protected backend routes.</li>
+      </ol>
 
 ### <span id="public-pricing" className="scroll-mt-28">Public pricing</span>
 
-- Browse available tiers on **Pricing**.
-- Run a tier estimate to preview configured included units and total micros-based pricing.
-- Missing unit prices are called out in the UI so incomplete pricing configuration is visible.
+      <ul>
+        <li>Browse available tiers on <strong>Pricing</strong>.</li>
+        <li>
+          Run a tier estimate to preview configured included units and total micros-based
+          pricing.
+        </li>
+        <li>
+          Missing unit prices are called out in the UI so incomplete pricing configuration
+          is visible.
+        </li>
+      </ul>
 
 ### <span id="api-quick-note" className="scroll-mt-28">API quick note</span>
 
-For local backend development, ensure the frontend has `NEXT_PUBLIC_API_BASE_URL` configured. The frontend proxy routes depend on it.
+      <div className="text-[var(--portal-muted)] leading-7">
+        For local backend development, ensure the frontend has
+        <code>NEXT_PUBLIC_API_BASE_URL</code> configured. The frontend proxy routes depend
+        on it.
+      </div>

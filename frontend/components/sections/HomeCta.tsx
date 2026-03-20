@@ -32,7 +32,7 @@ export function HomeCta({ variant = "full" }: HomeCtaProps) {
               Get Started Now
             </Link>
             <Link
-              href="/pricing"
+              href="/services"
               className={`flex cursor-pointer items-center justify-center rounded-lg border border-slate-700 bg-slate-800 font-bold text-white transition-colors hover:bg-slate-700 ${isCompact ? "h-12 min-w-[180px] px-6 text-base" : "h-14 min-w-[200px] px-8 text-lg"}`}
             >
               Talk to Sales

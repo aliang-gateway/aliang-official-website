@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import ThemeToggle from "@/app/components/ThemeToggle";
 import { MobileMenu } from "@/components/ui/MobileMenu";
 import { cn } from "@/lib/utils";
 
@@ -53,14 +54,14 @@ export function SiteHeader() {
 
   return (
     <>
-    <header className={cn(
-      "sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-[var(--stitch-border)] px-6 backdrop-blur-md md:px-20",
-      isHome
-        ? "bg-white py-4 dark:bg-slate-900"
-        : isCompactHome
-          ? "bg-white py-3 dark:bg-slate-900"
-          : "bg-white/80 py-4 dark:bg-[var(--stitch-bg)]/80"
-    )}>
+      <header className={cn(
+        "sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-[var(--stitch-border)] px-6 backdrop-blur-md md:px-20",
+        isHome
+          ? "bg-white py-4 dark:bg-slate-900"
+          : isCompactHome
+            ? "bg-white py-3 dark:bg-slate-900"
+            : "bg-white/80 py-4 dark:bg-[var(--stitch-bg)]/80"
+      )}>
       <div className="flex items-center gap-8">
         <Link href="/" className="flex items-center gap-3">
           {isServices ? (
@@ -75,10 +76,12 @@ export function SiteHeader() {
               <MaterialIcon name="hub" size={isCompactHome ? 18 : 20} />
             </div>
           )}
-          <h2 className={cn(
-            "font-bold leading-tight tracking-tight text-[var(--stitch-text)]",
-            isCompactHome ? "text-lg" : "text-xl"
-          )}>
+          <h2
+            className={cn(
+              "font-bold leading-tight tracking-tight text-[var(--stitch-text)]",
+              isCompactHome ? "text-lg" : "text-xl"
+            )}
+          >
             {brandLabel}
           </h2>
         </Link>
@@ -104,14 +107,27 @@ export function SiteHeader() {
       <div className="flex flex-1 items-center justify-end gap-3 md:gap-6">
         {showSearch && (
           <label className="hidden lg:flex items-center relative min-w-40 max-w-64">
-            <MaterialIcon name="search" size={18} className="absolute left-3 text-[var(--stitch-text-muted)]" />
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="absolute left-3 size-[18px] text-[var(--stitch-text-muted)]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.65" y1="16.65" x2="21" y2="21" />
+            </svg>
             <input
-              className="w-full rounded-lg border border-[var(--stitch-border)] bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)] dark:bg-slate-800"
+              className="w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] py-2 pl-10 pr-4 text-sm text-[var(--stitch-text)] outline-none transition-all placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
               placeholder="Search architecture..."
               type="search"
             />
           </label>
         )}
+        <ThemeToggle />
         <Link
           href={primaryCta.href}
           className={cn(
@@ -138,15 +154,15 @@ export function SiteHeader() {
           <MaterialIcon name="menu" size={24} />
         </button>
       </div>
-    </header>
-    <MobileMenu
-      isOpen={isMobileMenuOpen}
-      onClose={() => setIsMobileMenuOpen(false)}
-      activePath={activePath}
-      links={navLinks}
-      primaryAction={primaryCta}
-      secondaryAction={secondaryCta}
-    />
+      </header>
+      <MobileMenu
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        activePath={activePath}
+        links={navLinks}
+        primaryAction={primaryCta}
+        secondaryAction={secondaryCta}
+      />
     </>
   );
 }
