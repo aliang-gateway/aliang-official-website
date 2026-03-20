@@ -49,7 +49,7 @@ export function MobileMenu({ isOpen, onClose, activePath }: MobileMenuProps) {
     <>
       <div
         className={cn(
-          "fixed inset-0 z-50 bg-black/50 transition-opacity md:hidden",
+          "fixed inset-0 z-50 bg-black/50 dark:bg-black/70 transition-opacity md:hidden",
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         )}
         onClick={handleBackdropClick}

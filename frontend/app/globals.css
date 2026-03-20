@@ -1,5 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined");
 @import "tailwindcss";
-@import 'highlight.js/styles/github-dark.css';
 
 /* ============================================
    STITCH DESIGN SYSTEM TOKENS (NEW)
@@ -38,6 +38,7 @@
   
   /* Semantic Aliases (for Stitch components) */
   --stitch-bg: var(--stitch-bg-light);
+  --stitch-bg-elevated: var(--stitch-bg-elevated-light);
   --stitch-text: var(--stitch-text-primary-light);
   --stitch-text-muted: var(--stitch-text-secondary-light);
   --stitch-border: var(--stitch-border-light);
@@ -65,6 +66,7 @@
 
 .dark {
   --stitch-bg: var(--stitch-bg-dark);
+  --stitch-bg-elevated: var(--stitch-bg-elevated-dark);
   --stitch-text: var(--stitch-text-primary-dark);
   --stitch-text-muted: var(--stitch-text-secondary-dark);
   --stitch-border: var(--stitch-border-dark);
@@ -94,6 +96,82 @@ body {
   background: var(--stitch-bg);
   color: var(--stitch-text);
   font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.stitch-section.pt-24 article :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 6rem;
+}
+
+.hljs {
+  display: block;
+  overflow-x: auto;
+  background: var(--stitch-bg-elevated);
+  color: var(--stitch-text);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--stitch-text-muted);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: #7c3aed;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #0f766e;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-deletion {
+  color: #be123c;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-subst {
+  color: #c4b5fd;
+}
+
+.dark .hljs-string,
+.dark .hljs-title,
+.dark .hljs-name,
+.dark .hljs-type,
+.dark .hljs-attribute,
+.dark .hljs-symbol,
+.dark .hljs-bullet,
+.dark .hljs-addition,
+.dark .hljs-variable,
+.dark .hljs-template-tag,
+.dark .hljs-template-variable {
+  color: #5eead4;
+}
+
+.dark .hljs-number,
+.dark .hljs-literal,
+.dark .hljs-deletion {
+  color: #fda4af;
 }
 
 .portal-shell {
@@ -905,5 +983,7 @@ body {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
 }

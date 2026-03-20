@@ -46,7 +46,7 @@ export function HomeHero() {
                 alt=""
                 width={40}
                 height={40}
-                className="h-10 w-10 rounded-full border-2 border-white dark:border-slate-900"
+                className="h-10 w-10 rounded-full border-2 border-[var(--stitch-bg-elevated)]"
                 unoptimized
               />
               <Image 
@@ -54,7 +54,7 @@ export function HomeHero() {
                 alt=""
                 width={40}
                 height={40}
-                className="h-10 w-10 rounded-full border-2 border-white dark:border-slate-900"
+                className="h-10 w-10 rounded-full border-2 border-[var(--stitch-bg-elevated)]"
                 unoptimized
               />
               <Image 
@@ -62,11 +62,11 @@ export function HomeHero() {
                 alt=""
                 width={40}
                 height={40}
-                className="h-10 w-10 rounded-full border-2 border-white dark:border-slate-900"
+                className="h-10 w-10 rounded-full border-2 border-[var(--stitch-bg-elevated)]"
                 unoptimized
               />
             </div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p className="text-sm font-medium text-[var(--stitch-text-muted)]">
               Trusted by 500+ engineering teams
             </p>
           </div>
@@ -74,32 +74,32 @@ export function HomeHero() {
 
         <div className="relative">
           <div className="absolute -inset-4 rounded-xl bg-[var(--stitch-primary)]/10 blur-3xl"></div>
-          <div className="relative overflow-hidden rounded-lg border border-[var(--stitch-border-dark)] bg-[#0f172a] shadow-xl">
-            <div className="flex items-center gap-1.5 border-b border-[var(--stitch-border-dark)] bg-slate-800/50 px-4 py-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-red-500/50"></div>
-              <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/50"></div>
-              <div className="h-2.5 w-2.5 rounded-full bg-green-500/50"></div>
-              <div className="ml-3 text-[9px] font-mono uppercase tracking-widest text-slate-500">
+          <div className="relative overflow-hidden rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] shadow-xl">
+            <div className="flex items-center gap-1.5 border-b border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 py-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-red-500/50 dark:bg-red-500/70"></div>
+              <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/50 dark:bg-yellow-500/70"></div>
+              <div className="h-2.5 w-2.5 rounded-full bg-green-500/50 dark:bg-green-500/70"></div>
+              <div className="ml-3 text-[9px] font-mono uppercase tracking-widest text-[var(--stitch-text-muted)]">
                 ai-gateway
               </div>
             </div>
-            <div className="space-y-1.5 p-5 font-mono text-[11px] text-slate-300 md:text-xs">
+            <div className="space-y-1.5 p-5 font-mono text-[11px] text-[var(--stitch-text)] md:text-xs">
               <div className="flex gap-2">
                 <span className="text-[var(--stitch-primary)]">$</span>
                 <span>curl -X POST https://api.aliang.ai/v1/chat</span>
               </div>
-              <div className="flex gap-2 text-slate-500">
+              <div className="flex gap-2 text-[var(--stitch-text-muted)]">
                 <span>&gt;</span>
                 <span>Model: claude-3-5-sonnet</span>
               </div>
               <div className="pt-2 text-[var(--stitch-primary)]">
                 {"// Response received in 142ms"}
               </div>
-              <div className="text-green-400">{"{"}</div>
-              <div className="pl-4 text-green-400">"status": "success",</div>
-              <div className="pl-4 text-green-400">"provider": "anthropic-official",</div>
-              <div className="pl-4 text-green-400">"latency": "142ms"</div>
-              <div className="text-green-400">{"}"}</div>
+              <div className="text-emerald-600 dark:text-emerald-300">{"{"}</div>
+              <div className="pl-4 text-emerald-600 dark:text-emerald-300">"status": "success",</div>
+              <div className="pl-4 text-emerald-600 dark:text-emerald-300">"provider": "anthropic-official",</div>
+              <div className="pl-4 text-emerald-600 dark:text-emerald-300">"latency": "142ms"</div>
+              <div className="text-emerald-600 dark:text-emerald-300">{"}"}</div>
             </div>
           </div>
         </div>

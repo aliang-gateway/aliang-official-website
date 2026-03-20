@@ -99,7 +99,7 @@ export function SiteFooter() {
 
       <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-[var(--stitch-border)] pt-8 md:flex-row">
         <div className="flex items-center gap-3">
-          <div className="flex size-7 items-center justify-center rounded bg-[var(--stitch-primary)] text-white">
+          <div className="flex size-7 items-center justify-center rounded bg-[var(--stitch-primary)] text-white dark:text-white">
             <MaterialIcon name="hub" size={18} />
           </div>
           <span className="text-sm font-medium text-[var(--stitch-text)]">

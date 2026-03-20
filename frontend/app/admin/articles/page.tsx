@@ -439,7 +439,7 @@ export default function AdminArticlesPage() {
         </p>
         {authBlocked ? (
           <div
-            className="rounded-xl border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300"
+            className="rounded-xl border border-red-400/40 dark:border-red-400/60 bg-red-500/10 dark:bg-red-500/20 p-3 text-sm text-red-700 dark:text-red-300"
             role="alert"
           >
             Blocked workflow: {authBlocked}
@@ -447,7 +447,7 @@ export default function AdminArticlesPage() {
         ) : null}
         {globalSuccess ? (
           <div
-            className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300"
+            className="rounded-xl border border-emerald-400/40 dark:border-emerald-400/60 bg-emerald-500/10 dark:bg-emerald-500/20 p-3 text-sm text-emerald-700 dark:text-emerald-300"
             role="status"
           >
             {globalSuccess}
@@ -455,7 +455,7 @@ export default function AdminArticlesPage() {
         ) : null}
         {listError ? (
           <div
-            className="rounded-xl border border-amber-400/45 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300"
+            className="rounded-xl border border-amber-400/45 dark:border-amber-400/60 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300"
             role="alert"
           >
             {listError}
@@ -499,8 +499,8 @@ export default function AdminArticlesPage() {
                         <span
                           className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                             isPublished
-                              ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
-                              : "bg-slate-500/20 text-slate-700 dark:text-slate-300"
+                              ? "bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                              : "bg-[var(--stitch-text-muted)]/20 text-[var(--stitch-text-muted)]"
                           }`}
                         >
                           {article.status}
@@ -529,7 +529,7 @@ export default function AdminArticlesPage() {
                           </button>
                           <button
                             type="button"
-                            className="cursor-pointer rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300"
+                            className="cursor-pointer rounded-xl border border-red-400/40 dark:border-red-400/60 bg-red-500/10 dark:bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300"
                             disabled={isBlocked || isRowBusy}
                             onClick={() => void handleDelete(article)}
                           >
@@ -566,7 +566,7 @@ export default function AdminArticlesPage() {
         ) : null}
         {formError ? (
           <div
-            className="rounded-xl border border-amber-400/45 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300"
+            className="rounded-xl border border-amber-400/45 dark:border-amber-400/60 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300"
             role="alert"
           >
             {formError}

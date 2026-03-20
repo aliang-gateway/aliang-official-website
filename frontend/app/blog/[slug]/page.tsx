@@ -97,7 +97,7 @@ export default async function BlogSlugDetailPage({
 
       <header className="space-y-4">
         <div className="flex items-center gap-3">
-          <span className="px-3 py-1 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm font-medium rounded-full">
+          <span className="px-3 py-1 bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-sm font-medium rounded-full">
             {article.tag}
           </span>
           <span className="text-[var(--portal-muted)] text-sm">{formatPublishedDate(article.published_at)}</span>

@@ -26,6 +26,39 @@ const platforms = [
   },
 ];
 
+function PlatformIcon({ name }: { name: string }) {
+  if (name === "laptop_mac") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="size-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="5" width="16" height="11" rx="1.5" />
+        <path d="M2.5 19h19" />
+      </svg>
+    );
+  }
+
+  if (name === "window") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="size-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="1.5" />
+        <path d="M3 10h18" />
+        <path d="M12 10v10" />
+      </svg>
+    );
+  }
+
+  if (name === "terminal") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="size-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="1.5" />
+        <path d="M7 9l3 3-3 3" />
+        <path d="M12.5 15H17" />
+      </svg>
+    );
+  }
+
+  return <MaterialIcon name={name} size={40} className="text-[var(--stitch-text)] transition-colors group-hover:text-white" />;
+}
+
 const pricingPlans = [
   {
     name: "Free",
@@ -158,7 +191,7 @@ export default function ServicesPage() {
                 className="group rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 text-center transition-all hover:border-[var(--stitch-primary)]"
               >
                 <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-white shadow-sm transition-all group-hover:bg-[var(--stitch-primary)] group-hover:text-white dark:bg-slate-700">
-                  <MaterialIcon name={platform.icon} size={40} className="text-[var(--stitch-text)] transition-colors group-hover:text-white" />
+                  <PlatformIcon name={platform.icon} />
                 </div>
                 <h3 className="mb-2 text-xl font-bold text-[var(--stitch-text)]">{platform.name}</h3>
                 <p className="mb-6 text-sm text-[var(--stitch-text-muted)]">{platform.description}</p>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import ThemeToggle from "@/app/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -17,10 +18,13 @@ export function SiteHeader() {
   const showSearch = pathname === "/blog";
 
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-[var(--stitch-border)] bg-white/80 px-6 py-4 backdrop-blur-md dark:bg-[var(--stitch-bg)]/80 md:px-20">
+    <header
+      className="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-[var(--stitch-border)] px-6 py-4 backdrop-blur-md md:px-20"
+      style={{ backgroundColor: "color-mix(in srgb, var(--stitch-bg) 80%, transparent)" }}
+    >
       <div className="flex items-center gap-8">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-[var(--stitch-primary)] text-white">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-[var(--stitch-primary)] text-white dark:text-white">
             <MaterialIcon name="hub" size={20} />
           </div>
           <h2 className="text-xl font-bold leading-tight tracking-tight text-[var(--stitch-text)]">
@@ -49,17 +53,30 @@ export function SiteHeader() {
       <div className="flex flex-1 justify-end gap-6 items-center">
         {showSearch && (
           <label className="hidden lg:flex items-center relative min-w-40 max-w-64">
-            <MaterialIcon name="search" size={18} className="absolute left-3 text-[var(--stitch-text-muted)]" />
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="absolute left-3 size-[18px] text-[var(--stitch-text-muted)]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.65" y1="16.65" x2="21" y2="21" />
+            </svg>
             <input
-              className="w-full rounded-lg border border-[var(--stitch-border)] bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)] dark:bg-slate-800"
+              className="w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] py-2 pl-10 pr-4 text-sm text-[var(--stitch-text)] outline-none transition-all placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
               placeholder="Search architecture..."
               type="search"
             />
           </label>
         )}
+        <ThemeToggle />
         <Link
           href="/account"
-          className="flex h-10 min-w-[100px] cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] px-6 text-sm font-bold text-white shadow-sm transition-all hover:bg-[var(--stitch-primary)]/90"
+          className="flex h-10 min-w-[100px] cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] px-6 text-sm font-bold text-white dark:text-white shadow-sm transition-all hover:bg-[var(--stitch-primary)]/90"
         >
           Login
         </Link>

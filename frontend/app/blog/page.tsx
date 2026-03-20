@@ -229,7 +229,7 @@ export default function BlogPage() {
                 <span>Explore the Radar</span>
                 <MaterialIcon name="explore" size={20} />
               </button>
-              <button type="button" className="flex items-center gap-2 rounded-lg h-12 px-8 font-bold hover:bg-white/10 transition-all border backdrop-blur-sm" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--stitch-text)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+              <button type="button" className="flex items-center gap-2 rounded-lg h-12 px-8 font-bold hover:bg-[var(--stitch-bg-elevated)] transition-all border backdrop-blur-sm" style={{ backgroundColor: 'var(--stitch-bg-elevated)', color: 'var(--stitch-text)', borderColor: 'var(--stitch-border)' }}>
                 <span>Methodology</span>
               </button>
             </div>
@@ -268,13 +268,13 @@ export default function BlogPage() {
             <button type="button" className="flex flex-col items-center py-4 border-b-2 font-bold text-sm tracking-wide" style={{ borderColor: 'var(--stitch-primary)', color: 'var(--stitch-text)' }}>
               All Publications
             </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
+            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
               AI Gateways
             </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
+            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
               Networking
             </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
+            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
               Security
             </button>
           </div>
@@ -377,16 +377,16 @@ export default function BlogPage() {
         )}
 
         <div className="flex items-center justify-center mt-16 gap-2">
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
-            <MaterialIcon name="chevron_left" size={18} />
+          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
+            <span aria-hidden="true" className="text-lg leading-none">‹</span>
           </button>
           <button type="button" className="size-10 flex items-center justify-center rounded-lg text-white font-bold text-sm" style={{ backgroundColor: 'var(--stitch-primary)' }}>1</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent transition-colors font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800" style={{ color: 'var(--stitch-text-muted)' }}>2</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent transition-colors font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800" style={{ color: 'var(--stitch-text-muted)' }}>3</button>
+          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>2</button>
+          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>3</button>
           <span className="px-2" style={{ color: 'var(--stitch-text-muted)' }}>...</span>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent transition-colors font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800" style={{ color: 'var(--stitch-text-muted)' }}>12</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
-            <MaterialIcon name="chevron_right" size={18} />
+          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>12</button>
+          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
+            <span aria-hidden="true" className="text-lg leading-none">›</span>
           </button>
         </div>
       </div>
@@ -425,7 +425,7 @@ export default function BlogPage() {
               <h3 className="text-xl font-bold" style={{ color: 'var(--stitch-text)' }}>{selectedBlip.name} 相关博客</h3>
               <button
                 type="button"
-                className="rounded-full p-2 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="rounded-full p-2 transition-colors hover:bg-[var(--stitch-bg-elevated)]"
                 style={{ color: 'var(--stitch-text-muted)' }}
                 aria-label="关闭弹窗"
                 ref={closeButtonRef}

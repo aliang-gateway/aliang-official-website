@@ -4,22 +4,45 @@ export const metadata = {
     "Documentation for using the ALiang A, including pricing, account setup, and API request basics.",
 };
 
-## Docs
+<div className="stitch-section pt-24">
+  <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8">
+    <article className="mx-auto w-full max-w-3xl space-y-4">
+      <h2>Docs</h2>
 
-This documentation section is authored in MDX so new documentation pages can be added without hardcoding JSX placeholders.
+      <div className="text-[var(--portal-muted)] leading-7">
+        This documentation section is authored in MDX so new documentation pages can be
+        added without hardcoding JSX placeholders.
+      </div>
 
-### Getting started
+      <h3>Getting started</h3>
 
-1. Create a user from the **Account** page.
-2. Issue an API key and store it securely.
-3. Use the key with `X-API-Key` for protected backend routes.
+      <ol>
+        <li>Create a user from the <strong>Account</strong> page.</li>
+        <li>Issue an API key and store it securely.</li>
+        <li>Use the key with <code>X-API-Key</code> for protected backend routes.</li>
+      </ol>
 
-### Public pricing
+      <h3>Public pricing</h3>
 
-- Browse available tiers on **Pricing**.
-- Run a tier estimate to preview configured included units and total micros-based pricing.
-- Missing unit prices are called out in the UI so incomplete pricing configuration is visible.
+      <ul>
+        <li>Browse available tiers on <strong>Pricing</strong>.</li>
+        <li>
+          Run a tier estimate to preview configured included units and total micros-based
+          pricing.
+        </li>
+        <li>
+          Missing unit prices are called out in the UI so incomplete pricing configuration
+          is visible.
+        </li>
+      </ul>
 
-### API quick note
+      <h3>API quick note</h3>
 
-For local backend development, ensure the frontend has `NEXT_PUBLIC_API_BASE_URL` configured. The frontend proxy routes depend on it.
+      <div className="text-[var(--portal-muted)] leading-7">
+        For local backend development, ensure the frontend has
+        <code>NEXT_PUBLIC_API_BASE_URL</code> configured. The frontend proxy routes depend
+        on it.
+      </div>
+    </article>
+  </div>
+</div>

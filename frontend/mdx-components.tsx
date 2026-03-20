@@ -68,7 +68,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     tbody: ({ className = "", ...props }) => <tbody className={`${className}`.trim()} {...props} />,
     tr: ({ className = "", ...props }) => (
       <tr
-        className={`border-b border-[var(--portal-line)] odd:bg-transparent even:bg-black/5 dark:even:bg-white/5 ${className}`.trim()}
+        className={`border-b border-[var(--portal-line)] odd:bg-transparent dark:odd:bg-transparent even:bg-black/5 dark:even:bg-white/5 ${className}`.trim()}
         {...props}
       />
     ),
@@ -83,7 +83,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     blockquote: ({ className = "", ...props }) => (
       <blockquote
-        className={`my-4 border-l-4 border-emerald-500/70 pl-4 py-1 text-[var(--portal-muted)] italic bg-black/5 dark:bg-white/5 rounded-r-lg ${className}`.trim()}
+        className={`my-4 border-l-4 border-emerald-500/70 dark:border-emerald-400/70 pl-4 py-1 text-[var(--portal-muted)] italic bg-black/5 dark:bg-white/5 rounded-r-lg ${className}`.trim()}
         {...props}
       />
     ),
