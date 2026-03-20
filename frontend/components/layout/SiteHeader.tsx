@@ -57,10 +57,10 @@ export function SiteHeader() {
       <header className={cn(
         "sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-[var(--stitch-border)] px-6 backdrop-blur-md md:px-20",
         isHome
-          ? "bg-white py-4 dark:bg-slate-900"
+          ? "bg-[var(--stitch-bg)]/95 py-4"
           : isCompactHome
-            ? "bg-white py-3 dark:bg-slate-900"
-            : "bg-white/80 py-4 dark:bg-[var(--stitch-bg)]/80"
+            ? "bg-[var(--stitch-bg)]/95 py-3"
+            : "bg-[var(--stitch-bg)]/80 py-4"
       )}>
       <div className="flex items-center gap-8">
         <Link href="/" className="flex items-center gap-3">

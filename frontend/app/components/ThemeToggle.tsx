@@ -2,25 +2,70 @@
 
 import { useEffect, useState } from "react";
 
+type ThemeMode = "system" | "light" | "dark";
+
+function isThemeMode(value: string | null): value is ThemeMode {
+  return value === "system" || value === "light" || value === "dark";
+}
+
+function applyDocumentTheme(isDark: boolean) {
+  document.documentElement.classList.toggle("dark", isDark);
+}
+
 export default function ThemeToggle() {
-  const [isDark, setIsDark] = useState(true);
+  const [mode, setMode] = useState<ThemeMode>("system");
+  const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const stored = localStorage.getItem("theme");
+    const initialMode: ThemeMode = isThemeMode(stored) ? stored : "system";
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initialDark = stored ? stored === "dark" : prefersDark;
+    const initialDark = initialMode === "system" ? prefersDark : initialMode === "dark";
+
+    setMode(initialMode);
     setIsDark(initialDark);
-    document.documentElement.classList.toggle("dark", initialDark);
+    applyDocumentTheme(initialDark);
   }, []);
 
+  useEffect(() => {
+    if (!mounted || mode !== "system") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDark(event.matches);
+      applyDocumentTheme(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, [mounted, mode]);
+
   const toggleTheme = () => {
-    const newDark = !isDark;
+    const nextMode: ThemeMode = mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const newDark = nextMode === "system" ? prefersDark : nextMode === "dark";
+
+    setMode(nextMode);
     setIsDark(newDark);
-    localStorage.setItem("theme", newDark ? "dark" : "light");
-    document.documentElement.classList.toggle("dark", newDark);
+    localStorage.setItem("theme", nextMode);
+    applyDocumentTheme(newDark);
   };
+
+  const label =
+    mode === "system"
+      ? `Follow system (${isDark ? "dark" : "light"})`
+      : mode === "dark"
+        ? "Dark mode"
+        : "Light mode";
 
   if (!mounted) {
     return (
@@ -40,9 +85,25 @@ export default function ThemeToggle() {
       type="button"
       onClick={toggleTheme}
       className="theme-toggle"
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      title={label}
+      aria-label={`Theme mode: ${label}. Click to switch.`}
     >
-      {isDark ? (
+      {mode === "system" ? (
+        <svg
+          className="theme-toggle-icon"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9.75 17L8.5 20.5M14.25 17l1.25 3.5M4 5.75h16a1 1 0 011 1V15a1 1 0 01-1 1H4a1 1 0 01-1-1V6.75a1 1 0 011-1z"
+          />
+        </svg>
+      ) : isDark ? (
         <svg
           className="theme-toggle-icon"
           fill="none"
