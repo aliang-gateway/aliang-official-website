@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g main.go -o docs --parseDependency --parseInternal
+
 import (
 	"context"
 	"encoding/json"
@@ -8,11 +10,13 @@ import (
 	"net/http"
 	"time"
 
+	_ "ai-api-portal/backend/docs"
 	"ai-api-portal/backend/internal/config"
 	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/httpapi"
 	"ai-api-portal/backend/internal/mailer"
 	"ai-api-portal/backend/internal/user"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 type healthResponse struct {
@@ -24,6 +28,11 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
 }
+
+// @title AI API Portal Backend API
+// @version 1.0
+// @description API documentation for AI API Portal backend service.
+// @BasePath /
 
 func main() {
 	configPath := flag.String("config", "./config.yaml", "path to backend YAML config file")
@@ -77,6 +86,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.Handle("/swagger/", httpSwagger.Handler())
 	httpapi.RegisterRoutesWithOptions(mux, database, httpapi.RoutesOptions{
 		UserService:          userSvc,
 		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,

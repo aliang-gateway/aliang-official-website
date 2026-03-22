@@ -1,0 +1,345 @@
+basePath: /
+definitions:
+  httpapi.errorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  httpapi.listPublicTiersResponse:
+    properties:
+      tiers:
+        items:
+          $ref: '#/definitions/httpapi.publicTierResponse'
+        type: array
+    type: object
+  httpapi.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  httpapi.loginResponse:
+    properties:
+      session_token:
+        type: string
+      user:
+        $ref: '#/definitions/httpapi.loginUserResponse'
+    type: object
+  httpapi.loginUserResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  httpapi.publicArticleDTO:
+    properties:
+      author_avatar_url:
+        type: string
+      author_name:
+        type: string
+      cover_image_url:
+        type: string
+      excerpt:
+        type: string
+      published_at:
+        type: string
+      read_time:
+        type: string
+      slug:
+        type: string
+      tag:
+        type: string
+      title:
+        type: string
+    type: object
+  httpapi.publicArticleDetailDTO:
+    properties:
+      author_avatar_url:
+        type: string
+      author_name:
+        type: string
+      cover_image_url:
+        type: string
+      excerpt:
+        type: string
+      mdx_body:
+        type: string
+      published_at:
+        type: string
+      read_time:
+        type: string
+      slug:
+        type: string
+      tag:
+        type: string
+      title:
+        type: string
+    type: object
+  httpapi.publicArticleDetailResponse:
+    properties:
+      article:
+        $ref: '#/definitions/httpapi.publicArticleDetailDTO'
+    type: object
+  httpapi.publicArticleListResponse:
+    properties:
+      articles:
+        items:
+          $ref: '#/definitions/httpapi.publicArticleDTO'
+        type: array
+    type: object
+  httpapi.publicEstimateItemResponse:
+    properties:
+      code:
+        type: string
+      currency:
+        type: string
+      included_units:
+        type: integer
+      line_total_micros:
+        type: integer
+      missing_price:
+        type: boolean
+      name:
+        type: string
+      price_per_unit_micros:
+        type: integer
+      unit:
+        type: string
+    type: object
+  httpapi.publicEstimateRequest:
+    properties:
+      tier_code:
+        type: string
+    type: object
+  httpapi.publicEstimateResponse:
+    properties:
+      currency:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/httpapi.publicEstimateItemResponse'
+        type: array
+      tier_code:
+        type: string
+      tier_name:
+        type: string
+      total_price_micros:
+        type: integer
+    type: object
+  httpapi.publicTierItemResponse:
+    properties:
+      code:
+        type: string
+      included_units:
+        type: integer
+      name:
+        type: string
+      unit:
+        type: string
+    type: object
+  httpapi.publicTierResponse:
+    properties:
+      code:
+        type: string
+      default_items:
+        items:
+          $ref: '#/definitions/httpapi.publicTierItemResponse'
+        type: array
+      name:
+        type: string
+    type: object
+  httpapi.registerRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: API documentation for AI API Portal backend service.
+  title: AI API Portal Backend API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Login with email and password and receive session token.
+      parameters:
+      - description: Login payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/httpapi.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpapi.loginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: Login
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user account.
+      parameters:
+      - description: Register payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/httpapi.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: Register user
+      tags:
+      - auth
+  /public/articles:
+    get:
+      description: List all published articles for public website.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpapi.publicArticleListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: List published articles
+      tags:
+      - public
+  /public/articles/{slug}:
+    get:
+      description: Get one published article by slug.
+      parameters:
+      - description: Article slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpapi.publicArticleDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: Get published article
+      tags:
+      - public
+  /public/estimate:
+    post:
+      consumes:
+      - application/json
+      description: Estimate total default price for a tier based on active unit prices.
+      parameters:
+      - description: Estimate payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/httpapi.publicEstimateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpapi.publicEstimateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: Estimate tier price
+      tags:
+      - public
+  /public/tiers:
+    get:
+      description: List all public subscription tiers and included default service
+        items.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpapi.listPublicTiersResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpapi.errorResponse'
+      summary: List public tiers
+      tags:
+      - public
+swagger: "2.0"

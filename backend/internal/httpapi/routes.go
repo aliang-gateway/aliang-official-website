@@ -491,6 +491,19 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusCreated, createUserResponse{ID: id, Email: payload.Email, Name: payload.Name, Role: payload.Role, SessionToken: plaintextSessionToken})
 }
 
+// handleRegister godoc
+// @Summary Register user
+// @Description Register a new user account.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body registerRequest true "Register payload"
+// @Success 201 {object} map[string]any
+// @Failure 400 {object} errorResponse
+// @Failure 403 {object} errorResponse
+// @Failure 409 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /auth/register [post]
 func (r *routes) handleRegister(w http.ResponseWriter, req *http.Request) {
 	var payload registerRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -578,6 +591,19 @@ func (r *routes) handleResetPassword(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"reset": true})
 }
 
+// handleLogin godoc
+// @Summary Login
+// @Description Login with email and password and receive session token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body loginRequest true "Login payload"
+// @Success 200 {object} loginResponse
+// @Failure 400 {object} errorResponse
+// @Failure 401 {object} errorResponse
+// @Failure 403 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /auth/login [post]
 func (r *routes) handleLogin(w http.ResponseWriter, req *http.Request) {
 	var payload loginRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -1351,6 +1377,14 @@ func (r *routes) handleAdminDeactivateUnitPrice(w http.ResponseWriter, req *http
 	writeJSON(w, http.StatusOK, deactivateUnitPriceResponse{Deactivated: true})
 }
 
+// handlePublicTiers godoc
+// @Summary List public tiers
+// @Description List all public subscription tiers and included default service items.
+// @Tags public
+// @Produce json
+// @Success 200 {object} listPublicTiersResponse
+// @Failure 500 {object} errorResponse
+// @Router /public/tiers [get]
 func (r *routes) handlePublicTiers(w http.ResponseWriter, req *http.Request) {
 	const query = `
 		SELECT
@@ -1416,6 +1450,18 @@ func (r *routes) handlePublicTiers(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, listPublicTiersResponse{Tiers: tiers})
 }
 
+// handlePublicEstimate godoc
+// @Summary Estimate tier price
+// @Description Estimate total default price for a tier based on active unit prices.
+// @Tags public
+// @Accept json
+// @Produce json
+// @Param body body publicEstimateRequest true "Estimate payload"
+// @Success 200 {object} publicEstimateResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /public/estimate [post]
 func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) {
 	var payload publicEstimateRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -1511,6 +1557,14 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 	writeJSON(w, http.StatusOK, response)
 }
 
+// handlePublicListArticles godoc
+// @Summary List published articles
+// @Description List all published articles for public website.
+// @Tags public
+// @Produce json
+// @Success 200 {object} publicArticleListResponse
+// @Failure 500 {object} errorResponse
+// @Router /public/articles [get]
 func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
 	articles, err := r.articleSvc.ListPublishedArticles(req.Context())
 	if err != nil {
@@ -1544,6 +1598,16 @@ func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Reque
 	_ = json.NewEncoder(w).Encode(response)
 }
 
+// handlePublicGetArticle godoc
+// @Summary Get published article
+// @Description Get one published article by slug.
+// @Tags public
+// @Produce json
+// @Param slug path string true "Article slug"
+// @Success 200 {object} publicArticleDetailResponse
+// @Failure 404 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /public/articles/{slug} [get]
 func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request) {
 	slug := strings.TrimSpace(req.PathValue("slug"))
 	if slug == "" {
