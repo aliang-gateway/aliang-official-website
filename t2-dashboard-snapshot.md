@@ -1,0 +1,196 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "ALiang Gateway" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7]: hub
+          - heading "ALiang Gateway" [level=2] [ref=e8]
+        - navigation [ref=e9]:
+          - link "Blog" [ref=e10] [cursor=pointer]:
+            - /url: /blog
+          - link "Document" [ref=e11] [cursor=pointer]:
+            - /url: /docs
+          - link "Service" [ref=e12] [cursor=pointer]:
+            - /url: /services
+      - generic [ref=e13]:
+        - 'button "Theme mode: Follow system (light). Click to switch." [ref=e14] [cursor=pointer]':
+          - img [ref=e15]
+        - link "Login" [ref=e17] [cursor=pointer]:
+          - /url: /login
+    - main [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - paragraph [ref=e22]: Simplified home
+            - heading "Usage dashboard" [level=1] [ref=e23]
+            - paragraph [ref=e24]: A lightweight home for request flow, token usage, package status, balance, and the next actions your account needs.
+          - generic [ref=e25]:
+            - button "Refresh" [ref=e26] [cursor=pointer]
+            - button "Sign out" [ref=e27] [cursor=pointer]
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]:
+              - article [ref=e31]:
+                - generic [ref=e32]:
+                  - generic [ref=e33]:
+                    - paragraph [ref=e34]: Request trend
+                    - heading "Traffic pulse" [level=2] [ref=e35]
+                    - paragraph [ref=e36]: Daily request rhythm for the last visible buckets. Empty-safe when upstream logs are incomplete.
+                  - generic [ref=e37]: preview
+                - generic [ref=e38]:
+                  - img [ref=e39]
+                  - generic [ref=e49]:
+                    - generic [ref=e50]: Mar 17
+                    - generic [ref=e51]: Mar 18
+                    - generic [ref=e52]: Mar 19
+                    - generic [ref=e53]: Mar 20
+                    - generic [ref=e54]: Mar 21
+                    - generic [ref=e55]: Mar 22
+                    - generic [ref=e56]: Mar 23
+              - article [ref=e57]:
+                - generic [ref=e58]:
+                  - generic [ref=e59]:
+                    - paragraph [ref=e60]: Token trend
+                    - heading "Consumption curve" [level=2] [ref=e61]
+                    - paragraph [ref=e62]: A lightweight view of token movement, kept inline to preserve the current dashboard rhythm.
+                  - generic [ref=e63]: preview
+                - generic [ref=e64]:
+                  - img [ref=e65]
+                  - generic [ref=e75]:
+                    - generic [ref=e76]: Mar 17
+                    - generic [ref=e77]: Mar 18
+                    - generic [ref=e78]: Mar 19
+                    - generic [ref=e79]: Mar 20
+                    - generic [ref=e80]: Mar 21
+                    - generic [ref=e81]: Mar 22
+                    - generic [ref=e82]: Mar 23
+            - generic [ref=e83]:
+              - article [ref=e84]:
+                - generic [ref=e85]:
+                  - generic [ref=e86]:
+                    - paragraph [ref=e87]: Package
+                    - heading "No package yet" [level=2] [ref=e88]
+                    - paragraph [ref=e89]: Start with a package or prepaid balance to unlock routed usage.
+                  - generic [ref=e90]: unconfigured
+                - paragraph [ref=e91]: No active quota has been loaded yet.
+              - article [ref=e92]:
+                - generic [ref=e93]:
+                  - paragraph [ref=e94]: Balance
+                  - heading "0.00 CNY" [level=2] [ref=e95]
+                  - paragraph [ref=e96]: Keep prepaid funds ready for burst usage and package extensions.
+                - generic [ref=e97]:
+                  - generic [ref=e98]:
+                    - paragraph [ref=e99]: Currency
+                    - paragraph [ref=e100]: CNY
+                  - generic [ref=e101]:
+                    - paragraph [ref=e102]: Updated
+                    - paragraph [ref=e103]: Not synced
+          - generic [ref=e104]:
+            - article [ref=e105]:
+              - generic [ref=e106]:
+                - paragraph [ref=e107]: Config & API key
+                - heading "Client setup entry" [level=2] [ref=e108]
+                - paragraph [ref=e109]: Prepare your single user key for Claude Code, Codex, OpenAI, and Gemini templates from one entry point.
+              - generic [ref=e110]: Template switching, copy actions, and sensitive-key display remain intentionally deferred to the dedicated config modal task.
+              - generic [ref=e111]:
+                - button "Open config setup" [disabled] [ref=e112] [cursor=pointer]
+                - link "Manage session & keys" [ref=e113] [cursor=pointer]:
+                  - /url: /account
+            - article [ref=e114]:
+              - generic [ref=e115]:
+                - paragraph [ref=e116]: Purchase
+                - heading "Top up or extend" [level=2] [ref=e117]
+                - paragraph [ref=e118]: One entry surface for package purchase durations and prepaid redeem-code top-up.
+              - generic [ref=e119]:
+                - generic [ref=e120]:
+                  - paragraph [ref=e121]: Package durations
+                  - generic [ref=e122]:
+                    - generic [ref=e123]: 1 week
+                    - generic [ref=e124]: 1 month
+                    - generic [ref=e125]: 3 months
+                  - paragraph [ref=e126]: "Available tiers: No public tiers loaded"
+                - generic [ref=e127]:
+                  - paragraph [ref=e128]: Prepaid entry
+                  - paragraph [ref=e129]: "Redeem-code top-up endpoint: /api/wallet/redeem"
+                  - paragraph [ref=e130]: "Currency hint: CNY"
+              - button "Open purchase flow" [disabled] [ref=e131] [cursor=pointer]
+            - article [ref=e132]:
+              - generic [ref=e133]:
+                - paragraph [ref=e134]: Ticket feedback
+                - heading "Support entry" [level=2] [ref=e135]
+                - paragraph [ref=e136]: Capture delivery issues, model feedback, or billing questions from a single lightweight starting point.
+              - generic [ref=e137]: Submission fields and success/error handling are intentionally deferred to the dedicated ticket task.
+              - button "Create feedback ticket" [disabled] [ref=e138] [cursor=pointer]
+            - article [ref=e139]:
+              - generic [ref=e140]:
+                - paragraph [ref=e141]: Details
+                - heading "Open deeper records" [level=2] [ref=e142]
+                - paragraph [ref=e143]: Move into the dedicated details page for request history, token trend depth, and API frequency analysis.
+              - link "Go to details page" [ref=e144] [cursor=pointer]:
+                - /url: /dashboard/details
+    - contentinfo [ref=e145]:
+      - generic [ref=e146]:
+        - generic [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e150]: hub
+            - heading "ALiang AI" [level=2] [ref=e151]
+          - paragraph [ref=e152]: The world's most reliable bridge to professional AI services.
+        - generic [ref=e153]:
+          - heading "Product" [level=4] [ref=e154]
+          - list [ref=e155]:
+            - listitem [ref=e156]:
+              - link "Features" [ref=e157] [cursor=pointer]:
+                - /url: /#features
+            - listitem [ref=e158]:
+              - link "Integrations" [ref=e159] [cursor=pointer]:
+                - /url: /#integrations
+            - listitem [ref=e160]:
+              - link "Pricing" [ref=e161] [cursor=pointer]:
+                - /url: /services
+            - listitem [ref=e162]:
+              - link "API Reference" [ref=e163] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e164]:
+          - heading "Resources" [level=4] [ref=e165]
+          - list [ref=e166]:
+            - listitem [ref=e167]:
+              - link "Documentation" [ref=e168] [cursor=pointer]:
+                - /url: /docs
+            - listitem [ref=e169]:
+              - link "Blog" [ref=e170] [cursor=pointer]:
+                - /url: /blog
+            - listitem [ref=e171]:
+              - link "Support" [ref=e172] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e173]:
+              - link "Status" [ref=e174] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e175]:
+          - heading "Company" [level=4] [ref=e176]
+          - list [ref=e177]:
+            - listitem [ref=e178]:
+              - link "About" [ref=e179] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e180]:
+              - link "Security" [ref=e181] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e182]:
+              - link "Privacy" [ref=e183] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e184]:
+              - link "Terms" [ref=e185] [cursor=pointer]:
+                - /url: "#"
+      - generic [ref=e186]:
+        - paragraph [ref=e187]: © 2024 ALiang AI Services Inc. All rights reserved.
+        - generic [ref=e188]:
+          - link [ref=e189] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e190]: public
+          - link [ref=e191] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e192]: alternate_email
+          - link [ref=e193] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e194]: rss_feed
+  - alert [ref=e195]
