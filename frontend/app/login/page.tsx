@@ -51,7 +51,7 @@ export default function LoginPage() {
       localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
 
       const role = (payload as LoginResponse).user.role;
-      router.replace(role === "admin" ? "/admin" : "/account");
+      router.replace(role === "admin" ? "/admin" : "/dashboard");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Login failed");
     } finally {
