@@ -459,10 +459,12 @@ export default function AccountPage() {
   if (!sessionToken) {
     return (
       <section className="portal-shell flex items-center justify-center" style={{ minHeight: "60vh" }}>
-        <div className="block-card p-8 text-center">
-          <MaterialIcon name="lock" size={40} className="mb-3 text-[var(--stitch-text-muted)]" />
-          <p className="text-[var(--stitch-text-muted)]">Please log in to manage your account.</p>
-          <button type="button" onClick={() => router.replace("/login")} className="btn-primary mt-4">
+        <div className="clay-panel p-10 text-center space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--portal-accent)]/10">
+            <MaterialIcon name="lock" size={28} className="text-[var(--portal-accent)]" />
+          </div>
+          <p className="text-sm text-[var(--portal-muted)]">Please log in to manage your account.</p>
+          <button type="button" onClick={() => router.replace("/login")} className="btn-primary">
             Go to Login
           </button>
         </div>
@@ -473,58 +475,71 @@ export default function AccountPage() {
   if (pageLoading) {
     return (
       <section className="portal-shell flex items-center justify-center" style={{ minHeight: "60vh" }}>
-        <p className="text-sm text-[var(--stitch-text-muted)]">Loading...</p>
+        <div className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--portal-accent)]/30 border-t-[var(--portal-accent)]" />
+          Loading...
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="portal-shell space-y-6">
-      {/* Header */}
-      <div className="clay-panel space-y-2 p-5">
+    <section className="portal-shell space-y-5 py-8">
+      {/* ── Header ── */}
+      <div className="clay-panel space-y-1.5 p-5">
         <h2 className="section-title"><span className="gradient-text">Account</span></h2>
-        <p className="section-subtitle">
-          Manage your profile, API keys, subscription, and security settings.
-        </p>
+        <p className="section-subtitle">Manage your profile, API keys, subscription, and security settings.</p>
       </div>
 
-      {/* Profile overview */}
+      {/* ── Profile ── */}
       <div className="block-card">
-        <h3 className="mb-4 text-lg font-semibold text-emerald-500 dark:text-emerald-400">Profile</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-[var(--stitch-text-muted)]">Name</p>
-            <p className="mt-1 text-sm font-semibold text-[var(--stitch-text)]">{profile?.name || "—"}</p>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-2xl font-bold text-white" style={{ background: "var(--portal-gradient)" }}>
+              {(profile?.email ?? "?")[0].toUpperCase()}
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--portal-accent)]">
+              {profile?.role ?? "user"}
+            </span>
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-[var(--stitch-text-muted)]">Email</p>
-            <p className="mt-1 text-sm font-semibold text-[var(--stitch-text)]">{profile?.email || "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-[var(--stitch-text-muted)]">Role</p>
-            <p className="mt-1 text-sm font-semibold text-[var(--stitch-text)]">{profile?.role || "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-[var(--stitch-text-muted)]">Balance</p>
-            <p className="mt-1 text-sm font-semibold text-[var(--stitch-text)]">
-              ${typeof profile?.balance === "number" ? profile.balance.toFixed(2) : "—"}
-            </p>
+          {/* Info grid */}
+          <div className="flex-1">
+            <h3 className="mb-3 text-base font-bold text-[var(--portal-ink)]">Profile</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <MetricBox label="Name" value={profile?.name || "\u2014"} />
+              <MetricBox label="Email" value={profile?.email || "\u2014"} />
+              <MetricBox
+                label="Balance"
+                value={typeof profile?.balance === "number" ? `$${profile.balance.toFixed(2)}` : "\u2014"}
+                highlight
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* API Keys */}
-      <div className="block-card">
-        <h3 className="mb-4 text-lg font-semibold text-emerald-500 dark:text-emerald-400">API Keys</h3>
+      {/* ── API Keys ── */}
+      <div className="block-card space-y-5">
+        <h3 className="text-base font-bold text-[var(--portal-ink)]">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs" style={{ background: "var(--portal-gradient)" }}>
+            <MaterialIcon name="vpn_key" size={14} className="text-white" />
+          </span>
+          API Keys
+          {!apiKeyLoading && keyPagination.total > 0 && (
+            <span className="ml-2 text-sm font-normal text-[var(--portal-muted)]">({keyPagination.total})</span>
+          )}
+        </h3>
 
-        <form className="mb-4 flex flex-wrap items-end gap-3" onSubmit={handleCreateApiKey}>
-          <div className="min-w-[160px] flex-1 space-y-1">
-            <label htmlFor="ak-name" className="text-sm font-medium text-[var(--stitch-text)]">Name (optional)</label>
+        {/* Create form */}
+        <form className="clay-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-end" onSubmit={handleCreateApiKey}>
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <label htmlFor="ak-name" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Name</label>
             <input id="ak-name" className="field" type="text" placeholder="e.g. Production" value={keyName} onChange={(e) => setKeyName(e.target.value)} />
           </div>
           {groups.length > 0 && (
-            <div className="min-w-[180px] space-y-1">
-              <label htmlFor="ak-group" className="text-sm font-medium text-[var(--stitch-text)]">Group</label>
+            <div className="min-w-[180px] space-y-1.5">
+              <label htmlFor="ak-group" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Group</label>
               <select
                 id="ak-group"
                 className="field"
@@ -540,65 +555,95 @@ export default function AccountPage() {
               </select>
             </div>
           )}
-          <button type="submit" className="btn-primary">Create Key</button>
+          <button type="submit" className="btn-primary whitespace-nowrap">
+            <MaterialIcon name="add" size={16} className="mr-1" />
+            Create Key
+          </button>
         </form>
 
+        {/* Newly created key alert */}
         {newlyCreatedKey && (
-          <div className="mb-4 rounded-lg border border-[var(--stitch-primary)]/30 bg-[var(--stitch-primary)]/5 p-3 text-sm">
-            <p className="mb-1 font-semibold text-[var(--stitch-primary)]">New API Key (save it now — shown only once)</p>
-            <code className="block break-all rounded bg-[var(--stitch-bg)] px-2 py-1 font-mono text-xs">{newlyCreatedKey}</code>
+          <div className="relative overflow-hidden rounded-xl border border-[var(--portal-accent)]/20 p-4" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02))" }}>
+            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full" style={{ background: "radial-gradient(circle, rgba(16,185,129,0.1), transparent 70%)" }} />
+            <p className="relative mb-2 flex items-center gap-2 text-sm font-bold text-[var(--portal-accent)]">
+              <MaterialIcon name="check_circle" size={16} />
+              New API Key Created
+            </p>
+            <p className="relative mb-2 text-xs text-[var(--portal-muted)]">Save it now — this is the only time the key will be shown.</p>
+            <div className="relative flex items-center gap-2">
+              <code className="flex-1 break-all rounded-lg bg-[var(--portal-ink)]/5 px-3 py-2 font-mono text-xs text-[var(--portal-ink)]">{newlyCreatedKey}</code>
+              <button
+                type="button"
+                className="btn-ghost shrink-0 rounded-lg border border-[var(--portal-line)] px-3 py-2 text-xs font-medium"
+                onClick={() => { navigator.clipboard.writeText(newlyCreatedKey); }}
+              >
+                <MaterialIcon name="content_copy" size={14} />
+              </button>
+            </div>
           </div>
         )}
 
-        {apiKeyError && <p className="mb-3 text-sm text-red-500">{apiKeyError}</p>}
+        {apiKeyError && <p className="rounded-lg bg-red-500/5 px-4 py-2.5 text-sm text-red-500">{apiKeyError}</p>}
 
+        {/* Key list */}
         {apiKeyLoading ? (
-          <p className="text-sm text-[var(--stitch-text-muted)]">Loading API keys...</p>
+          <div className="flex items-center gap-2 py-6 text-sm text-[var(--portal-muted)]">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--portal-accent)]/30 border-t-[var(--portal-accent)]" />
+            Loading API keys...
+          </div>
         ) : apiKeys.length === 0 ? (
-          <p className="text-sm text-[var(--stitch-text-muted)]">No API keys yet. Create one above to get started.</p>
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--portal-accent)]/5">
+              <MaterialIcon name="key_off" size={22} className="text-[var(--portal-muted)]" />
+            </div>
+            <p className="text-sm text-[var(--portal-muted)]">No API keys yet. Create one above to get started.</p>
+          </div>
         ) : (
           <>
             <ul className="space-y-2">
               {apiKeys.map((key) => (
-                <li key={key.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 py-3">
+                <li key={key.id} className="group flex items-center justify-between gap-3 rounded-xl border border-[var(--portal-line)] px-4 py-3 transition-colors hover:border-[var(--portal-accent)]/30" style={{ background: "var(--portal-clay-strong, var(--portal-clay))" }}>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-[var(--stitch-text)] truncate">{key.name || `Key #${key.id}`}</p>
-                      <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{key.name || `Key #${key.id}`}</p>
+                      <span className={`shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                         key.status === "active"
                           ? "bg-emerald-500/10 text-emerald-500"
                           : "bg-red-500/10 text-red-500"
                       }`}>
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${key.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
                         {key.status}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-xs text-[var(--stitch-text-muted)]">
-                      {key.group_name} · ID: {key.id} · Created: {key.created_at?.split("T")[0] ?? "—"}
-                    </p>
-                    {(key.quota > 0 || key.expires_at) && (
-                      <p className="mt-0.5 text-xs text-[var(--stitch-text-muted)]">
-                        {key.quota > 0 && <span>Quota: ${key.quota_used.toFixed(2)} / ${key.quota.toFixed(2)}</span>}
-                        {key.quota > 0 && key.expires_at && " · "}
-                        {key.expires_at && <span>Expires: {key.expires_at.split("T")[0]}</span>}
-                      </p>
-                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--portal-muted)]">
+                      <span className="flex items-center gap-1">
+                        <MaterialIcon name="group" size={12} />
+                        {key.group_name}
+                      </span>
+                      <span>ID: {key.id}</span>
+                      <span>Created: {key.created_at?.split("T")[0] ?? "\u2014"}</span>
+                      {key.quota > 0 && (
+                        <span className="font-mono">${key.quota_used.toFixed(2)} / ${key.quota.toFixed(2)}</span>
+                      )}
+                      {key.expires_at && <span>Expires: {key.expires_at.split("T")[0]}</span>}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
                       onClick={() => void handleToggleApiKey(key.id, key.status)}
-                      className="btn-ghost px-3 py-1.5 text-xs"
+                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)]"
                       title={key.status === "active" ? "Disable key" : "Enable key"}
                     >
-                      <MaterialIcon name={key.status === "active" ? "visibility_off" : "visibility"} size={14} />
+                      <MaterialIcon name={key.status === "active" ? "toggle_on" : "toggle_off"} size={16} className={key.status === "active" ? "text-emerald-500" : "text-red-400"} />
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleDeleteApiKey(key.id)}
-                      className="btn-ghost px-3 py-1.5 text-xs text-red-500 hover:text-red-400"
+                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/5"
                       title="Delete key"
                     >
-                      <MaterialIcon name="delete" size={14} />
+                      <MaterialIcon name="delete_outline" size={16} />
                     </button>
                   </div>
                 </li>
@@ -607,25 +652,27 @@ export default function AccountPage() {
 
             {/* Pagination */}
             {keyPagination.total_pages > 1 && (
-              <div className="mt-4 flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2 pt-2">
                 <button
                   type="button"
                   disabled={!keyPagination.has_prev || apiKeyLoading}
                   onClick={() => void loadApiKeys(keyPagination.page - 1)}
-                  className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-40"
+                  className="btn-ghost rounded-lg border border-[var(--portal-line)] px-4 py-1.5 text-xs disabled:opacity-40"
                 >
-                  Previous
+                  <MaterialIcon name="chevron_left" size={14} />
+                  Prev
                 </button>
-                <span className="text-xs text-[var(--stitch-text-muted)]">
-                  Page {keyPagination.page} of {keyPagination.total_pages} ({keyPagination.total} keys)
+                <span className="px-2 text-xs text-[var(--portal-muted)]">
+                  {keyPagination.page} / {keyPagination.total_pages}
                 </span>
                 <button
                   type="button"
                   disabled={!keyPagination.has_next || apiKeyLoading}
                   onClick={() => void loadApiKeys(keyPagination.page + 1)}
-                  className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-40"
+                  className="btn-ghost rounded-lg border border-[var(--portal-line)] px-4 py-1.5 text-xs disabled:opacity-40"
                 >
                   Next
+                  <MaterialIcon name="chevron_right" size={14} />
                 </button>
               </div>
             )}
@@ -633,105 +680,133 @@ export default function AccountPage() {
         )}
       </div>
 
-      {/* Subscription & Usage */}
-      <div className="block-card">
-        <h3 className="mb-4 text-lg font-semibold text-emerald-500 dark:text-emerald-400">Subscription & Usage</h3>
+      {/* ── Subscription & Usage ── */}
+      <div className="block-card space-y-5">
+        <h3 className="text-base font-bold text-[var(--portal-ink)]">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs" style={{ background: "var(--portal-gradient)" }}>
+            <MaterialIcon name="card_membership" size={14} className="text-white" />
+          </span>
+          Subscription &amp; Usage
+        </h3>
 
         {subLoading ? (
-          <p className="text-sm text-[var(--stitch-text-muted)]">Loading...</p>
+          <div className="flex items-center gap-2 py-6 text-sm text-[var(--portal-muted)]">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--portal-accent)]/30 border-t-[var(--portal-accent)]" />
+            Loading...
+          </div>
         ) : subError ? (
-          <p className="text-sm text-red-500">{subError}</p>
+          <p className="rounded-lg bg-red-500/5 px-4 py-2.5 text-sm text-red-500">{subError}</p>
         ) : !subscription ? (
-          <p className="text-sm text-[var(--stitch-text-muted)]">No active subscription found.</p>
-        ) : (
-          <div className="space-y-5">
-            {/* Summary */}
-            <div className="flex items-center gap-3">
-              <span className="inline-flex rounded-lg bg-[var(--stitch-primary)]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--stitch-primary)]">
-                {subscription.active_count} Active Subscription{subscription.active_count !== 1 ? "s" : ""}
-              </span>
-              {subscription.total_used_usd > 0 && (
-                <span className="text-xs text-[var(--stitch-text-muted)]">
-                  Total Used: ${subscription.total_used_usd.toFixed(2)}
-                </span>
-              )}
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--portal-accent)]/5">
+              <MaterialIcon name="subscription_off" size={22} className="text-[var(--portal-muted)]" />
             </div>
-
-            {/* Subscription cards with progress bars */}
+            <p className="text-sm text-[var(--portal-muted)]">No active subscription found.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Subscription cards */}
             {subscription.subscriptions.map((sub) => (
-              <div key={sub.id} className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-4 space-y-3">
+              <div key={sub.id} className="clay-panel space-y-4 p-5">
+                {/* Card header */}
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-[var(--stitch-text)]">{sub.group_name}</p>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    sub.status === "active" ? "text-emerald-500" : "text-red-500"
-                  }`}>{sub.status}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--portal-accent)]/10">
+                      <MaterialIcon name="workspace_premium" size={16} className="text-[var(--portal-accent)]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-[var(--portal-ink)]">{sub.group_name}</p>
+                      {sub.expires_at && (
+                        <p className="text-[11px] text-[var(--portal-muted)]">Expires {sub.expires_at.split("T")[0]}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                    sub.status === "active"
+                      ? "bg-emerald-500/10 text-emerald-500"
+                      : "bg-red-500/10 text-red-500"
+                  }`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${sub.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
+                    {sub.status}
+                  </span>
                 </div>
-                {sub.expires_at && (
-                  <p className="text-xs text-[var(--stitch-text-muted)]">Expires: {sub.expires_at.split("T")[0]}</p>
-                )}
-                <div className="space-y-2">
-                  <ProgressBar label="Daily" used={sub.daily_used_usd} limit={sub.daily_limit_usd} />
-                  <ProgressBar label="Weekly" used={sub.weekly_used_usd} limit={sub.weekly_limit_usd} />
-                  <ProgressBar label="Monthly" used={sub.monthly_used_usd} limit={sub.monthly_limit_usd} />
+
+                {/* Progress bars */}
+                <div className="space-y-3 rounded-lg border border-[var(--portal-line)] bg-[var(--portal-ink)]/[0.02] p-4">
+                  <ProgressRow label="Daily" used={sub.daily_used_usd} limit={sub.daily_limit_usd} />
+                  <ProgressRow label="Weekly" used={sub.weekly_used_usd} limit={sub.weekly_limit_usd} />
+                  <ProgressRow label="Monthly" used={sub.monthly_used_usd} limit={sub.monthly_limit_usd} />
                 </div>
               </div>
             ))}
 
-            {/* Usage summary */}
+            {/* Usage stats grid */}
             {usage && (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-3 text-center">
-                  <p className="text-xs uppercase tracking-wider text-[var(--stitch-text-muted)]">Today Requests</p>
-                  <p className="mt-1 text-xl font-bold text-[var(--stitch-text)]">{usage.today_requests.toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-3 text-center">
-                  <p className="text-xs uppercase tracking-wider text-[var(--stitch-text-muted)]">Today Tokens</p>
-                  <p className="mt-1 text-xl font-bold text-[var(--stitch-text)]">{usage.today_tokens.toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-3 text-center">
-                  <p className="text-xs uppercase tracking-wider text-[var(--stitch-text-muted)]">Today Cost</p>
-                  <p className="mt-1 text-xl font-bold text-[var(--stitch-text)]">${usage.today_cost.toFixed(4)}</p>
-                </div>
-                <div className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-3 text-center">
-                  <p className="text-xs uppercase tracking-wider text-[var(--stitch-text-muted)]">Total Tokens</p>
-                  <p className="mt-1 text-xl font-bold text-[var(--stitch-text)]">{usage.total_tokens.toLocaleString()}</p>
-                </div>
+                <StatCard icon="bolt" label="Today Requests" value={usage.today_requests.toLocaleString()} />
+                <StatCard icon="token" label="Today Tokens" value={usage.today_tokens.toLocaleString()} />
+                <StatCard icon="payments" label="Today Cost" value={`$${usage.today_cost.toFixed(4)}`} />
+                <StatCard icon="data_usage" label="Total Tokens" value={usage.total_tokens.toLocaleString()} />
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Change Password */}
-      <div className="block-card">
-        <h3 className="mb-4 text-lg font-semibold text-emerald-500 dark:text-emerald-400">Change Password</h3>
-        <form className="space-y-3" onSubmit={handleChangePassword}>
+      {/* ── Security ── */}
+      <div className="block-card space-y-5">
+        <h3 className="text-base font-bold text-[var(--portal-ink)]">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs" style={{ background: "var(--portal-gradient)" }}>
+            <MaterialIcon name="shield" size={14} className="text-white" />
+          </span>
+          Security
+        </h3>
+
+        <form className="clay-panel space-y-4 p-5" onSubmit={handleChangePassword}>
+          <p className="text-sm font-semibold text-[var(--portal-ink)]">Change Password</p>
           <div>
-            <label htmlFor="old-pwd" className="text-sm font-medium text-[var(--stitch-text)]">Current Password</label>
-            <input id="old-pwd" className="field" type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="Enter current password" required />
+            <label htmlFor="old-pwd" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Current Password</label>
+            <input id="old-pwd" className="field mt-1.5" type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="Enter current password" required />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="new-pwd" className="text-sm font-medium text-[var(--stitch-text)]">New Password</label>
-              <input id="new-pwd" className="field" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="Min. 6 characters" required />
+              <label htmlFor="new-pwd" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">New Password</label>
+              <input id="new-pwd" className="field mt-1.5" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="Min. 6 characters" required />
             </div>
             <div>
-              <label htmlFor="confirm-pwd" className="text-sm font-medium text-[var(--stitch-text)]">Confirm New Password</label>
-              <input id="confirm-pwd" className="field" type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="Re-enter new password" required />
+              <label htmlFor="confirm-pwd" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Confirm New Password</label>
+              <input id="confirm-pwd" className="field mt-1.5" type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="Re-enter new password" required />
             </div>
           </div>
-          {pwdError && <p className="text-sm text-red-500">{pwdError}</p>}
-          {pwdSuccess && <p className="text-sm text-emerald-500">{pwdSuccess}</p>}
-          <button type="submit" disabled={pwdSubmitting} className="btn-primary w-fit">
-            {pwdSubmitting ? "Changing..." : "Update Password"}
+          {pwdError && <p className="rounded-lg bg-red-500/5 px-4 py-2.5 text-sm text-red-500">{pwdError}</p>}
+          {pwdSuccess && (
+            <p className="flex items-center gap-2 rounded-lg bg-emerald-500/5 px-4 py-2.5 text-sm text-emerald-500">
+              <MaterialIcon name="check_circle" size={14} />
+              {pwdSuccess}
+            </p>
+          )}
+          <button type="submit" disabled={pwdSubmitting} className="btn-primary">
+            {pwdSubmitting ? (
+              <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Updating...</>
+            ) : (
+              <><MaterialIcon name="lock_reset" size={16} className="mr-1" /> Update Password</>
+            )}
           </button>
         </form>
       </div>
 
-      {/* Logout */}
-      <div className="block-card">
-        <button type="button" onClick={handleLogout} className="btn-ghost text-red-500 hover:text-red-400">
-          <MaterialIcon name="logout" size={16} /> Log out
+      {/* ── Footer actions ── */}
+      <div className="flex items-center justify-between rounded-xl border border-[var(--portal-line)] px-5 py-3.5" style={{ background: "var(--portal-clay, transparent)" }}>
+        <p className="text-xs text-[var(--portal-muted)]">
+          Signed in as <span className="font-medium text-[var(--portal-ink)]">{profile?.email}</span>
+        </p>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/10"
+        >
+          <MaterialIcon name="logout" size={14} />
+          Log out
         </button>
       </div>
     </section>
@@ -742,24 +817,58 @@ export default function AccountPage() {
 /*  Sub-components                                                       */
 /* ------------------------------------------------------------------ */
 
-function ProgressBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+function MetricBox({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="rounded-lg border border-[var(--portal-line)] px-3.5 py-2.5" style={{ background: highlight ? "linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02))" : undefined }}>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--portal-muted)]">{label}</p>
+      <p className={`mt-0.5 text-sm font-bold ${highlight ? "text-[var(--portal-accent)]" : "text-[var(--portal-ink)]"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="clay-panel flex items-center gap-3 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--portal-accent)]/10">
+        <MaterialIcon name={icon} size={18} className="text-[var(--portal-accent)]" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--portal-muted)]">{label}</p>
+        <p className="truncate text-lg font-bold text-[var(--portal-ink)]">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ProgressRow({ label, used, limit }: { label: string; used: number; limit: number }) {
   const hasLimit = limit > 0;
   const pct = hasLimit ? Math.min(100, (used / limit) * 100) : 0;
   const isOver = hasLimit && used > limit;
 
   return (
     <div className="flex items-center gap-3">
-      <span className="w-16 shrink-0 text-xs text-[var(--stitch-text-muted)]">{label}</span>
-      <div className="flex-1">
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--stitch-border)]">
-          <div
-            className={`h-full rounded-full transition-all ${isOver ? "bg-red-500" : pct > 80 ? "bg-amber-500" : "bg-emerald-500"}`}
-            style={{ width: `${hasLimit ? pct : 0}%` }}
-          />
-        </div>
+      <span className="w-14 shrink-0 text-[11px] font-semibold text-[var(--portal-muted)]">{label}</span>
+      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--portal-line)]">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${
+            isOver
+              ? "bg-gradient-to-r from-red-500 to-red-400"
+              : pct > 80
+                ? "bg-gradient-to-r from-amber-500 to-amber-400"
+                : "bg-gradient-to-r from-emerald-500 to-emerald-400"
+          }`}
+          style={{ width: `${hasLimit ? pct : 0}%` }}
+        />
       </div>
-      <span className={`shrink-0 text-xs font-mono ${isOver ? "text-red-500" : "text-[var(--stitch-text)]"}`}>
-        ${used.toFixed(2)}{hasLimit ? ` / $${limit.toFixed(2)}` : " (unlimited)"}
+      <span className={`shrink-0 text-[11px] font-mono font-semibold tabular-nums ${isOver ? "text-red-500" : "text-[var(--portal-ink)]"}`}>
+        ${used.toFixed(2)}
+        {hasLimit ? (
+          <span className="text-[var(--portal-muted)]"> / ${limit.toFixed(2)}</span>
+        ) : (
+          <span className="font-normal text-[var(--portal-muted)]"> (no limit)</span>
+        )}
       </span>
     </div>
   );
