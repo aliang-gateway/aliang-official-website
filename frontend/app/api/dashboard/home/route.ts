@@ -1,21 +1,12 @@
 import { NextResponse } from "next/server";
 
-import {
-  asTrendSeries,
-  fetchUpstreamJson,
-  getApiBaseUrl,
-  normalizeBalance,
-  normalizePurchaseOptions,
-  normalizeSubscription,
-} from "../_shared";
-
-type DashboardHomeResponse = {
-  request_trend: ReturnType<typeof asTrendSeries>;
-  token_trend: ReturnType<typeof asTrendSeries>;
-  package_summary: ReturnType<typeof normalizeSubscription>;
-  balance_summary: ReturnType<typeof normalizeBalance>;
-  purchase_options: ReturnType<typeof normalizePurchaseOptions>;
-};
+function getApiBaseUrl() {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (!baseUrl) {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL is not set");
+  }
+  return baseUrl.replace(/\/$/, "");
+}
 
 export async function GET(request: Request) {
   let apiBaseUrl: string;
@@ -28,37 +19,25 @@ export async function GET(request: Request) {
     );
   }
 
-  const authorization = request.headers.get("Authorization") ?? "";
+  const headers = new Headers();
+  const contentType = request.headers.get("content-type");
+  const accept = request.headers.get("accept");
+  const authorization = request.headers.get("authorization");
+  headers.set("content-type", contentType ?? "application/json");
+  headers.set("accept", accept ?? "application/json");
+  if (authorization) {
+    headers.set("authorization", authorization);
+  }
 
-  const [subscriptionResult, walletResult, tiersResult] = await Promise.all([
-    fetchUpstreamJson({
-      apiBaseUrl,
-      path: "/subscription",
-      method: "GET",
-      authorization,
-    }),
-    fetchUpstreamJson({
-      apiBaseUrl,
-      path: "/wallet",
-      method: "GET",
-      authorization,
-    }),
-    fetchUpstreamJson({
-      apiBaseUrl,
-      path: "/public/tiers",
-      method: "GET",
-      authorization: "",
-    }),
-  ]);
+  const url = new URL(request.url);
+  const upstream = await fetch(`${apiBaseUrl}/dashboard/home${url.search}`, {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
 
-  const balanceSummary = normalizeBalance(walletResult.data);
-  const response: DashboardHomeResponse = {
-    request_trend: asTrendSeries(),
-    token_trend: asTrendSeries(),
-    package_summary: normalizeSubscription(subscriptionResult.data),
-    balance_summary: balanceSummary,
-    purchase_options: normalizePurchaseOptions(tiersResult.data, balanceSummary.currency),
-  };
-
-  return NextResponse.json(response, { status: 200 });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: upstream.headers,
+  });
 }

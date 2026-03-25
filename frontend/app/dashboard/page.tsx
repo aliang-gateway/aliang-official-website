@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { parseDashboardModelsEnvelope, parseDashboardSimpleTrendPoints, parseDashboardTrendEnvelope } from "@/lib/dashboard-analytics-adapter";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 const DASHBOARD_CONFIG_KEY_STORAGE_KEY = "dashboard_config_user_key";
+const DASHBOARD_TREND_TIMEZONE = "Asia/Shanghai";
+
+type TrendRange = "7d" | "30d" | "90d";
+type TrendGranularity = "day" | "week" | "month";
 
 type ClientTemplateId = "claude-code" | "codex" | "openai" | "gemini";
 type TemplateFormat = "json" | "yaml" | "shell";
@@ -25,21 +32,31 @@ type TrendPoint = {
 type TrendSeries = {
   aggregation_owner: "dashboard_app";
   aggregation_reason: "upstream_raw_logs_incomplete";
-  interval: "day";
+  interval: TrendGranularity;
   points: TrendPoint[];
 };
 
+type TokenTrendResponse = {
+  series: TrendSeries;
+  start_date: string;
+  end_date: string;
+  granularity: TrendGranularity;
+};
+
 type PackageQuota = {
-  service_item_code: string;
-  service_item_name: string;
-  unit: string;
-  included_units: number;
+  period: "daily" | "weekly" | "monthly";
+  label: string;
+  used_usd: number | null;
+  limit_usd: number | null;
+  percentage: number | null;
 };
 
 type PackageSummary = {
-  status: "active" | "unconfigured";
+  status: string;
   tier_code: string | null;
   tier_name: string | null;
+  subscription_id: number | null;
+  expires_at: string | null;
   quotas: PackageQuota[];
 };
 
@@ -72,9 +89,27 @@ type DashboardHomeResponse = {
   request_trend: TrendSeries;
   token_trend: TrendSeries;
   package_summary: PackageSummary;
+  package_summaries: PackageSummary[];
   balance_summary: BalanceSummary;
   purchase_options: PurchaseOptions;
 };
+
+type DashboardMetricSummary = {
+  balance: number | null;
+  today_requests: number | null;
+  today_spend: number | null;
+  today_token: number | null;
+  cumulative_token: number | null;
+};
+
+type ModelShareDatum = {
+  model: string;
+  value: number;
+  share: number;
+  stroke: string;
+};
+
+type UnknownRecord = Record<string, unknown>;
 
 type PurchaseMessageTone = "success" | "error" | "info";
 type TicketMessageTone = "success" | "error";
@@ -113,6 +148,24 @@ const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
 ];
 
+const TREND_RANGE_OPTIONS: Array<{ value: TrendRange; label: string }> = [
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+];
+
+const TREND_GRANULARITY_OPTIONS: Array<{ value: TrendGranularity; label: string }> = [
+  { value: "day", label: "Day" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+];
+
+const ALLOWED_TREND_GRANULARITY: Record<TrendRange, TrendGranularity[]> = {
+  "7d": ["day"],
+  "30d": ["day", "week"],
+  "90d": ["day", "week", "month"],
+};
+
 function escapeJsonString(value: string) {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
@@ -127,6 +180,68 @@ function formatYamlScalar(value: string) {
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/$/, "");
+}
+
+function isTrendGranularity(value: string): value is TrendGranularity {
+  return value === "day" || value === "week" || value === "month";
+}
+
+function isTrendRange(value: string): value is TrendRange {
+  return value === "7d" || value === "30d" || value === "90d";
+}
+
+function normalizeTrendGranularity(range: TrendRange, granularity: TrendGranularity) {
+  const allowedGranularity = ALLOWED_TREND_GRANULARITY[range];
+  if (allowedGranularity.includes(granularity)) {
+    return granularity;
+  }
+
+  const granularityRank: Record<TrendGranularity, number> = {
+    day: 0,
+    week: 1,
+    month: 2,
+  };
+
+  return allowedGranularity.reduce<TrendGranularity>((closest, candidate) => {
+    const candidateDistance = Math.abs(granularityRank[candidate] - granularityRank[granularity]);
+    const closestDistance = Math.abs(granularityRank[closest] - granularityRank[granularity]);
+    return candidateDistance < closestDistance ? candidate : closest;
+  }, allowedGranularity[0]);
+}
+
+function getTrendRangeDays(range: TrendRange) {
+  if (range === "30d") {
+    return 30;
+  }
+  if (range === "90d") {
+    return 90;
+  }
+  return 7;
+}
+
+function formatDateParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
+}
+
+function buildTrendDateRange(range: TrendRange, timeZone: string) {
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - (getTrendRangeDays(range) - 1) * 24 * 60 * 60 * 1000);
+
+  return {
+    start_date: formatDateParts(startDate, timeZone),
+    end_date: formatDateParts(endDate, timeZone),
+  };
 }
 
 function buildTemplateContent(templateId: ClientTemplateId, format: TemplateFormat, userKey: string, gatewayBaseUrl: string) {
@@ -204,10 +319,6 @@ function buildTemplateContent(templateId: ClientTemplateId, format: TemplateForm
   ].join("\n");
 }
 
-function formatMoney(micros: number, currency: string) {
-  return `${(micros / 1_000_000).toFixed(2)} ${currency}`;
-}
-
 function formatShortDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -225,6 +336,412 @@ function buildPreviewPoints(points: TrendPoint[], fallbackStep: number) {
     bucket_start: new Date(Date.now() - (6 - index) * 24 * 60 * 60 * 1000).toISOString(),
     value: fallbackStep * (index + 1),
   }));
+}
+
+function asNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asOptionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function pickFirstFiniteNumberOrNull(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function parseTrendSeries(value: unknown): TrendSeries {
+  const points = parseDashboardSimpleTrendPoints(value);
+  return {
+    aggregation_owner: "dashboard_app",
+    aggregation_reason: "upstream_raw_logs_incomplete",
+    interval: "day",
+    points,
+  };
+}
+
+function parseTokenTrendResponse(payload: unknown): TokenTrendResponse {
+  const envelope = parseDashboardTrendEnvelope(payload);
+  const granularity = isTrendGranularity(envelope.granularity) ? envelope.granularity : "day";
+
+  return {
+    series: {
+      aggregation_owner: "dashboard_app",
+      aggregation_reason: "upstream_raw_logs_incomplete",
+      interval: granularity,
+      points: parseDashboardSimpleTrendPoints(payload, "total_tokens"),
+    },
+    start_date: envelope.start_date,
+    end_date: envelope.end_date,
+    granularity,
+  };
+}
+
+function extractEnvelopeOrRoot(payload: unknown) {
+  const root = asRecord(payload);
+  return asRecord(root?.data) ?? root;
+}
+
+function parseDashboardMetricSummary(homePayload: unknown, accountPayload: unknown): DashboardMetricSummary {
+  const stats = extractEnvelopeOrRoot(homePayload);
+  const profile = extractEnvelopeOrRoot(accountPayload);
+  const profileBalance = asOptionalNumber(profile?.balance) ?? asOptionalNumber(asRecord(profile?.balance)?.amount);
+
+  return {
+    balance: profileBalance,
+    today_requests: asOptionalNumber(stats?.today_requests),
+    today_spend: pickFirstFiniteNumberOrNull(stats?.today_actual_cost, stats?.today_cost),
+    today_token: asOptionalNumber(stats?.today_tokens),
+    cumulative_token: asOptionalNumber(stats?.total_tokens),
+  };
+}
+
+function normalizeModelShareData(payload: unknown): { start_date: string; end_date: string; items: ModelShareDatum[] } {
+  const envelope = parseDashboardModelsEnvelope(payload);
+  const palette = ["#06b6d4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#6366f1"];
+  const ranked = envelope.models
+    .map((item) => ({ model: item.model, value: item.total_tokens }))
+    .filter((item) => item.model && item.value > 0)
+    .sort((left, right) => {
+      if (right.value !== left.value) {
+        return right.value - left.value;
+      }
+      return left.model.localeCompare(right.model, "en", { sensitivity: "base" });
+    });
+  const total = ranked.reduce((sum, item) => sum + item.value, 0);
+
+  return {
+    start_date: envelope.start_date,
+    end_date: envelope.end_date,
+    items: total > 0
+      ? ranked.map((item, index) => ({
+          model: item.model,
+          value: item.value,
+          share: item.value / total,
+          stroke: palette[index % palette.length],
+        }))
+      : [],
+  };
+}
+
+function buildSinglePointTrendSeries(value: number): TrendSeries {
+  return {
+    aggregation_owner: "dashboard_app",
+    aggregation_reason: "upstream_raw_logs_incomplete",
+    interval: "day",
+    points: [{ bucket_start: new Date().toISOString(), value }],
+  };
+}
+
+function parseQuotaList(value: unknown): PackageQuota[] {
+  const root = extractEnvelopeOrRoot(value);
+  const subscriptions = Array.isArray(root?.subscriptions) ? root.subscriptions : [];
+  const activeSubscription = subscriptions
+    .map((item) => asRecord(item))
+    .filter((item): item is UnknownRecord => Boolean(item))
+    .find((item) => asString(item.status) === "active");
+
+  if (!activeSubscription) {
+    return [];
+  }
+
+  const periodDefinitions = [
+    { key: "daily", label: "Daily" },
+    { key: "weekly", label: "Weekly" },
+    { key: "monthly", label: "Monthly" },
+  ] as const;
+
+  return periodDefinitions.map(({ key, label }) => {
+    const usedUSD = asOptionalNumber(activeSubscription[`${key}_used_usd`]);
+    const limitUSD = asOptionalNumber(activeSubscription[`${key}_limit_usd`]);
+
+    return {
+      period: key,
+      label,
+      used_usd: usedUSD,
+      limit_usd: limitUSD,
+      percentage: usedUSD !== null && limitUSD !== null && limitUSD > 0 ? (usedUSD / limitUSD) * 100 : null,
+    };
+  });
+}
+
+function parsePackageQuotaListFromSubscription(subscription: UnknownRecord): PackageQuota[] {
+  const periodDefinitions = [
+    { key: "daily", label: "Daily" },
+    { key: "weekly", label: "Weekly" },
+    { key: "monthly", label: "Monthly" },
+  ] as const;
+
+  return periodDefinitions.map(({ key, label }) => {
+    const usedUSD = asOptionalNumber(subscription[`${key}_used_usd`]);
+    const limitUSD = asOptionalNumber(subscription[`${key}_limit_usd`]);
+
+    return {
+      period: key,
+      label,
+      used_usd: usedUSD,
+      limit_usd: limitUSD,
+      percentage: usedUSD !== null && limitUSD !== null && limitUSD > 0 ? (usedUSD / limitUSD) * 100 : null,
+    };
+  });
+}
+
+function parsePackageSummaries(subscriptionPayload: unknown): PackageSummary[] {
+  const root = extractEnvelopeOrRoot(subscriptionPayload);
+  const subscriptions = Array.isArray(root?.subscriptions) ? root.subscriptions : [];
+
+  return subscriptions
+    .map((item) => asRecord(item))
+    .filter((item): item is UnknownRecord => Boolean(item))
+    .map((subscription) => {
+      const tierCode = String(subscription.group_id ?? "").trim();
+      const tierName = asString(subscription.group_name) || asString(asRecord(subscription.group)?.name);
+      const quotas = parsePackageQuotaListFromSubscription(subscription);
+      const status = asString(subscription.status) || "unconfigured";
+
+      return {
+        status,
+        tier_code: tierCode || null,
+        tier_name: tierName || null,
+        subscription_id: asNumber(subscription.id, 0) || null,
+        expires_at: asString(subscription.expires_at) || null,
+        quotas,
+      };
+    })
+    .filter((item) => item.tier_name || item.subscription_id !== null || item.quotas.some((quota) => quota.limit_usd !== null || quota.used_usd !== null));
+}
+
+function parsePackageSummary(subscriptionPayload: unknown): PackageSummary {
+  const summaries = parsePackageSummaries(subscriptionPayload);
+  const activeSubscription = summaries.find((item) => item.status === "active") ?? summaries[0];
+
+  if (!activeSubscription) {
+    return {
+      status: "unconfigured",
+      tier_code: null,
+      tier_name: null,
+      subscription_id: null,
+      expires_at: null,
+      quotas: [],
+    };
+  }
+  return activeSubscription;
+}
+
+function parseBalanceSummary(accountPayload: unknown): BalanceSummary {
+  const root = asRecord(accountPayload);
+  const wallet = asRecord(root?.wallet) ?? root;
+  if (!wallet) {
+    return {
+      balance_micros: 0,
+      currency: "CNY",
+      updated_at: null,
+    };
+  }
+
+  return {
+    balance_micros: asNumber(wallet.balance_micros),
+    currency: asString(wallet.currency, "CNY"),
+    updated_at: asString(wallet.updated_at) || null,
+  };
+}
+
+function parsePurchaseOptions(groupsPayload: unknown, currencyHint: string): PurchaseOptions {
+  const root = extractEnvelopeOrRoot(groupsPayload);
+  const tiersRaw = Array.isArray(root) ? root : Array.isArray(root?.tiers) ? root.tiers : [];
+  const tiers = tiersRaw
+    .map((item) => asRecord(item))
+    .filter((item): item is UnknownRecord => Boolean(item))
+    .map((item) => ({
+      code: asString(item.code) || asString(item.id),
+      name: asString(item.name),
+    }))
+    .filter((item) => item.code && item.name);
+
+  return {
+    package_purchase: {
+      durations: [
+        { code: "one_week", label: "1 week", days: 7 },
+        { code: "one_month", label: "1 month", days: 30 },
+        { code: "three_months", label: "3 months", days: 90 },
+      ],
+      tiers,
+    },
+    prepaid_topup: {
+      entry_mode: "redeem_code",
+      redeem_endpoint: "/api/wallet/redeem",
+      currency_hint: currencyHint,
+    },
+  };
+}
+
+function parseDashboardHomePayload(homePayload: unknown, subscriptionPayload: unknown, accountPayload: unknown, groupsPayload: unknown): DashboardHomeResponse {
+  const home = asRecord(homePayload);
+  const stats = extractEnvelopeOrRoot(homePayload);
+  const todayRequests = stats ? asNumber(stats.today_requests) : 0;
+  const todayTokens = stats ? asNumber(stats.today_tokens) : 0;
+  const requestTrendSource =
+    home?.request_trend ??
+    home?.requestTrend ??
+    home?.requests_trend ??
+    home?.api_request_trend ??
+    home?.requests ??
+    home?.request_points;
+  const tokenTrendSource = home?.token_trend ?? home?.tokenTrend ?? home?.tokens_trend ?? home?.token_points;
+  const requestTrend =
+    requestTrendSource !== undefined
+      ? parseTrendSeries(requestTrendSource)
+      : buildSinglePointTrendSeries(todayRequests);
+  const tokenTrend =
+    tokenTrendSource !== undefined
+      ? parseTrendSeries(tokenTrendSource)
+      : buildSinglePointTrendSeries(todayTokens);
+
+  const packageSummary = parsePackageSummary(subscriptionPayload);
+  const balanceSummary = parseBalanceSummary(accountPayload);
+  const purchaseOptions = parsePurchaseOptions(groupsPayload, balanceSummary.currency || "CNY");
+
+  return {
+    request_trend: requestTrend,
+    token_trend: tokenTrend,
+    package_summary: packageSummary,
+    package_summaries: parsePackageSummaries(subscriptionPayload),
+    balance_summary: balanceSummary,
+    purchase_options: purchaseOptions,
+  };
+}
+
+function formatMetricNumber(value: number | null, options?: Intl.NumberFormatOptions) {
+  if (value === null) {
+    return "--";
+  }
+
+  return new Intl.NumberFormat("en-US", options).format(value);
+}
+
+function formatMetricCurrency(value: number | null) {
+  if (value === null) {
+    return "--";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatUsagePercentage(value: number | null) {
+  if (value === null) {
+    return "--";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+function describePercentage(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function buildArcPath(centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle);
+  const end = polarToCartesian(centerX, centerY, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+  return `M ${centerX} ${centerY} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y} Z`;
+}
+
+function ModelSharePieChart({
+  items,
+  startDate,
+  endDate,
+}: {
+  items: ModelShareDatum[];
+  startDate: string;
+  endDate: string;
+}) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+
+  if (items.length === 0 || total <= 0) {
+    return (
+      <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 text-sm text-[var(--portal-muted)]">
+        No model-share data is available for the selected period yet. The pie stays empty until at least one model reports non-zero total tokens.
+      </div>
+    );
+  }
+
+  const segments = items.reduce<Array<ModelShareDatum & { path: string; startAngle: number; endAngle: number }>>((acc, item) => {
+    const startAngle = acc[acc.length - 1]?.endAngle ?? 0;
+    const sweepAngle = item.share * 360;
+    const endAngle = startAngle + sweepAngle;
+
+    acc.push({
+      ...item,
+      startAngle,
+      endAngle,
+      path: buildArcPath(50, 50, 42, startAngle, endAngle),
+    });
+
+    return acc;
+  }, []);
+
+  return (
+    <div className="mt-4 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+      <div className="grid gap-4">
+        <div className="flex items-center justify-center">
+          <svg viewBox="0 0 100 100" className="h-52 w-52" aria-label="Model share pie chart">
+            <circle cx="50" cy="50" r="42" fill="rgba(255,255,255,0.45)" className="dark:fill-[rgba(15,23,42,0.4)]" />
+            {segments.map((segment) => (
+              <path key={segment.model} d={segment.path} fill={segment.stroke} stroke="var(--portal-clay-strong)" strokeWidth="1.4" />
+            ))}
+            <circle cx="50" cy="50" r="18" fill="var(--portal-clay-strong)" />
+            <text x="50" y="46" textAnchor="middle" className="fill-[var(--portal-muted)] text-[5px] uppercase tracking-[0.24em]">
+              Tokens
+            </text>
+            <text x="50" y="56" textAnchor="middle" className="fill-[var(--portal-ink)] text-[8px] font-semibold">
+              {formatMetricNumber(total, { notation: "compact", maximumFractionDigits: 1 })}
+            </text>
+          </svg>
+        </div>
+
+        <div className="grid gap-3">
+          {segments.map((segment) => (
+            <div key={`${segment.model}-legend`} className="rounded-[1rem] border border-[var(--portal-line)] bg-white/55 p-3 dark:bg-slate-950/30">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.stroke }} aria-hidden="true" />
+                    <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{segment.model}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--portal-muted)]">
+                    {startDate || "--"} → {endDate || "--"}
+                  </p>
+                </div>
+                <p className="text-sm font-semibold text-[var(--portal-ink)]">{describePercentage(segment.share)}</p>
+              </div>
+              <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
+                {formatMetricNumber(segment.value)} total tokens
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TrendPreview({
@@ -276,8 +793,10 @@ function TrendPreview({
   );
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isHydrated, setIsHydrated] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
   const [loading, setLoading] = useState(true);
@@ -292,6 +811,7 @@ export default function DashboardPage() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [selectedPackageTierCode, setSelectedPackageTierCode] = useState("");
   const [selectedDurationCode, setSelectedDurationCode] = useState<PurchaseOptions["package_purchase"]["durations"][number]["code"] | "">("");
+  const [selectedPackageSummaryId, setSelectedPackageSummaryId] = useState<number | null>(null);
   const [packageActionLoading, setPackageActionLoading] = useState(false);
   const [redeemCode, setRedeemCode] = useState("");
   const [prepaidActionLoading, setPrepaidActionLoading] = useState(false);
@@ -301,10 +821,23 @@ export default function DashboardPage() {
   const [ticketMessage, setTicketMessage] = useState("");
   const [ticketSubmitting, setTicketSubmitting] = useState(false);
   const [ticketSubmitMessage, setTicketSubmitMessage] = useState<{ tone: TicketMessageTone; text: string } | null>(null);
+  const [tokenTrend, setTokenTrend] = useState<TokenTrendResponse | null>(null);
+  const [modelShare, setModelShare] = useState<{ start_date: string; end_date: string; items: ModelShareDatum[] } | null>(null);
+  const [metricSummary, setMetricSummary] = useState<DashboardMetricSummary | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const configTriggerRef = useRef<HTMLButtonElement | null>(null);
   const hadConfigModalOpenRef = useRef(false);
+
+  const selectedTrendRange = useMemo<TrendRange>(() => {
+    const requestedRange = searchParams.get("range");
+    return requestedRange && isTrendRange(requestedRange) ? requestedRange : "7d";
+  }, [searchParams]);
+
+  const selectedTrendGranularity = useMemo<TrendGranularity>(() => {
+    const requestedGranularity = searchParams.get("granularity");
+    return requestedGranularity && isTrendGranularity(requestedGranularity) ? requestedGranularity : "day";
+  }, [searchParams]);
 
   const gatewayBaseUrl = useMemo(() => trimTrailingSlash(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "http://localhost:8080"), []);
 
@@ -316,6 +849,46 @@ export default function DashboardPage() {
   const renderedConfig = useMemo(() => {
     return buildTemplateContent(selectedTemplate, selectedFormat, userKey.trim(), gatewayBaseUrl);
   }, [gatewayBaseUrl, selectedFormat, selectedTemplate, userKey]);
+
+  const appliedTrendGranularity = useMemo(
+    () => normalizeTrendGranularity(selectedTrendRange, selectedTrendGranularity),
+    [selectedTrendGranularity, selectedTrendRange],
+  );
+
+  const updateTrendSearchParams = useCallback(
+    (range: TrendRange, granularity: TrendGranularity, historyMode: "push" | "replace") => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("range", range);
+      nextParams.set("granularity", normalizeTrendGranularity(range, granularity));
+
+      const nextQuery = nextParams.toString();
+      const nextHref = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+
+      if (historyMode === "replace") {
+        router.replace(nextHref);
+        return;
+      }
+
+      router.push(nextHref);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const trendDateRange = useMemo(
+    () => buildTrendDateRange(selectedTrendRange, DASHBOARD_TREND_TIMEZONE),
+    [selectedTrendRange],
+  );
+
+  const tokenTrendQueryString = useMemo(() => {
+    const params = new URLSearchParams({
+      start_date: trendDateRange.start_date,
+      end_date: trendDateRange.end_date,
+      granularity: appliedTrendGranularity,
+      timezone: DASHBOARD_TREND_TIMEZONE,
+    });
+
+    return params.toString();
+  }, [appliedTrendGranularity, trendDateRange.end_date, trendDateRange.start_date]);
 
   const closeConfigModal = useCallback(() => {
     setIsConfigModalOpen(false);
@@ -338,9 +911,23 @@ export default function DashboardPage() {
     localStorage.setItem(DASHBOARD_CONFIG_KEY_STORAGE_KEY, userKey);
   }, [isHydrated, userKey]);
 
+  useEffect(() => {
+    const currentRange = searchParams.get("range");
+    const currentGranularity = searchParams.get("granularity");
+
+    if (currentRange === selectedTrendRange && currentGranularity === appliedTrendGranularity) {
+      return;
+    }
+
+    updateTrendSearchParams(selectedTrendRange, appliedTrendGranularity, "replace");
+  }, [appliedTrendGranularity, searchParams, selectedTrendRange, updateTrendSearchParams]);
+
   const loadDashboard = useCallback(async (signal?: AbortSignal) => {
     if (!sessionToken) {
       setDashboard(null);
+      setTokenTrend(null);
+      setModelShare(null);
+      setMetricSummary(null);
       setLoading(false);
       return;
     }
@@ -349,7 +936,7 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/dashboard/home", {
+      const commonRequestInit: RequestInit = {
         method: "GET",
         headers: {
           "content-type": "application/json",
@@ -358,26 +945,69 @@ export default function DashboardPage() {
         },
         cache: "no-store",
         signal,
-      });
+      };
 
-      const payload = (await response.json()) as DashboardHomeResponse | { error?: string };
-      if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "Failed to load dashboard home");
+      const [homeResponse, subscriptionResponse, accountResponse, trendResponse, modelsResponse, groupsResponse] = await Promise.all([
+        fetch("/api/dashboard/home", commonRequestInit),
+        fetch("/api/subscriptions/summary", commonRequestInit),
+        fetch("/api/dashboard/account", commonRequestInit),
+        fetch(`/api/dashboard/trend?${tokenTrendQueryString}`, commonRequestInit),
+        fetch(`/api/dashboard/models?${tokenTrendQueryString}`, commonRequestInit),
+        fetch("/api/groups/available", commonRequestInit),
+      ]);
+
+      const homePayload = (await homeResponse.json()) as unknown;
+      if (!homeResponse.ok) {
+        const errorPayload = asRecord(homePayload);
+        throw new Error(asString(errorPayload?.error, "Failed to load dashboard home"));
       }
 
-      setDashboard(payload as DashboardHomeResponse);
+      const trendPayload = (await trendResponse.json()) as unknown;
+      if (!trendResponse.ok) {
+        const errorPayload = asRecord(trendPayload);
+        throw new Error(asString(errorPayload?.error, "Failed to load dashboard token trend"));
+      }
+
+      const modelsPayload = (await modelsResponse.json()) as unknown;
+      if (!modelsResponse.ok) {
+        const errorPayload = asRecord(modelsPayload);
+        throw new Error(asString(errorPayload?.error, "Failed to load dashboard model share"));
+      }
+
+      let subscriptionPayload: unknown = null;
+      if (subscriptionResponse.ok) {
+        subscriptionPayload = (await subscriptionResponse.json()) as unknown;
+      }
+
+      let accountPayload: unknown = null;
+      if (accountResponse.ok) {
+        accountPayload = (await accountResponse.json()) as unknown;
+      }
+
+      let groupsPayload: unknown = null;
+      if (groupsResponse.ok) {
+        groupsPayload = (await groupsResponse.json()) as unknown;
+      }
+
+      setDashboard(parseDashboardHomePayload(homePayload, subscriptionPayload, accountPayload, groupsPayload));
+      setTokenTrend(parseTokenTrendResponse(trendPayload));
+      setModelShare(normalizeModelShareData(modelsPayload));
+      setMetricSummary(parseDashboardMetricSummary(homePayload, accountPayload));
     } catch (fetchError) {
       if ((fetchError as Error).name === "AbortError") {
         return;
       }
       setDashboard(null);
+      setTokenTrend(null);
+      setModelShare(null);
+      setMetricSummary(null);
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load dashboard home");
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
       }
     }
-  }, [sessionToken]);
+  }, [sessionToken, tokenTrendQueryString]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -386,6 +1016,9 @@ export default function DashboardPage() {
 
     if (!sessionToken) {
       setDashboard(null);
+      setTokenTrend(null);
+      setModelShare(null);
+      setMetricSummary(null);
       setLoading(false);
       return;
     }
@@ -411,6 +1044,24 @@ export default function DashboardPage() {
       setSelectedPackageTierCode(tiers[0].code);
     }
   }, [dashboard, selectedPackageTierCode]);
+
+  useEffect(() => {
+    const summaries = dashboard?.package_summaries ?? [];
+    if (summaries.length === 0) {
+      if (selectedPackageSummaryId !== null) {
+        setSelectedPackageSummaryId(null);
+      }
+      return;
+    }
+
+    const hasSelectedSummary = summaries.some((summary) => summary.subscription_id === selectedPackageSummaryId);
+    if (hasSelectedSummary) {
+      return;
+    }
+
+    const preferredSummary = summaries.find((summary) => summary.status === "active") ?? summaries[0];
+    setSelectedPackageSummaryId(preferredSummary?.subscription_id ?? null);
+  }, [dashboard, selectedPackageSummaryId]);
 
   useEffect(() => {
     const durations = dashboard?.purchase_options.package_purchase.durations ?? [];
@@ -517,12 +1168,17 @@ export default function DashboardPage() {
         body: JSON.stringify({ label: "dashboard-config-modal" }),
       });
 
-      const payload = (await response.json()) as CreateApiKeyResponse | { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "Failed to create a user key");
+        throw new Error(extractApiError(payload, "Failed to create a user key"));
       }
 
-      const createdKey = (payload as CreateApiKeyResponse).api_key;
+      const createdPayload = unwrapData<CreateApiKeyResponse>(payload) ?? (asRecord(payload) as CreateApiKeyResponse | null);
+      const createdKey = asString(createdPayload?.api_key);
+      if (!createdKey) {
+        throw new Error(extractApiError(payload, "User key creation succeeded but no API key was returned"));
+      }
+
       setUserKey(createdKey);
     } catch (createError) {
       setKeyError(createError instanceof Error ? createError.message : "Failed to create a user key");
@@ -573,9 +1229,9 @@ export default function DashboardPage() {
         }),
       });
 
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Package entry is unavailable right now.");
+        throw new Error(extractApiError(payload, "Package entry is unavailable right now."));
       }
 
       setPurchaseMessage({
@@ -625,9 +1281,9 @@ export default function DashboardPage() {
         body: JSON.stringify({ card_code: normalizedCode }),
       });
 
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Prepaid top-up is unavailable right now.");
+        throw new Error(extractApiError(payload, "Prepaid top-up is unavailable right now."));
       }
 
       setRedeemCode("");
@@ -682,17 +1338,25 @@ export default function DashboardPage() {
         }),
       });
 
-      const payload = (await response.json()) as { error?: string; ticket_id?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Ticket submission is unavailable right now.");
+        throw new Error(extractApiError(payload, "Ticket submission is unavailable right now."));
       }
+
+      const ticketEnvelope = unwrapData<{ ticket_id?: string }>(payload);
+      const ticketRoot = asRecord(payload);
+      const legacyTicketResult = asRecord(ticketRoot?.result);
+      const ticketId =
+        asString(ticketEnvelope?.ticket_id) ||
+        asString(ticketRoot?.ticket_id) ||
+        asString(legacyTicketResult?.ticket_id);
 
       setTicketTitle("");
       setTicketCategory("delivery_issue");
       setTicketMessage("");
       setTicketSubmitMessage({
         tone: "success",
-        text: `Feedback ticket submitted successfully${payload.ticket_id ? ` (ID: ${payload.ticket_id})` : ""}.`,
+        text: `Feedback ticket submitted successfully${ticketId ? ` (ID: ${ticketId})` : ""}.`,
       });
     } catch (submitError) {
       setTicketSubmitMessage({
@@ -705,14 +1369,19 @@ export default function DashboardPage() {
   }, [sessionToken, ticketCategory, ticketMessage, ticketTitle]);
 
   const packageSummary = dashboard?.package_summary;
-  const balanceSummary = dashboard?.balance_summary;
+  const packageSummaries = dashboard?.package_summaries ?? [];
+  const visiblePackageSummary =
+    packageSummaries.find((summary) => summary.subscription_id === selectedPackageSummaryId) ?? packageSummary;
   const purchaseOptions = dashboard?.purchase_options;
-  const requestPoints = dashboard?.request_trend.points ?? [];
-  const tokenPoints = dashboard?.token_trend.points ?? [];
-  const quotaPreview = packageSummary?.quotas.slice(0, 3) ?? [];
+  const tokenPoints = tokenTrend?.series.points ?? [];
+  const modelShareItems = modelShare?.items ?? [];
+  const quotaPreview = visiblePackageSummary?.quotas ?? [];
   const packageTiers = purchaseOptions?.package_purchase.tiers ?? [];
   const packageDurations = purchaseOptions?.package_purchase.durations ?? [];
   const redeemEndpoint = purchaseOptions?.prepaid_topup.redeem_endpoint ?? "/api/wallet/redeem";
+  const appliedTrendRangeLabel = TREND_RANGE_OPTIONS.find((option) => option.value === selectedTrendRange)?.label ?? selectedTrendRange;
+  const appliedTrendGranularityLabel =
+    TREND_GRANULARITY_OPTIONS.find((option) => option.value === appliedTrendGranularity)?.label ?? appliedTrendGranularity;
   const purchaseMessageClassName =
     purchaseMessage?.tone === "error"
       ? "text-red-500 dark:text-red-400"
@@ -799,29 +1468,100 @@ export default function DashboardPage() {
             <article className="block-card min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Request trend</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Traffic pulse</h2>
-                  <p className="mt-2 text-sm text-[var(--portal-muted)]">Daily request rhythm for the last visible buckets. Empty-safe when upstream logs are incomplete.</p>
-                </div>
-                <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
-                  {requestPoints.length > 0 ? `${requestPoints.length} points` : "preview"}
-                </div>
-              </div>
-              <TrendPreview points={requestPoints} tone="emerald" />
-            </article>
-
-            <article className="block-card min-w-0">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
                   <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">Token trend</p>
                   <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Consumption curve</h2>
-                  <p className="mt-2 text-sm text-[var(--portal-muted)]">A lightweight view of token movement, kept inline to preserve the current dashboard rhythm.</p>
+                  <p className="mt-2 text-sm text-[var(--portal-muted)]">
+                    Token consumption now follows the documented trend contract, with range and aggregation controls that stay inside the valid matrix.
+                  </p>
                 </div>
                 <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
                   {tokenPoints.length > 0 ? `${tokenPoints.length} points` : "preview"}
                 </div>
               </div>
+
+              <div className="mt-4 grid gap-3 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Range</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {TREND_RANGE_OPTIONS.map((option) => {
+                      const isSelected = option.value === selectedTrendRange;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
+                            isSelected
+                              ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200"
+                              : "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                          }`}
+                          onClick={() => updateTrendSearchParams(option.value, appliedTrendGranularity, "push")}
+                          aria-pressed={isSelected}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Granularity</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {TREND_GRANULARITY_OPTIONS.map((option) => {
+                      const isAllowed = ALLOWED_TREND_GRANULARITY[selectedTrendRange].includes(option.value);
+                      const isSelected = option.value === appliedTrendGranularity;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
+                            isSelected
+                              ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200"
+                              : isAllowed
+                                ? "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                                : "border-[var(--portal-line)] bg-transparent text-[var(--portal-muted)]"
+                          }`}
+                           onClick={() => updateTrendSearchParams(selectedTrendRange, option.value, "push")}
+                          aria-pressed={isSelected}
+                          aria-describedby={!isAllowed ? "dashboard-trend-granularity-note" : undefined}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p id="dashboard-trend-granularity-note" className="mt-2 text-xs text-[var(--portal-muted)]">
+                    Invalid combinations automatically snap to the nearest supported granularity for the selected range.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--portal-muted)]">
+                  <span>
+                    Applied: {appliedTrendRangeLabel} · {appliedTrendGranularityLabel}
+                  </span>
+                  <span>
+                    {tokenTrend?.start_date || trendDateRange.start_date} → {tokenTrend?.end_date || trendDateRange.end_date}
+                  </span>
+                </div>
+              </div>
+
               <TrendPreview points={tokenPoints} tone="cyan" />
+            </article>
+
+            <article className="block-card min-w-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Model share</p>
+                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Token distribution</h2>
+                  <p className="mt-2 text-sm text-[var(--portal-muted)]">
+                    Share of total tokens by model for the same applied period. The slice order is deterministic: highest total token volume first, then model name.
+                  </p>
+                </div>
+                <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                  {modelShareItems.length > 0 ? `${modelShareItems.length} models` : "empty"}
+                </div>
+              </div>
+              <ModelSharePieChart items={modelShareItems} startDate={modelShare?.start_date ?? ""} endDate={modelShare?.end_date ?? ""} />
             </article>
           </div>
 
@@ -831,36 +1571,62 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Package</p>
                   <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
-                    {packageSummary?.tier_name ?? "No package yet"}
+                    {visiblePackageSummary?.tier_name ?? "No package yet"}
                   </h2>
                   <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                    {packageSummary?.status === "active"
-                      ? `Current plan code: ${packageSummary.tier_code ?? "--"}`
+                    {visiblePackageSummary?.status === "active"
+                      ? `Subscription ${visiblePackageSummary.subscription_id ?? "--"}${visiblePackageSummary.expires_at ? ` expires on ${formatShortDate(visiblePackageSummary.expires_at)}` : ""}`
                       : "Start with a package or prepaid balance to unlock routed usage."}
                   </p>
                 </div>
                 <span className="rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay)] px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
-                  {packageSummary?.status ?? "unconfigured"}
+                  {visiblePackageSummary?.status ?? "unconfigured"}
                 </span>
               </div>
 
+              {packageSummaries.length > 1 ? (
+                <div className="flex flex-wrap gap-2">
+                  {packageSummaries.map((summary, index) => {
+                    const isSelected = summary.subscription_id === visiblePackageSummary?.subscription_id;
+                    return (
+                      <button
+                        key={summary.subscription_id ?? `${summary.tier_name ?? "subscription"}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedPackageSummaryId(summary.subscription_id)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
+                          isSelected
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                            : "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                        }`}
+                        aria-pressed={isSelected}
+                      >
+                        {summary.tier_name ?? `Subscription ${index + 1}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               {quotaPreview.length === 0 ? (
                 <p className="rounded-[1rem] border border-dashed border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
-                  No active quota has been loaded yet.
+                  No active subscription summary has been loaded yet.
                 </p>
               ) : (
                 <ul className="grid gap-3">
                   {quotaPreview.map((quota) => (
-                    <li key={quota.service_item_code} className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+                    <li key={quota.period} className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{quota.service_item_name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{quota.service_item_code}</p>
+                          <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{quota.label} usage</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{quota.period}</p>
                         </div>
                         <p className="text-sm font-semibold text-[var(--portal-ink)]">
-                          {quota.included_units} {quota.unit}
+                          {formatUsagePercentage(quota.percentage)}
                         </p>
                       </div>
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
+                        {formatMetricCurrency(quota.used_usd)} / {formatMetricCurrency(quota.limit_usd)}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -869,23 +1635,35 @@ export default function DashboardPage() {
 
             <article className="block-card min-w-0 space-y-4">
               <div>
-                <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Balance</p>
+                <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Metrics</p>
                 <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
-                  {balanceSummary ? formatMoney(balanceSummary.balance_micros, balanceSummary.currency) : "0.00 CNY"}
+                  Account indicators
                 </h2>
-                <p className="mt-2 text-sm text-[var(--portal-muted)]">Keep prepaid funds ready for burst usage and package extensions.</p>
+                <p className="mt-2 text-sm text-[var(--portal-muted)]">
+                  Quick-read account health using the exact home/account metric mappings requested for this dashboard surface.
+                </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Currency</p>
-                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{balanceSummary?.currency ?? "CNY"}</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Balance</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.balance ?? null)}</p>
                 </div>
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Updated</p>
-                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">
-                    {balanceSummary?.updated_at ? formatShortDate(balanceSummary.updated_at) : "Not synced"}
-                  </p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today requests</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_requests ?? null)}</p>
+                </div>
+                <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today spend</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.today_spend ?? null)}</p>
+                </div>
+                <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today token</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_token ?? null)}</p>
+                </div>
+                <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Cumulative token</p>
+                  <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.cumulative_token ?? null)}</p>
                 </div>
               </div>
             </article>
@@ -1307,5 +2085,23 @@ export default function DashboardPage() {
         </section>
       ) : null}
     </section>
+  );
+}
+
+function DashboardPageFallback() {
+  return (
+    <section className="portal-shell py-8">
+      <div className="clay-panel p-5">
+        <p className="text-sm text-[var(--portal-muted)]">Loading your dashboard...</p>
+      </div>
+    </section>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardPageFallback />}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

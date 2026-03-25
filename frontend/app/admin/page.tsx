@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { asRecord, extractApiError, unwrapData } from "@/lib/api-response";
 
 type AuthMeResponse = {
   id: number;
@@ -61,12 +62,15 @@ export default function AdminPage() {
           cache: "no-store",
         });
 
-        const mePayload = (await meResponse.json()) as AuthMeResponse | { error?: string };
+        const mePayload = (await meResponse.json()) as unknown;
         if (!meResponse.ok) {
-          throw new Error((mePayload as { error?: string }).error ?? "failed to verify session");
+          throw new Error(extractApiError(mePayload, "failed to verify session"));
         }
 
-        const profile = mePayload as AuthMeResponse;
+        const profile = unwrapData<AuthMeResponse>(mePayload) ?? (asRecord(mePayload) as AuthMeResponse | null);
+        if (!profile) {
+          throw new Error("failed to verify session");
+        }
         if (profile.role !== "admin") {
           router.replace("/account");
           return;
@@ -113,12 +117,13 @@ export default function AdminPage() {
         },
       );
 
-      const payload = (await response.json()) as UnitPricesResponse | { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "failed to load unit prices");
+        throw new Error(extractApiError(payload, "failed to load unit prices"));
       }
 
-      setPrices((payload as UnitPricesResponse).unit_prices);
+      const pricePayload = unwrapData<UnitPricesResponse>(payload) ?? (asRecord(payload) as UnitPricesResponse | null);
+      setPrices(pricePayload?.unit_prices ?? []);
     } catch (error) {
       setPricesError(error instanceof Error ? error.message : "failed to load unit prices");
     } finally {
@@ -129,27 +134,27 @@ export default function AdminPage() {
   if (isCheckingAuth) {
     return (
       <section className="portal-shell py-10">
-        <p className="text-sm text-slate-500">Checking admin session...</p>
+        <p className="text-sm text-[var(--stitch-text-muted)]">Checking admin session...</p>
       </section>
     );
   }
 
   return (
     <section className="portal-shell py-8">
-      <div className="rounded-xl border border-[var(--stitch-primary)]/10 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="rounded-xl border border-[var(--stitch-primary)]/10 bg-[var(--stitch-bg-elevated)] p-6 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
           <span className="rounded-lg bg-[var(--stitch-primary)]/10 p-2 text-[var(--stitch-primary)]">
             <MaterialIcon name="admin_panel_settings" size={20} />
           </span>
           <div>
             <h1 className="text-xl font-bold">Admin Console</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-[var(--stitch-text-muted)]">
               {adminProfile ? `${adminProfile.name} (${adminProfile.email})` : ""}
             </p>
           </div>
         </div>
 
-        {authError ? <p className="mb-4 text-sm text-red-600 dark:text-red-400">{authError}</p> : null}
+        {authError ? <p className="mb-4 text-sm text-red-500">{authError}</p> : null}
 
         <form className="mb-6 flex flex-col gap-3 sm:flex-row" onSubmit={handleLoadPrices}>
           <input
@@ -164,16 +169,16 @@ export default function AdminPage() {
           </button>
         </form>
 
-        {pricesError ? <p className="mb-4 text-sm text-red-600 dark:text-red-400">{pricesError}</p> : null}
+        {pricesError ? <p className="mb-4 text-sm text-red-500">{pricesError}</p> : null}
 
         <div className="overflow-x-auto rounded-lg border border-[var(--stitch-border)]">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/50">
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Service Item</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Tier</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Price</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Effective From</th>
+              <tr className="bg-[var(--stitch-bg)]">
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--stitch-text-muted)]">Service Item</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--stitch-text-muted)]">Tier</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--stitch-text-muted)]">Price</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--stitch-text-muted)]">Effective From</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +192,7 @@ export default function AdminPage() {
               ))}
               {!pricesLoading && prices.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-sm text-slate-500" colSpan={4}>
+                  <td className="px-4 py-4 text-sm text-[var(--stitch-text-muted)]" colSpan={4}>
                     No data yet.
                   </td>
                 </tr>

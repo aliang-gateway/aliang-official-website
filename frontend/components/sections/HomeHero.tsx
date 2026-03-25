@@ -56,7 +56,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 alt=""
                 width={isCompact ? 32 : 40}
                 height={isCompact ? 32 : 40}
-                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-white dark:border-slate-900`}
+                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-[var(--stitch-border)]`}
                 unoptimized
               />
               <Image 
@@ -64,7 +64,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 alt=""
                 width={isCompact ? 32 : 40}
                 height={isCompact ? 32 : 40}
-                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-white dark:border-slate-900`}
+                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-[var(--stitch-border)]`}
                 unoptimized
               />
               <Image 
@@ -72,11 +72,11 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 alt=""
                 width={isCompact ? 32 : 40}
                 height={isCompact ? 32 : 40}
-                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-white dark:border-slate-900`}
+                className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-[var(--stitch-border)]`}
                 unoptimized
               />
             </div>
-             <p className={`${isCompact ? "text-xs" : "text-sm"} font-medium text-slate-500 dark:text-slate-400`}>
+             <p className={`${isCompact ? "text-xs" : "text-sm"} font-medium text-[var(--stitch-text-muted)]`}>
                {isCompact ? "Trusted by 500+ teams" : "Trusted by 500+ engineering teams"}
             </p>
           </div>

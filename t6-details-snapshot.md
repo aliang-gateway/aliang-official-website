@@ -1,0 +1,245 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "ALiang Gateway" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7]: hub
+          - heading "ALiang Gateway" [level=2] [ref=e8]
+        - navigation [ref=e9]:
+          - link "Blog" [ref=e10] [cursor=pointer]:
+            - /url: /blog
+          - link "Document" [ref=e11] [cursor=pointer]:
+            - /url: /docs
+          - link "Service" [ref=e12] [cursor=pointer]:
+            - /url: /services
+      - generic [ref=e13]:
+        - 'button "Theme mode: Follow system (light). Click to switch." [ref=e75] [cursor=pointer]':
+          - img [ref=e76]
+        - link "Login" [ref=e16] [cursor=pointer]:
+          - /url: /login
+    - main [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - link "Back to dashboard" [ref=e78] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e79]
+              - text: Back to dashboard
+            - generic [ref=e81]:
+              - paragraph [ref=e82]: Dashboard details
+              - heading "Request records & trends" [level=1] [ref=e83]
+              - paragraph [ref=e84]: Review recent request activity and the two deeper trend surfaces exposed by the simplified dashboard contract.
+          - link "Home overview" [ref=e86] [cursor=pointer]:
+            - /url: /dashboard
+        - generic [ref=e87]:
+          - article [ref=e88]:
+            - generic [ref=e89]:
+              - generic [ref=e90]:
+                - paragraph [ref=e91]: Token trend
+                - heading "Usage drift" [level=2] [ref=e92]
+                - paragraph [ref=e93]: Daily token totals from the app-owned aggregation layer, kept inline so this page stays in the same dashboard family.
+              - generic [ref=e94]: 2 points
+            - generic [ref=e95]:
+              - img [ref=e96]
+              - generic [ref=e101]:
+                - generic [ref=e102]:
+                  - generic [ref=e103]: Mar 20
+                  - generic [ref=e104]: Mar 21
+                - generic [ref=e105]: Daily token buckets
+          - article [ref=e106]:
+            - generic [ref=e107]:
+              - generic [ref=e108]:
+                - paragraph [ref=e109]: API request frequency
+                - heading "Request tempo" [level=2] [ref=e110]
+                - paragraph [ref=e111]: A simple request-frequency trend for deeper reading than the home page, without expanding into full analytics tooling.
+              - generic [ref=e112]: 2 points
+            - generic [ref=e113]:
+              - img [ref=e114]
+              - generic [ref=e119]:
+                - generic [ref=e120]:
+                  - generic [ref=e121]: Mar 20
+                  - generic [ref=e122]: Mar 21
+                - generic [ref=e123]: Daily request buckets
+        - article [ref=e124]:
+          - generic [ref=e125]:
+            - generic [ref=e126]:
+              - paragraph [ref=e127]: Usage records
+              - heading "Paginated usage log" [level=2] [ref=e128]
+              - paragraph [ref=e129]: This table reads from the dedicated usage relay and stays deterministic when the payload is sparse, partial, or fully empty.
+            - generic [ref=e130]:
+              - generic [ref=e131]: 25 total
+              - generic [ref=e132]: Page 1 / 3
+          - table [ref=e134]:
+            - rowgroup [ref=e135]:
+              - row "Created Request ID Endpoint Model Total tokens Actual cost Duration" [ref=e136]:
+                - columnheader "Created" [ref=e137]
+                - columnheader "Request ID" [ref=e138]
+                - columnheader "Endpoint" [ref=e139]
+                - columnheader "Model" [ref=e140]
+                - columnheader "Total tokens" [ref=e141]
+                - columnheader "Actual cost" [ref=e142]
+                - columnheader "Duration" [ref=e143]
+            - rowgroup [ref=e144]:
+              - row "Mar 21, 06:00 PM req-1 /v1/chat/completions gpt-4o-mini 101 $0.0100 101 ms" [ref=e145]:
+                - cell "Mar 21, 06:00 PM" [ref=e146]
+                - cell "req-1" [ref=e147]:
+                  - generic [ref=e148]: req-1
+                - cell "/v1/chat/completions" [ref=e149]
+                - cell "gpt-4o-mini" [ref=e150]
+                - cell "101" [ref=e151]
+                - cell "$0.0100" [ref=e152]
+                - cell "101 ms" [ref=e153]
+              - row "Mar 21, 06:00 PM req-2 /v1/chat/completions gpt-4o-mini 102 $0.0200 102 ms" [ref=e154]:
+                - cell "Mar 21, 06:00 PM" [ref=e155]
+                - cell "req-2" [ref=e156]:
+                  - generic [ref=e157]: req-2
+                - cell "/v1/chat/completions" [ref=e158]
+                - cell "gpt-4o-mini" [ref=e159]
+                - cell "102" [ref=e160]
+                - cell "$0.0200" [ref=e161]
+                - cell "102 ms" [ref=e162]
+              - row "Mar 21, 06:00 PM req-3 /v1/chat/completions gpt-4o-mini 103 $0.0300 103 ms" [ref=e163]:
+                - cell "Mar 21, 06:00 PM" [ref=e164]
+                - cell "req-3" [ref=e165]:
+                  - generic [ref=e166]: req-3
+                - cell "/v1/chat/completions" [ref=e167]
+                - cell "gpt-4o-mini" [ref=e168]
+                - cell "103" [ref=e169]
+                - cell "$0.0300" [ref=e170]
+                - cell "103 ms" [ref=e171]
+              - row "Mar 21, 06:00 PM req-4 /v1/chat/completions gpt-4o-mini 104 $0.0400 104 ms" [ref=e172]:
+                - cell "Mar 21, 06:00 PM" [ref=e173]
+                - cell "req-4" [ref=e174]:
+                  - generic [ref=e175]: req-4
+                - cell "/v1/chat/completions" [ref=e176]
+                - cell "gpt-4o-mini" [ref=e177]
+                - cell "104" [ref=e178]
+                - cell "$0.0400" [ref=e179]
+                - cell "104 ms" [ref=e180]
+              - row "Mar 21, 06:00 PM req-5 /v1/chat/completions gpt-4o-mini 105 $0.0500 105 ms" [ref=e181]:
+                - cell "Mar 21, 06:00 PM" [ref=e182]
+                - cell "req-5" [ref=e183]:
+                  - generic [ref=e184]: req-5
+                - cell "/v1/chat/completions" [ref=e185]
+                - cell "gpt-4o-mini" [ref=e186]
+                - cell "105" [ref=e187]
+                - cell "$0.0500" [ref=e188]
+                - cell "105 ms" [ref=e189]
+              - row "Mar 21, 06:00 PM req-6 /v1/chat/completions gpt-4o-mini 106 $0.0600 106 ms" [ref=e190]:
+                - cell "Mar 21, 06:00 PM" [ref=e191]
+                - cell "req-6" [ref=e192]:
+                  - generic [ref=e193]: req-6
+                - cell "/v1/chat/completions" [ref=e194]
+                - cell "gpt-4o-mini" [ref=e195]
+                - cell "106" [ref=e196]
+                - cell "$0.0600" [ref=e197]
+                - cell "106 ms" [ref=e198]
+              - row "Mar 21, 06:00 PM req-7 /v1/chat/completions gpt-4o-mini 107 $0.0700 107 ms" [ref=e199]:
+                - cell "Mar 21, 06:00 PM" [ref=e200]
+                - cell "req-7" [ref=e201]:
+                  - generic [ref=e202]: req-7
+                - cell "/v1/chat/completions" [ref=e203]
+                - cell "gpt-4o-mini" [ref=e204]
+                - cell "107" [ref=e205]
+                - cell "$0.0700" [ref=e206]
+                - cell "107 ms" [ref=e207]
+              - row "Mar 21, 06:00 PM req-8 /v1/chat/completions gpt-4o-mini 108 $0.0800 108 ms" [ref=e208]:
+                - cell "Mar 21, 06:00 PM" [ref=e209]
+                - cell "req-8" [ref=e210]:
+                  - generic [ref=e211]: req-8
+                - cell "/v1/chat/completions" [ref=e212]
+                - cell "gpt-4o-mini" [ref=e213]
+                - cell "108" [ref=e214]
+                - cell "$0.0800" [ref=e215]
+                - cell "108 ms" [ref=e216]
+              - row "Mar 21, 06:00 PM req-9 /v1/chat/completions gpt-4o-mini 109 $0.0900 109 ms" [ref=e217]:
+                - cell "Mar 21, 06:00 PM" [ref=e218]
+                - cell "req-9" [ref=e219]:
+                  - generic [ref=e220]: req-9
+                - cell "/v1/chat/completions" [ref=e221]
+                - cell "gpt-4o-mini" [ref=e222]
+                - cell "109" [ref=e223]
+                - cell "$0.0900" [ref=e224]
+                - cell "109 ms" [ref=e225]
+              - row "Mar 21, 06:00 PM req-10 /v1/chat/completions gpt-4o-mini 110 $0.1000 110 ms" [ref=e226]:
+                - cell "Mar 21, 06:00 PM" [ref=e227]
+                - cell "req-10" [ref=e228]:
+                  - generic [ref=e229]: req-10
+                - cell "/v1/chat/completions" [ref=e230]
+                - cell "gpt-4o-mini" [ref=e231]
+                - cell "110" [ref=e232]
+                - cell "$0.1000" [ref=e233]
+                - cell "110 ms" [ref=e234]
+          - generic [ref=e235]:
+            - paragraph [ref=e236]: Showing 1-10 of 25 records
+            - generic [ref=e237]:
+              - button "Previous" [disabled] [ref=e238] [cursor=pointer]
+              - button "Next page" [ref=e239] [cursor=pointer]
+    - contentinfo [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - generic [ref=e30]: hub
+            - heading "ALiang AI" [level=2] [ref=e31]
+          - paragraph [ref=e32]: The world's most reliable bridge to professional AI services.
+        - generic [ref=e33]:
+          - heading "Product" [level=4] [ref=e34]
+          - list [ref=e35]:
+            - listitem [ref=e36]:
+              - link "Features" [ref=e37] [cursor=pointer]:
+                - /url: /#features
+            - listitem [ref=e38]:
+              - link "Integrations" [ref=e39] [cursor=pointer]:
+                - /url: /#integrations
+            - listitem [ref=e40]:
+              - link "Pricing" [ref=e41] [cursor=pointer]:
+                - /url: /services
+            - listitem [ref=e42]:
+              - link "API Reference" [ref=e43] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e44]:
+          - heading "Resources" [level=4] [ref=e45]
+          - list [ref=e46]:
+            - listitem [ref=e47]:
+              - link "Documentation" [ref=e48] [cursor=pointer]:
+                - /url: /docs
+            - listitem [ref=e49]:
+              - link "Blog" [ref=e50] [cursor=pointer]:
+                - /url: /blog
+            - listitem [ref=e51]:
+              - link "Support" [ref=e52] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e53]:
+              - link "Status" [ref=e54] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e55]:
+          - heading "Company" [level=4] [ref=e56]
+          - list [ref=e57]:
+            - listitem [ref=e58]:
+              - link "About" [ref=e59] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e60]:
+              - link "Security" [ref=e61] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e62]:
+              - link "Privacy" [ref=e63] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e64]:
+              - link "Terms" [ref=e65] [cursor=pointer]:
+                - /url: "#"
+      - generic [ref=e66]:
+        - paragraph [ref=e67]: © 2024 ALiang AI Services Inc. All rights reserved.
+        - generic [ref=e68]:
+          - link [ref=e69] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e70]: public
+          - link [ref=e71] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e72]: alternate_email
+          - link [ref=e73] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e74]: rss_feed
+  - button "Open Next.js Dev Tools" [ref=e245] [cursor=pointer]:
+    - img [ref=e246]
+  - alert [ref=e249]

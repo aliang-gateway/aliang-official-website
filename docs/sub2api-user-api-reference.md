@@ -1,6 +1,6 @@
-# Sub2API 用户侧接口文档（��服务调用版）
+# Sub2API 用户侧接口文档（微服务调用版）
 
-## 约定
+## 约���
 
 | 项目 | 说明 |
 |------|------|
@@ -329,7 +329,7 @@ GET /api/v1/groups/rates
 ### 3.3 创建 API Key（指定分组）
 
 ```
-POST /api/v1/keys
+POST /api/v1/api-keys
 ```
 
 **认证**: 需要 JWT
@@ -377,17 +377,27 @@ POST /api/v1/keys
 ### 3.4 列出我的所有 API Key
 
 ```
-GET /api/v1/keys?page=1&per_page=20&status=active&group_id=3&search=claude
+GET /api/v1/api-keys?page=1&per_page=20&status=active&group_id=3&search=claude
 ```
 
 **认证**: 需要 JWT
+
+**Query 参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page` | int | 页码，默认 1 |
+| `per_page` | int | 每页条数，默认 20 |
+| `status` | string | 筛选状态：`active` / `inactive` |
+| `group_id` | int | 按分组筛选 |
+| `search` | string | 按 key 名称模糊搜索 |
 
 ---
 
 ### 3.5 获取单个 API Key 详情
 
 ```
-GET /api/v1/keys/:id
+GET /api/v1/api-keys/:id
 ```
 
 **认证**: 需要 JWT
@@ -397,7 +407,7 @@ GET /api/v1/keys/:id
 ### 3.6 更新 API Key
 
 ```
-PUT /api/v1/keys/:id
+PUT /api/v1/api-keys/:id
 ```
 
 **认证**: 需要 JWT
@@ -415,12 +425,14 @@ PUT /api/v1/keys/:id
 }
 ```
 
+> 通过将 `status` 设为 `"inactive"` 可**禁用**某个 API Key。
+
 ---
 
 ### 3.7 删除 API Key
 
 ```
-DELETE /api/v1/keys/:id
+DELETE /api/v1/api-keys/:id
 ```
 
 **认证**: 需要 JWT
@@ -477,7 +489,7 @@ GET /api/v1/usage/dashboard/trend?start_date=2025-03-01&end_date=2025-03-23&gran
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `start_date` | string | 起始日期 `YYYY-MM-DD`，默认 7 天前 |
-| `end_date` | string | 结束日期 `YYYY-MM-DD`，默认今天 |
+| `end_date` | string | 结束日期 `YYYY-MM-DD`，默认今��� |
 | `granularity` | string | 聚合粒度：`day`（默认）/ `week` / `month` |
 | `timezone` | string | 时区，如 `Asia/Shanghai` |
 
@@ -577,7 +589,7 @@ POST /api/v1/usage/dashboard/api-keys-usage
 
 ---
 
-### 4.5 使用���计汇总（支持时间范围）
+### 4.5 使用统计汇总（支持时间范围）
 
 ```
 GET /api/v1/usage/stats?period=month&api_key_id=10
@@ -742,7 +754,7 @@ GET /api/v1/redeem/history
 
 ---
 
-## 六、订阅管理
+## 六、订阅管理（用户侧）
 
 ### 6.1 订阅列表（全部）
 
@@ -879,7 +891,442 @@ x-api-key: <admin-key>
 
 ---
 
-## 七、公开设置
+## 七、Admin 管理接口
+
+> 以下接口均需通过 **Admin API Key** 认证：在请求头中携带 `x-api-key: <admin-key>`。
+> Admin API Key 在管理后台「系统设置 -> Admin API Key」中生成。
+
+### 7.1 查询所有订阅套餐（分组列表）
+
+```
+GET /api/v1/admin/groups/all
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Query 参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `platform` | string | 按平台筛选（可选），如 `anthropic`、`openai`、`gemini` |
+
+**Response**:
+```json
+{
+  "data": [
+    {
+      "id": 3,
+      "name": "Claude 基础组",
+      "platform": "anthropic",
+      "rate_multiplier": 1.0,
+      "is_exclusive": false,
+      "status": "active",
+      "subscription_type": "",
+      "daily_limit_usd": 5.0,
+      "weekly_limit_usd": 30.0,
+      "monthly_limit_usd": 100.0,
+      "account_count": 10,
+      "active_account_count": 8
+    },
+    {
+      "id": 5,
+      "name": "GPT-4o 订阅组",
+      "platform": "openai",
+      "rate_multiplier": 1.5,
+      "is_exclusive": true,
+      "status": "active",
+      "subscription_type": "monthly",
+      "daily_limit_usd": null,
+      "weekly_limit_usd": null,
+      "monthly_limit_usd": 200.0,
+      "account_count": 5,
+      "active_account_count": 5
+    }
+  ]
+}
+```
+
+> 此接口返回所有分组，无分页限制。在 Sub2API 中，**分组（Group）即订阅套餐**，`subscription_type` 字段标识是否为订阅制分组（空字符串表示非订阅制），`daily_limit_usd` / `weekly_limit_usd` / `monthly_limit_usd` 为用量限额。
+
+---
+
+### 7.2 为指定用户分配订阅
+
+```
+POST /api/v1/admin/subscriptions/assign
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Request Body**:
+```json
+{
+  "user_id": 1,
+  "group_id": 3,
+  "validity_days": 30,
+  "notes": "手动分配"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `user_id` | int64 | 是 | 目标用户 ID |
+| `group_id` | int64 | 是 | 目标分组（订阅套餐）ID |
+| `validity_days` | int | 否 | 有效天数（最大 36500，默认使用分组配置） |
+| `notes` | string | 否 | 备注信息 |
+
+**Response** (`200`):
+```json
+{
+  "data": {
+    "id": 10,
+    "user_id": 1,
+    "group_id": 3,
+    "starts_at": "2025-03-24T00:00:00Z",
+    "expires_at": "2025-04-23T00:00:00Z",
+    "status": "active",
+    "assigned_by": 0,
+    "notes": "手动分配",
+    "created_at": "2025-03-24T00:00:00Z"
+  }
+}
+```
+
+---
+
+### 7.3 批量分配订阅
+
+```
+POST /api/v1/admin/subscriptions/bulk-assign
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Request Body**:
+```json
+{
+  "user_ids": [1, 2, 3],
+  "group_id": 3,
+  "validity_days": 30,
+  "notes": "批量分配"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `user_ids` | int64[] | 是 | 目标用户 ID 列表（至少 1 个） |
+| `group_id` | int64 | 是 | 目标分组（订阅套餐）ID |
+| `validity_days` | int | 否 | 有效天数 |
+| `notes` | string | 否 | 备注信息 |
+
+---
+
+### 7.4 延长/缩短订阅有效期
+
+```
+POST /api/v1/admin/subscriptions/:id/extend
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Request Body**:
+```json
+{ "days": 15 }
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `days` | int | 是 | 调整天数。正数延长，负数缩短。范围：`-36500 ~ 36500` |
+
+---
+
+### 7.5 重置订阅配额
+
+```
+POST /api/v1/admin/subscriptions/:id/reset-quota
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Request Body**:
+```json
+{
+  "daily": true,
+  "weekly": false,
+  "monthly": false
+}
+```
+
+> 至少设置一个为 `true`。重置后对应周期的用量归零。
+
+---
+
+### 7.6 撤销订阅
+
+```
+DELETE /api/v1/admin/subscriptions/:id
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Response**:
+```json
+{
+  "data": { "message": "Subscription revoked successfully" }
+}
+```
+
+---
+
+### 7.7 查询指定用户的订阅列表
+
+```
+GET /api/v1/admin/users/:id/subscriptions
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Response**:
+```json
+{
+  "data": [
+    {
+      "id": 10,
+      "user_id": 1,
+      "group_id": 3,
+      "starts_at": "2025-03-01T00:00:00Z",
+      "expires_at": "2025-04-01T00:00:00Z",
+      "status": "active",
+      "daily_usage_usd": 2.50,
+      "weekly_usage_usd": 15.00,
+      "monthly_usage_usd": 45.00,
+      "created_at": "2025-03-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 7.8 查询指定分组的订阅列表
+
+```
+GET /api/v1/admin/groups/:id/subscriptions?page=1&per_page=20
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+---
+
+### 7.9 查询订阅详情
+
+```
+GET /api/v1/admin/subscriptions/:id
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+---
+
+### 7.10 查询订阅进度
+
+```
+GET /api/v1/admin/subscriptions/:id/progress
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+---
+
+### 7.11 为指定用户充值余额
+
+```
+POST /api/v1/admin/users/:id/balance
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Request Body**:
+```json
+{
+  "balance": 50.00,
+  "operation": "add",
+  "notes": "充值"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `balance` | float64 | 是 | 金额（必须 > 0） |
+| `operation` | string | 是 | 操作类型：`set`（直接设定）/ `add`（增加）/ `subtract`（扣减） |
+| `notes` | string | 否 | 备注信息 |
+
+**示例**：
+
+- 充值 50 USD：`{ "balance": 50, "operation": "add" }`
+- 设置余额为 100 USD：`{ "balance": 100, "operation": "set" }`
+- 扣减 10 USD：`{ "balance": 10, "operation": "subtract" }`
+
+**Response** (`200`):
+```json
+{
+  "data": {
+    "id": 1,
+    "email": "user@example.com",
+    "username": "张三",
+    "role": "user",
+    "balance": 149.50000000,
+    "concurrency": 5,
+    "status": "active"
+  }
+}
+```
+
+> 此接口支持幂等性，重复请求不会重复扣减/增加。
+
+---
+
+### 7.12 查询用户余额变动历史
+
+```
+GET /api/v1/admin/users/:id/balance-history?page=1&per_page=20&type=balance
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Query 参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page` | int | 页码 |
+| `per_page` | int | 每页条数 |
+| `type` | string | 记录类型：`balance` / `admin_balance` / `concurrency` / `admin_concurrency` / `subscription` |
+
+**Response**:
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": 100,
+        "code": "ADMIN-xxx",
+        "type": "admin_balance",
+        "value": 50.00,
+        "status": "used",
+        "used_by": 1,
+        "used_at": "2025-03-24T10:00:00Z",
+        "notes": "充值"
+      }
+    ],
+    "total": 15,
+    "page": 1,
+    "page_size": 20,
+    "pages": 1,
+    "total_recharged": 500.00
+  }
+}
+```
+
+---
+
+### 7.13 为指定用户创建 API Key
+
+```
+POST /api/v1/api-keys
+```
+
+**认证**: `Authorization: Bearer <jwt_token>`（用户自身的 JWT）
+
+> 创建 API Key 使用的是**用户侧接口**（第三章 3.3），不是 Admin 接口。
+> 你的微服务只需透传该用户的 JWT 即可为其创建 Key。
+
+**Request Body**:
+```json
+{
+  "name": "Key 名称",
+  "group_id": 3,
+  "custom_key": "sk-custom-xxx",
+  "quota": 100.0,
+  "expires_in_days": 30,
+  "ip_whitelist": ["1.2.3.4"],
+  "rate_limit_5h": 50.0,
+  "rate_limit_1d": 100.0,
+  "rate_limit_7d": 500.0
+}
+```
+
+> 详细字段说明参见 **3.3**。
+
+---
+
+### 7.14 禁用指定用户的 API Key
+
+```
+PUT /api/v1/api-keys/:id
+```
+
+**认证**: `Authorization: Bearer <jwt_token>`（用户自身的 JWT）
+
+> 禁用 API Key 使用的是**用户侧接口**（第三章 3.6），不是 Admin 接口。
+> 你的微服务只需透传该用户的 JWT 即可。
+
+**Request Body**:
+```json
+{ "status": "inactive" }
+```
+
+---
+
+### 7.15 查询指定用户的所有 API Key（Admin 视角）
+
+```
+GET /api/v1/admin/users/:id/api-keys?page=1&per_page=20
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Response**:
+```json
+{
+  "data": [
+    {
+      "id": 10,
+      "name": "我的 Claude Key",
+      "key": "sk-xxx...***",
+      "group_id": 3,
+      "status": "active",
+      "quota": 100.0,
+      "quota_used": 25.50,
+      "expires_at": "2025-04-22T00:00:00Z",
+      "created_at": "2025-03-23T00:00:00Z"
+    }
+  ],
+  "pagination": { "total": 3, "page": 1, "page_size": 20, "pages": 1 }
+}
+```
+
+> Admin 视角可以看到 key 的掩码（非明文），适合管理端查看用户的所有 key。
+> 如果用户自己查，使用 `GET /api/v1/api-keys`（**3.4**）。
+
+---
+
+### 7.16 查询指定用户的使用统计
+
+```
+GET /api/v1/admin/users/:id/usage?period=month
+```
+
+**认证**: `x-api-key: <admin-key>`
+
+**Query 参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `period` | string | 统计周期：`today` / `week` / `month`（默认 `month`） |
+
+---
+
+## 八、公开设置
 
 ```
 GET /api/v1/settings/public
@@ -891,29 +1338,62 @@ GET /api/v1/settings/public
 
 ---
 
-## 附录：需求与接口对照表
+## 附录 A：需求与接口对照表
 
-| 需求 | 接口 | 状态 |
-|------|------|------|
-| 注册 | `POST /api/v1/auth/register` | 支持 |
-| 登录 | `POST /api/v1/auth/login` | 支持 |
-| 忘记密码 | `POST /api/v1/auth/forgot-password` + `reset-password` | 支持 |
-| 刷新 Token | `POST /api/v1/auth/refresh` | 支持 |
-| 登出 | `POST /api/v1/auth/logout` | 支持 |
-| 个人信息查看（含余额） | `GET /api/v1/user/profile` | 支持 |
-| 在分组下创建 Key | `POST /api/v1/keys` | 支持 |
-| API 调用次数统计 | `GET /api/v1/usage/dashboard/stats` | 支持 |
-| Token 统计（日/周/月） | `GET /api/v1/usage/dashboard/trend` | 支持 |
-| 模型使用分布 | `GET /api/v1/usage/dashboard/models` | 支持 |
-| 按 Key 查用量 | `POST /api/v1/usage/dashboard/api-keys-usage` | 支持 |
-| 统计汇总（含端点分布） | `GET /api/v1/usage/stats` | 支持 |
-| 使用记录列表 | `GET /api/v1/usage` | 支持 |
-| 单条记录详情 | `GET /api/v1/usage/:id` | 支持 |
-| 订阅使用情况 | `GET /api/v1/subscriptions/progress` | 支持 |
-| 订阅汇总 | `GET /api/v1/subscriptions/summary` | 支持 |
-| 充值（卡密兑换） | `POST /api/v1/redeem` | 支持 |
-| 余额查询 | `GET /api/v1/user/profile` -> `balance` | 支持 |
-| 加入订阅 | 卡密兑换 / Admin API 分配 | 间接支持 |
-| 取消订阅 | Admin API `DELETE /admin/subscriptions/:id` | 间接支持 |
+| 需求 | 接口 | 认证方式 | 状态 |
+|------|------|----------|------|
+| 注册 | `POST /api/v1/auth/register` | 无 | 支持 |
+| 登录 | `POST /api/v1/auth/login` | 无 | 支持 |
+| 忘记密码 | `POST /api/v1/auth/forgot-password` + `reset-password` | 无 | 支持 |
+| 刷新 Token | `POST /api/v1/auth/refresh` | 无 | 支持 |
+| 登出 | `POST /api/v1/auth/logout` | 无 | 支持 |
+| 个人信息查看（含余额） | `GET /api/v1/user/profile` | JWT | 支持 |
+| 在分组下创建 Key | `POST /api/v1/api-keys` | JWT | 支持 |
+| 禁用 API Key | `PUT /api/v1/api-keys/:id` (`status: inactive`) | JWT | 支持 |
+| 查询用户所有 API Key | `GET /api/v1/api-keys` | JWT | 支持 |
+| Admin 查询用户所有 API Key | `GET /api/v1/admin/users/:id/api-keys` | Admin API Key | 支持 |
+| API 调用次数统计 | `GET /api/v1/usage/dashboard/stats` | JWT | 支持 |
+| Token 统计（日/周/月） | `GET /api/v1/usage/dashboard/trend` | JWT | 支持 |
+| 模型使用分布 | `GET /api/v1/usage/dashboard/models` | JWT | 支持 |
+| 按 Key 查用量 | `POST /api/v1/usage/dashboard/api-keys-usage` | JWT | 支持 |
+| 统计汇总（含端点分布） | `GET /api/v1/usage/stats` | JWT | 支持 |
+| 使用记录列表 | `GET /api/v1/usage` | JWT | 支持 |
+| 单条记录详情 | `GET /api/v1/usage/:id` | JWT | 支持 |
+| 订阅使用情况 | `GET /api/v1/subscriptions/progress` | JWT | 支持 |
+| 订阅汇总 | `GET /api/v1/subscriptions/summary` | JWT | 支持 |
+| 充值（卡密兑换） | `POST /api/v1/redeem` | JWT | 支持 |
+| 余额查询 | `GET /api/v1/user/profile` -> `balance` | JWT | 支持 |
+| 加入订阅 | Admin: `POST /api/v1/admin/subscriptions/assign` | Admin API Key | 支持 |
+| 批量加入订阅 | Admin: `POST /api/v1/admin/subscriptions/bulk-assign` | Admin API Key | 支持 |
+| 取消订阅 | Admin: `DELETE /api/v1/admin/subscriptions/:id` | Admin API Key | 支持 |
+| 查询所有订阅套餐 | `GET /api/v1/admin/groups/all` | Admin API Key | 支持 |
+| 为用户充值余额 | `POST /api/v1/admin/users/:id/balance` | Admin API Key | 支持 |
+| 查询用户余额变动历史 | `GET /api/v1/admin/users/:id/balance-history` | Admin API Key | 支持 |
+| 查询指定用户订阅 | `GET /api/v1/admin/users/:id/subscriptions` | Admin API Key | 支持 |
+| Admin 查询用户使用统计 | `GET /api/v1/admin/users/:id/usage` | Admin API Key | 支持 |
+| 延长/缩短订阅 | `POST /api/v1/admin/subscriptions/:id/extend` | Admin API Key | 支持 |
+| 重置订阅配额 | `POST /api/v1/admin/subscriptions/:id/reset-quota` | Admin API Key | 支持 |
 
-> **关于加入/取消订阅的说明**：用户侧没有直接暴露"加入/取消"接口，这是设计上的安全考虑 — 订阅分配和回收由管理员控制。你的微服务可以通过 **Admin API Key** 调用 `POST /api/v1/admin/subscriptions/assign` 和 `DELETE /api/v1/admin/subscriptions/:id` 来实现这两个操作。
+---
+
+## 附录 B：认证方式说明
+
+### 用户 JWT（透传方式）
+
+适用于用户侧操作（注册、登录、查询个人数据、创建 Key、查看统计等）：
+
+```
+Authorization: Bearer <jwt_token>
+```
+
+你的微服务在用户登录后获得 JWT，后续请求透传此 Token 即可。
+
+### Admin API Key
+
+适用于管理操作（分配订阅、充值余额、查询所有套餐、管理用户 Key 等）：
+
+```
+x-api-key: <admin-key>
+```
+
+Admin API Key 在 Sub2API 管理后台「系统设置」中生成，是一个长期有效的密钥，适合服务端对服务端调用。

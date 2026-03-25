@@ -154,7 +154,7 @@ export default function ServicesPage() {
             </div>
           </div>
           <div className="relative">
-            <div className="aspect-video overflow-hidden rounded-2xl border-4 border-white bg-slate-200 shadow-2xl dark:border-slate-700 dark:bg-slate-800">
+            <div className="aspect-video overflow-hidden rounded-2xl border-4 border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] shadow-2xl">
               <Image
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdbfe62AqCJSKa5V7u1se0IJGHIFUWK-fOmLPZ7MMaQwIyWYRTfpjRcDAxXxQoJypZFckiH1wbkf9e0P_UnsH-S1aNF65HAJX77TbNHSYo1hqtEpBgpeKai3qqu6V98jhIvmYZg-uEQ93BsCudtfwvmyYY9jxRYEz0H9HRnj4_jyBfHBIIJcM_2CJrPEDYRjFORR64yGaJNyaPdBEdXLZ-0LPUkAE4o7-ZVKeOOFJvmJnPJd6F3lVt90b2xYE8IZxbTdXtULknYrE"
                 alt="Futuristic AI neural network visualization with green accents"
@@ -163,7 +163,7 @@ export default function ServicesPage() {
                 unoptimized
               />
             </div>
-            <div className="absolute -bottom-6 -left-6 hidden rounded-xl border border-slate-100 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-800 md:block">
+            <div className="absolute -bottom-6 -left-6 hidden rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] p-6 shadow-xl md:block">
               <div className="flex items-center gap-4">
                 <div className="rounded-lg bg-[var(--stitch-primary)]/20 p-3 text-[var(--stitch-primary)]">
                   <MaterialIcon name="speed" size={24} />
@@ -190,13 +190,13 @@ export default function ServicesPage() {
                 key={platform.name}
                 className="group rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 text-center transition-all hover:border-[var(--stitch-primary)]"
               >
-                <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-white shadow-sm transition-all group-hover:bg-[var(--stitch-primary)] group-hover:text-white dark:bg-slate-700">
+                <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-[var(--stitch-bg-elevated)] shadow-sm transition-all group-hover:bg-[var(--stitch-primary)] group-hover:text-white">
                   <PlatformIcon name={platform.icon} />
                 </div>
                 <h3 className="mb-2 text-xl font-bold text-[var(--stitch-text)]">{platform.name}</h3>
                 <p className="mb-6 text-sm text-[var(--stitch-text-muted)]">{platform.description}</p>
                 <div className="space-y-2">
-                  <button type="button" className="w-full rounded-lg bg-slate-900 py-2 font-medium text-white transition-colors hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600">
+                  <button type="button" className="w-full rounded-lg bg-[var(--stitch-text)] py-2 font-medium text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80">
                     Download {platform.downloadExt}
                   </button>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
@@ -263,7 +263,7 @@ export default function ServicesPage() {
                       ? "bg-[var(--stitch-primary)] text-white shadow-lg shadow-[var(--stitch-primary)]/30 hover:shadow-xl"
                       : plan.ctaVariant === "outline"
                       ? "border border-[var(--stitch-primary)] text-[var(--stitch-primary)] hover:bg-[var(--stitch-primary)]/5"
-                      : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600"
+                      : "bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
                   }`}
                 >
                   {plan.cta}

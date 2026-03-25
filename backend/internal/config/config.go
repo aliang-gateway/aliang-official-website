@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Register RegisterConfig `yaml:"register"`
-	SMTP     SMTPConfig     `yaml:"smtp"`
-	Redis    RedisConfig    `yaml:"redis"`
+	Server         ServerConfig   `yaml:"server"`
+	Database       DatabaseConfig `yaml:"database"`
+	Auth           AuthConfig     `yaml:"auth"`
+	Register       RegisterConfig `yaml:"register"`
+	SMTP           SMTPConfig     `yaml:"smtp"`
+	Redis          RedisConfig    `yaml:"redis"`
+	Sub2APIBaseURL string         `yaml:"sub2api_base_url"`
 }
 
 type ServerConfig struct {
@@ -67,6 +68,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse yaml config: %w", err)
 	}
 
+	if envBaseURL, ok := os.LookupEnv("SUB2API_BASE_URL"); ok {
+		cfg.Sub2APIBaseURL = envBaseURL
+	}
+
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -76,6 +81,8 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
+	c.Sub2APIBaseURL = strings.TrimRight(strings.TrimSpace(c.Sub2APIBaseURL), "/")
+
 	if strings.TrimSpace(c.Server.Port) == "" {
 		c.Server.Port = "8080"
 	}
@@ -90,6 +97,9 @@ func (c *Config) validate() error {
 	}
 	if strings.TrimSpace(c.Database.Path) == "" {
 		return fmt.Errorf("database.path is required")
+	}
+	if c.Sub2APIBaseURL == "" {
+		return fmt.Errorf("SUB2API_BASE_URL is required")
 	}
 
 	if c.SMTP.Enabled {

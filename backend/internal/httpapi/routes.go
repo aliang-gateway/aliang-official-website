@@ -17,6 +17,7 @@ import (
 	"ai-api-portal/backend/internal/article"
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/model"
+	"ai-api-portal/backend/internal/proxy"
 	"ai-api-portal/backend/internal/user"
 )
 
@@ -25,11 +26,13 @@ type routes struct {
 	apiKey               *apikey.Service
 	articleSvc           *article.Service
 	userSvc              *user.Service
+	proxyClient          *proxy.Client
 	adminBootstrapSecret string
 }
 
 type RoutesOptions struct {
 	UserService          *user.Service
+	ProxyClient          *proxy.Client
 	AdminBootstrapSecret string
 }
 
@@ -47,17 +50,6 @@ type createUserResponse struct {
 	SessionToken string `json:"session_token"`
 }
 
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type registerRequest struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
-}
-
 type verifyEmailRequest struct {
 	Email string `json:"email"`
 	Code  string `json:"code"`
@@ -71,18 +63,6 @@ type resetPasswordRequest struct {
 	Email       string `json:"email"`
 	Code        string `json:"code"`
 	NewPassword string `json:"new_password"`
-}
-
-type loginUserResponse struct {
-	ID    int64  `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
-}
-
-type loginResponse struct {
-	User         loginUserResponse `json:"user"`
-	SessionToken string            `json:"session_token"`
 }
 
 type updateProfileRequest struct {
@@ -372,16 +352,52 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		apiKey:               apikey.NewService(database),
 		articleSvc:           article.NewService(database),
 		userSvc:              userSvc,
+		proxyClient:          opts.ProxyClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
 	}
 	authenticated := auth.RequireUser(database)
 
 	mux.HandleFunc("POST /users", r.handleCreateUser)
-	mux.HandleFunc("POST /auth/register", r.handleRegister)
+	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
+	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
+	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)
+	mux.HandleFunc("POST /auth/refresh", r.handleAuthRefreshPassthrough)
+	mux.HandleFunc("POST /auth/logout", r.handleAuthLogoutPassthrough)
+	if r.proxyClient != nil {
+		mux.HandleFunc("GET /dashboard/home", r.handleDashboardHomePassthrough)
+		mux.HandleFunc("GET /dashboard/details", r.handleDashboardDetailsPassthrough)
+		mux.HandleFunc("GET /dashboard/trend", r.handleDashboardDetailsPassthrough)
+		mux.HandleFunc("GET /dashboard/models", r.handleDashboardModelsPassthrough)
+		mux.HandleFunc("GET /dashboard/usage", r.handleDashboardUsagePassthrough)
+		mux.HandleFunc("GET /subscription", r.handleSubscriptionProgressPassthrough)
+		mux.HandleFunc("GET /dashboard/account", r.handleDashboardAccountPassthrough)
+
+		// Sub2API passthrough: API keys
+		mux.HandleFunc("GET /api-keys", r.handleAPIKeysListPassthrough)
+		mux.HandleFunc("POST /api-keys", r.handleAPIKeysCreatePassthrough)
+		mux.HandleFunc("GET /api-keys/{id}", r.handleAPIKeyDetailPassthrough)
+		mux.HandleFunc("PUT /api-keys/{id}", r.handleAPIKeyUpdatePassthrough)
+		mux.HandleFunc("DELETE /api-keys/{id}", r.handleAPIKeyDeletePassthrough)
+
+		// Sub2API passthrough: groups
+		mux.HandleFunc("GET /groups/available", r.handleGroupsAvailablePassthrough)
+
+		// Sub2API passthrough: subscriptions
+		mux.HandleFunc("GET /subscriptions/summary", r.handleSubscriptionsSummaryPassthrough)
+		mux.HandleFunc("GET /subscriptions/active", r.handleSubscriptionsActivePassthrough)
+		mux.HandleFunc("GET /subscriptions/all", r.handleSubscriptionsAllPassthrough)
+
+		// Sub2API passthrough: redeem & usage
+		mux.HandleFunc("GET /redeem/history", r.handleRedeemHistoryPassthrough)
+		mux.HandleFunc("GET /usage/stats", r.handleUsageStatsPassthrough)
+	} else {
+		mux.Handle("GET /subscription", authenticated(http.HandlerFunc(r.handleGetSubscription)))
+		mux.Handle("POST /api-keys", authenticated(http.HandlerFunc(r.handleCreateAPIKey)))
+		mux.Handle("DELETE /api-keys/{id}", authenticated(http.HandlerFunc(r.handleRevokeAPIKey)))
+	}
 	mux.HandleFunc("POST /auth/verify-email", r.handleVerifyEmail)
 	mux.HandleFunc("POST /auth/forgot-password", r.handleForgotPassword)
 	mux.HandleFunc("POST /auth/reset-password", r.handleResetPassword)
-	mux.HandleFunc("POST /auth/login", r.handleLogin)
 	mux.Handle("GET /user/me", authenticated(http.HandlerFunc(r.handleGetMe)))
 	mux.Handle("PUT /user/me", authenticated(http.HandlerFunc(r.handleUpdateMe)))
 	mux.Handle("PUT /user/password", authenticated(http.HandlerFunc(r.handleChangePassword)))
@@ -401,9 +417,6 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("GET /public/articles", r.handlePublicListArticles)
 	mux.HandleFunc("GET /public/articles/{slug}", r.handlePublicGetArticle)
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
-	mux.Handle("GET /subscription", authenticated(http.HandlerFunc(r.handleGetSubscription)))
-	mux.Handle("POST /api-keys", authenticated(http.HandlerFunc(r.handleCreateAPIKey)))
-	mux.Handle("DELETE /api-keys/{id}", authenticated(http.HandlerFunc(r.handleRevokeAPIKey)))
 	mux.Handle("GET /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListUnitPrices))))
 	mux.Handle("PUT /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetUnitPrice))))
 	mux.Handle("DELETE /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeactivateUnitPrice))))
@@ -491,43 +504,6 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusCreated, createUserResponse{ID: id, Email: payload.Email, Name: payload.Name, Role: payload.Role, SessionToken: plaintextSessionToken})
 }
 
-// handleRegister godoc
-// @Summary Register user
-// @Description Register a new user account.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param body body registerRequest true "Register payload"
-// @Success 201 {object} map[string]any
-// @Failure 400 {object} errorResponse
-// @Failure 403 {object} errorResponse
-// @Failure 409 {object} errorResponse
-// @Failure 500 {object} errorResponse
-// @Router /auth/register [post]
-func (r *routes) handleRegister(w http.ResponseWriter, req *http.Request) {
-	var payload registerRequest
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-
-	result, err := r.userSvc.Register(req.Context(), payload.Email, payload.Name, payload.Password)
-	if errors.Is(err, user.ErrEmailTaken) {
-		writeError(w, http.StatusConflict, "email already taken")
-		return
-	}
-	if errors.Is(err, user.ErrInvalidEmailDomain) {
-		writeError(w, http.StatusForbidden, "email domain is not allowed")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, result)
-}
-
 func (r *routes) handleVerifyEmail(w http.ResponseWriter, req *http.Request) {
 	var payload verifyEmailRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -591,56 +567,138 @@ func (r *routes) handleResetPassword(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"reset": true})
 }
 
-// handleLogin godoc
-// @Summary Login
-// @Description Login with email and password and receive session token.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param body body loginRequest true "Login payload"
-// @Success 200 {object} loginResponse
-// @Failure 400 {object} errorResponse
-// @Failure 401 {object} errorResponse
-// @Failure 403 {object} errorResponse
-// @Failure 500 {object} errorResponse
-// @Router /auth/login [post]
-func (r *routes) handleLogin(w http.ResponseWriter, req *http.Request) {
-	var payload loginRequest
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+func (r *routes) handleAuthRegisterPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleAuthPassthrough(w, req, "/api/v1/auth/register")
+}
+
+func (r *routes) handleAuthLoginPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleAuthPassthrough(w, req, "/api/v1/auth/login")
+}
+
+func (r *routes) handleAuthMePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleAuthPassthrough(w, req, "/api/v1/auth/me")
+}
+
+func (r *routes) handleAuthRefreshPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleAuthPassthrough(w, req, "/api/v1/auth/refresh")
+}
+
+func (r *routes) handleAuthLogoutPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleAuthPassthrough(w, req, "/api/v1/auth/logout")
+}
+
+func (r *routes) handleDashboardHomePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/usage/dashboard/stats")
+}
+
+func (r *routes) handleDashboardDetailsPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/usage/dashboard/trend")
+}
+
+func (r *routes) handleDashboardModelsPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/usage/dashboard/models")
+}
+
+func (r *routes) handleDashboardUsagePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/usage")
+}
+
+func (r *routes) handleSubscriptionProgressPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/progress")
+}
+
+func (r *routes) handleDashboardAccountPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/user/profile")
+}
+
+// ----- Sub2API passthrough handlers for API keys, groups, subscriptions, redeem, usage -----
+
+func (r *routes) handleAPIKeysListPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
+}
+
+func (r *routes) handleAPIKeysCreatePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
+}
+
+func (r *routes) handleAPIKeyDetailPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys/"+req.PathValue("id"))
+}
+
+func (r *routes) handleAPIKeyUpdatePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys/"+req.PathValue("id"))
+}
+
+func (r *routes) handleAPIKeyDeletePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys/"+req.PathValue("id"))
+}
+
+func (r *routes) handleGroupsAvailablePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/groups/available")
+}
+
+func (r *routes) handleSubscriptionsSummaryPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/summary")
+}
+
+func (r *routes) handleSubscriptionsActivePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/active")
+}
+
+func (r *routes) handleSubscriptionsAllPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions")
+}
+
+func (r *routes) handleRedeemHistoryPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/redeem/history")
+}
+
+func (r *routes) handleUsageStatsPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/usage/stats")
+}
+
+func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request, upstreamPath string) {
+	if r.proxyClient == nil {
+		writeError(w, http.StatusInternalServerError, "auth proxy is not configured")
 		return
 	}
 
-	payload.Email = strings.TrimSpace(payload.Email)
-	payload.Password = strings.TrimSpace(payload.Password)
-	if payload.Email == "" || payload.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
-		return
-	}
+	forwarded := req.Clone(req.Context())
+	forwarded.Header = cloneHeaders(req.Header)
+	forwarded.Header.Del("X-User-Id")
 
-	authUser, err := r.userSvc.Login(req.Context(), payload.Email, payload.Password)
-	if errors.Is(err, user.ErrInvalidCredentials) {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-	if errors.Is(err, user.ErrEmailNotVerified) {
-		writeError(w, http.StatusForbidden, "email not verified")
-		return
-	}
+	resp, err := r.proxyClient.Do(req.Context(), forwarded, upstreamPath)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to login")
+		writeError(w, http.StatusBadGateway, "failed to proxy auth request")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, loginResponse{
-		User: loginUserResponse{
-			ID:    authUser.ID,
-			Email: authUser.Email,
-			Name:  authUser.Name,
-			Role:  authUser.Role,
-		},
-		SessionToken: authUser.SessionToken,
-	})
+	if err := proxy.CopyResponse(w, resp); err != nil {
+		writeError(w, http.StatusBadGateway, "failed to proxy auth response")
+		return
+	}
+}
+
+func (r *routes) handleDashboardPassthrough(w http.ResponseWriter, req *http.Request, upstreamPath string) {
+	if r.proxyClient == nil {
+		writeError(w, http.StatusInternalServerError, "dashboard proxy is not configured")
+		return
+	}
+
+	forwarded := req.Clone(req.Context())
+	forwarded.Header = cloneHeaders(req.Header)
+	forwarded.Header.Del("X-User-Id")
+
+	resp, err := r.proxyClient.Do(req.Context(), forwarded, upstreamPath)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to proxy dashboard request")
+		return
+	}
+
+	if err := proxy.CopyResponse(w, resp); err != nil {
+		writeError(w, http.StatusBadGateway, "failed to proxy dashboard response")
+		return
+	}
 }
 
 func (r *routes) handleGetMe(w http.ResponseWriter, req *http.Request) {
@@ -2582,4 +2640,14 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, errorResponse{Error: message})
+}
+
+func cloneHeaders(headers http.Header) http.Header {
+	cloned := make(http.Header, len(headers))
+	for key, values := range headers {
+		copiedValues := make([]string, len(values))
+		copy(copiedValues, values)
+		cloned[key] = copiedValues
+	}
+	return cloned
 }

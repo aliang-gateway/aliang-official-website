@@ -30,68 +30,6 @@ func (s *testMailSender) Send(_ context.Context, toEmail, subject, body string) 
 	return nil
 }
 
-func TestAuthLoginSuccessAndInvalidCredentials(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	server, database := setupTestServer(t)
-
-	password := "Password#123"
-	passwordHash, err := user.HashPassword(password)
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
-	}
-
-	userID := createUserWithPasswordHash(t, ctx, database, "login-httpapi@example.com", "Login HTTP API", "user", passwordHash)
-
-	loginBody, err := json.Marshal(map[string]string{
-		"email":    "login-httpapi@example.com",
-		"password": password,
-	})
-	if err != nil {
-		t.Fatalf("marshal login request: %v", err)
-	}
-
-	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(loginBody))
-	loginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginRec, loginReq)
-
-	if loginRec.Code != http.StatusOK {
-		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
-	}
-
-	var loginPayload struct {
-		User struct {
-			ID    int64  `json:"id"`
-			Email string `json:"email"`
-			Name  string `json:"name"`
-			Role  string `json:"role"`
-		} `json:"user"`
-		SessionToken string `json:"session_token"`
-	}
-	if err := json.NewDecoder(loginRec.Body).Decode(&loginPayload); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-
-	if loginPayload.User.ID != userID {
-		t.Fatalf("unexpected login user id: got=%d want=%d", loginPayload.User.ID, userID)
-	}
-	if loginPayload.User.Email != "login-httpapi@example.com" || loginPayload.User.Name != "Login HTTP API" || loginPayload.User.Role != "user" {
-		t.Fatalf("unexpected login user payload: %+v", loginPayload.User)
-	}
-	if loginPayload.SessionToken == "" {
-		t.Fatalf("expected non-empty session token")
-	}
-
-	invalidReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"login-httpapi@example.com","password":"wrong-password"}`)))
-	invalidRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(invalidRec, invalidReq)
-
-	if invalidRec.Code != http.StatusUnauthorized {
-		t.Fatalf("invalid credentials status = %d, body=%s", invalidRec.Code, invalidRec.Body.String())
-	}
-}
-
 func TestUserMeAuthenticatedAndUnauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -196,18 +134,13 @@ func TestChangePasswordSuccessAndWrongOldPassword(t *testing.T) {
 		t.Fatalf("change password wrong old password status = %d, body=%s", wrongRec.Code, wrongRec.Body.String())
 	}
 
-	newLoginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"password-httpapi@example.com","password":"NewPassword#789"}`)))
-	newLoginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(newLoginRec, newLoginReq)
-	if newLoginRec.Code != http.StatusOK {
-		t.Fatalf("login with new password status = %d, body=%s", newLoginRec.Code, newLoginRec.Body.String())
+	userSvc := user.NewService(database)
+	if _, err := userSvc.Login(ctx, "password-httpapi@example.com", "NewPassword#789"); err != nil {
+		t.Fatalf("login with new password: %v", err)
 	}
 
-	oldLoginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"password-httpapi@example.com","password":"OldPassword#123"}`)))
-	oldLoginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(oldLoginRec, oldLoginReq)
-	if oldLoginRec.Code != http.StatusUnauthorized {
-		t.Fatalf("login with old password status = %d, body=%s", oldLoginRec.Code, oldLoginRec.Body.String())
+	if _, err := userSvc.Login(ctx, "password-httpapi@example.com", "OldPassword#123"); err == nil {
+		t.Fatalf("expected old password login to fail")
 	}
 }
 
@@ -237,11 +170,9 @@ func TestSetInitialPasswordSuccessAndAlreadySet(t *testing.T) {
 		t.Fatalf("expected set=true, got false")
 	}
 
-	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"set-initial-httpapi@example.com","password":"InitialPassword#123"}`)))
-	loginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginRec, loginReq)
-	if loginRec.Code != http.StatusOK {
-		t.Fatalf("login with initial password status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	userSvc := user.NewService(database)
+	if _, err := userSvc.Login(ctx, "set-initial-httpapi@example.com", "InitialPassword#123"); err != nil {
+		t.Fatalf("login with initial password: %v", err)
 	}
 
 	existingHash, err := user.HashPassword("ExistingPassword#456")
@@ -259,7 +190,7 @@ func TestSetInitialPasswordSuccessAndAlreadySet(t *testing.T) {
 	}
 }
 
-func TestRegisterVerifyEmailLoginAndDomainRestriction(t *testing.T) {
+func TestVerifyEmailAndDomainRestrictedRegisterViaService(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -270,32 +201,20 @@ func TestRegisterVerifyEmailLoginAndDomainRestriction(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"new-user@example.com","name":"New User","password":"Password#123"}`)))
-	registerRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(registerRec, registerReq)
-	if registerRec.Code != http.StatusCreated {
-		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	registerResult, err := userSvc.Register(ctx, "new-user@example.com", "New User", "Password#123")
+	if err != nil {
+		t.Fatalf("register via service: %v", err)
+	}
+	if !registerResult.RequireEmailVerification {
+		t.Fatalf("expected register result require_email_verification=true")
 	}
 
-	var registerPayload struct {
-		RequireEmailVerification bool `json:"require_email_verification"`
-	}
-	if err := json.NewDecoder(registerRec.Body).Decode(&registerPayload); err != nil {
-		t.Fatalf("decode register response: %v", err)
-	}
-	if !registerPayload.RequireEmailVerification {
-		t.Fatalf("expected register response require_email_verification=true")
-	}
-
-	loginBeforeVerifyReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"new-user@example.com","password":"Password#123"}`)))
-	loginBeforeVerifyRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginBeforeVerifyRec, loginBeforeVerifyReq)
-	if loginBeforeVerifyRec.Code != http.StatusForbidden {
-		t.Fatalf("login before verify status = %d, body=%s", loginBeforeVerifyRec.Code, loginBeforeVerifyRec.Body.String())
+	if _, err := userSvc.Login(ctx, "new-user@example.com", "Password#123"); err != user.ErrEmailNotVerified {
+		t.Fatalf("expected login before verify to fail with ErrEmailNotVerified, got %v", err)
 	}
 
 	var code string
-	err := database.QueryRowContext(ctx, `
+	err = database.QueryRowContext(ctx, `
 		SELECT code FROM email_verification_tokens evt
 		JOIN users u ON u.id = evt.user_id
 		WHERE u.email = ?
@@ -313,22 +232,16 @@ func TestRegisterVerifyEmailLoginAndDomainRestriction(t *testing.T) {
 		t.Fatalf("verify email status = %d, body=%s", verifyRec.Code, verifyRec.Body.String())
 	}
 
-	loginAfterVerifyReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"new-user@example.com","password":"Password#123"}`)))
-	loginAfterVerifyRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginAfterVerifyRec, loginAfterVerifyReq)
-	if loginAfterVerifyRec.Code != http.StatusOK {
-		t.Fatalf("login after verify status = %d, body=%s", loginAfterVerifyRec.Code, loginAfterVerifyRec.Body.String())
+	if _, err := userSvc.Login(ctx, "new-user@example.com", "Password#123"); err != nil {
+		t.Fatalf("login after verify via service: %v", err)
 	}
 
-	blockedDomainReq := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"blocked@forbidden.com","name":"Blocked","password":"Password#123"}`)))
-	blockedDomainRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(blockedDomainRec, blockedDomainReq)
-	if blockedDomainRec.Code != http.StatusForbidden {
-		t.Fatalf("register blocked domain status = %d, body=%s", blockedDomainRec.Code, blockedDomainRec.Body.String())
+	if _, err := userSvc.Register(ctx, "blocked@forbidden.com", "Blocked", "Password#123"); err != user.ErrInvalidEmailDomain {
+		t.Fatalf("expected blocked domain register to fail with ErrInvalidEmailDomain, got %v", err)
 	}
 }
 
-func TestRegisterWithoutEmailVerificationAllowsImmediateLogin(t *testing.T) {
+func TestRegisterWithoutEmailVerificationAllowsImmediateLoginViaService(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -340,25 +253,15 @@ func TestRegisterWithoutEmailVerificationAllowsImmediateLogin(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"no-verify@example.com","name":"No Verify","password":"Password#123"}`)))
-	registerRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(registerRec, registerReq)
-	if registerRec.Code != http.StatusCreated {
-		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	registerResult, err := userSvc.Register(ctx, "no-verify@example.com", "No Verify", "Password#123")
+	if err != nil {
+		t.Fatalf("register via service: %v", err)
 	}
-
-	var registerPayload struct {
-		EmailVerified            bool `json:"email_verified"`
-		RequireEmailVerification bool `json:"require_email_verification"`
+	if registerResult.RequireEmailVerification {
+		t.Fatalf("expected register result require_email_verification=false")
 	}
-	if err := json.NewDecoder(registerRec.Body).Decode(&registerPayload); err != nil {
-		t.Fatalf("decode register response: %v", err)
-	}
-	if registerPayload.RequireEmailVerification {
-		t.Fatalf("expected register response require_email_verification=false")
-	}
-	if !registerPayload.EmailVerified {
-		t.Fatalf("expected register response email_verified=true when verification disabled")
+	if !registerResult.EmailVerified {
+		t.Fatalf("expected register result email_verified=true when verification disabled")
 	}
 
 	var tokens int
@@ -369,11 +272,8 @@ func TestRegisterWithoutEmailVerificationAllowsImmediateLogin(t *testing.T) {
 		t.Fatalf("expected no email verification tokens, got %d", tokens)
 	}
 
-	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"no-verify@example.com","password":"Password#123"}`)))
-	loginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginRec, loginReq)
-	if loginRec.Code != http.StatusOK {
-		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	if _, err := userSvc.Login(ctx, "no-verify@example.com", "Password#123"); err != nil {
+		t.Fatalf("login via service: %v", err)
 	}
 }
 
@@ -403,11 +303,8 @@ func TestLoginAllowsExistingUnverifiedUserWhenEmailVerificationDisabled(t *testi
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"existing-unverified@example.com","password":"Password#123"}`)))
-	loginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginRec, loginReq)
-	if loginRec.Code != http.StatusOK {
-		t.Fatalf("login status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	if _, err := userSvc.Login(ctx, "existing-unverified@example.com", "Password#123"); err != nil {
+		t.Fatalf("login via service: %v", err)
 	}
 }
 
@@ -601,7 +498,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	return server, database
 }
 
-func TestRegisterAndForgotPasswordSendsVerificationCodesAndResetWorks(t *testing.T) {
+func TestForgotPasswordSendsVerificationCodesAndResetWorks(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -614,11 +511,12 @@ func TestRegisterAndForgotPasswordSendsVerificationCodesAndResetWorks(t *testing
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"mail-user@example.com","name":"Mail User","password":"Password#123"}`)))
-	registerRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(registerRec, registerReq)
-	if registerRec.Code != http.StatusCreated {
-		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	registerResult, err := userSvc.Register(ctx, "mail-user@example.com", "Mail User", "Password#123")
+	if err != nil {
+		t.Fatalf("register via service: %v", err)
+	}
+	if !registerResult.RequireEmailVerification {
+		t.Fatalf("expected register result require_email_verification=true")
 	}
 
 	if len(mailCapture.sent) != 1 {
@@ -637,7 +535,7 @@ func TestRegisterAndForgotPasswordSendsVerificationCodesAndResetWorks(t *testing
 	}
 
 	var resetCode string
-	err := database.QueryRowContext(ctx, `
+	err = database.QueryRowContext(ctx, `
 		SELECT prt.code
 		FROM password_reset_tokens prt
 		JOIN users u ON u.id = prt.user_id
@@ -656,11 +554,8 @@ func TestRegisterAndForgotPasswordSendsVerificationCodesAndResetWorks(t *testing
 		t.Fatalf("reset password status = %d, body=%s", resetRec.Code, resetRec.Body.String())
 	}
 
-	loginReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"mail-user@example.com","password":"NewPassword#789"}`)))
-	loginRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginRec, loginReq)
-	if loginRec.Code != http.StatusForbidden {
-		t.Fatalf("login after reset (before verify) status = %d, body=%s", loginRec.Code, loginRec.Body.String())
+	if _, err := userSvc.Login(ctx, "mail-user@example.com", "NewPassword#789"); err != user.ErrEmailNotVerified {
+		t.Fatalf("expected login after reset before verify to fail with ErrEmailNotVerified, got %v", err)
 	}
 
 	var verifyCode string
@@ -683,11 +578,8 @@ func TestRegisterAndForgotPasswordSendsVerificationCodesAndResetWorks(t *testing
 		t.Fatalf("verify email status = %d, body=%s", verifyRec.Code, verifyRec.Body.String())
 	}
 
-	loginAfterVerifyReq := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"mail-user@example.com","password":"NewPassword#789"}`)))
-	loginAfterVerifyRec := httptest.NewRecorder()
-	server.Config.Handler.ServeHTTP(loginAfterVerifyRec, loginAfterVerifyReq)
-	if loginAfterVerifyRec.Code != http.StatusOK {
-		t.Fatalf("login after verify status = %d, body=%s", loginAfterVerifyRec.Code, loginAfterVerifyRec.Body.String())
+	if _, err := userSvc.Login(ctx, "mail-user@example.com", "NewPassword#789"); err != nil {
+		t.Fatalf("login after verify via service: %v", err)
 	}
 }
 

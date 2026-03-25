@@ -1,0 +1,2 @@
+[GET] http://127.0.0.1:19380/_next/static/webpack/110140be74af41e5.webpack.hot-update.json => [FAILED] net::ERR_ABORTED
+[GET] http://127.0.0.1:19380/_next/static/webpack/110140be74af41e5.webpack.hot-update.json => [FAILED] net::ERR_ABORTED

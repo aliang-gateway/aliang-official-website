@@ -16,7 +16,7 @@ export const DocsCodeBlocks: MDXComponents = {
     if (isInlineCode) {
       return (
         <code 
-          className="relative rounded bg-slate-100 dark:bg-slate-800 px-[0.3rem] py-[0.2rem] font-mono text-sm font-medium text-emerald-600 dark:text-emerald-400" 
+          className="relative rounded bg-[var(--stitch-bg-elevated)] px-[0.3rem] py-[0.2rem] font-mono text-sm font-medium text-[var(--stitch-primary)]"
           {...props}
         >
           {children}

@@ -15,6 +15,7 @@ import (
 	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/httpapi"
 	"ai-api-portal/backend/internal/mailer"
+	"ai-api-portal/backend/internal/proxy"
 	"ai-api-portal/backend/internal/user"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -41,6 +42,9 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
+	}
+	if cfg.Sub2APIBaseURL == "" {
+		log.Fatalf("failed to load config: SUB2API_BASE_URL is required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -84,11 +88,17 @@ func main() {
 		log.Printf("redis configured at %s (db=%d)", cfg.Redis.Addr, cfg.Redis.DB)
 	}
 
+	proxyClient, err := proxy.NewClient(cfg.Sub2APIBaseURL)
+	if err != nil {
+		log.Fatalf("failed to init sub2api proxy client: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.Handle("/swagger/", httpSwagger.Handler())
 	httpapi.RegisterRoutesWithOptions(mux, database, httpapi.RoutesOptions{
 		UserService:          userSvc,
+		ProxyClient:          proxyClient,
 		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,
 	})
 

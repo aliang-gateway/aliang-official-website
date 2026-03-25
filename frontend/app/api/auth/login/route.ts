@@ -19,26 +19,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const requestBody = await request.text();
+  const requestBody = await request.arrayBuffer();
+
+  const headers = new Headers();
+  const contentType = request.headers.get("content-type");
+  const accept = request.headers.get("accept");
+  const authorization = request.headers.get("authorization");
+  headers.set("content-type", contentType ?? "application/json");
+  headers.set("accept", accept ?? "application/json");
+  if (authorization) {
+    headers.set("authorization", authorization);
+  }
 
   const upstream = await fetch(`${apiBaseUrl}/auth/login`, {
     method: "POST",
-    headers: {
-      "content-type": request.headers.get("content-type") ?? "application/json",
-      accept: request.headers.get("accept") ?? "application/json",
-      Authorization: request.headers.get("Authorization") ?? "",
-    },
+    headers,
     body: requestBody,
     cache: "no-store",
   });
 
-  try {
-    const payload = await upstream.json();
-    return NextResponse.json(payload, { status: upstream.status });
-  } catch {
-    return NextResponse.json(
-      { error: "invalid json response from upstream" },
-      { status: 502 },
-    );
-  }
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: upstream.headers,
+  });
 }

@@ -3,18 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
 
 type RegisterResponse = {
-  user_id: number;
-  email: string;
-  name: string;
-  session_token: string;
-  email_verified: boolean;
-  require_email_verification: boolean;
+  user_id?: number;
+  email?: string;
+  name?: string;
+  access_token?: string;
+  session_token?: string;
+  email_verified?: boolean;
+  require_email_verification?: boolean;
 };
 
 type VerifyEmailResponse = {
-  verified: boolean;
+  verified?: boolean;
 };
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -62,16 +64,21 @@ export default function RegisterPage() {
         }),
       });
 
-      const payload = (await response.json()) as RegisterResponse | { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "Register failed");
+        throw new Error(extractApiError(payload, "Register failed"));
       }
 
-      const registerPayload = payload as RegisterResponse;
-      localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, registerPayload.session_token);
-      setRequireEmailVerification(registerPayload.require_email_verification);
-      if (registerPayload.require_email_verification) {
-        setPendingVerifyEmail(registerPayload.email);
+      const registerPayload = unwrapData<RegisterResponse>(payload) ?? ((asRecord(payload) as RegisterResponse | null) ?? {});
+      const sessionToken = asString(registerPayload.access_token) || asString(registerPayload.session_token);
+      if (sessionToken) {
+        localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
+      }
+
+      const requiresVerification = Boolean(registerPayload.require_email_verification);
+      setRequireEmailVerification(requiresVerification);
+      if (requiresVerification) {
+        setPendingVerifyEmail(asString(registerPayload.email, email.trim()));
         setSuccess("Registration submitted. Please enter the email verification code to complete registration.");
       } else {
         setPendingVerifyEmail("");
@@ -117,12 +124,13 @@ export default function RegisterPage() {
         }),
       });
 
-      const payload = (await response.json()) as VerifyEmailResponse | { error?: string };
+      const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error ?? "Email verification failed");
+        throw new Error(extractApiError(payload, "Email verification failed"));
       }
 
-      if ((payload as VerifyEmailResponse).verified) {
+      const verifyPayload = unwrapData<VerifyEmailResponse>(payload) ?? ((asRecord(payload) as VerifyEmailResponse | null) ?? {});
+      if (verifyPayload.verified === true) {
         setPendingVerifyEmail("");
         setVerificationCode("");
         setSuccess("Email verified. You can login now.");
@@ -138,24 +146,24 @@ export default function RegisterPage() {
 
   return (
     <section className="portal-shell py-12">
-      <div className="mx-auto w-full max-w-[480px] rounded-xl border border-[var(--stitch-primary)]/10 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+      <div className="mx-auto w-full max-w-[480px] rounded-xl border border-[var(--stitch-primary)]/10 bg-[var(--stitch-bg-elevated)] p-8 shadow-sm">
         <div className="mb-8 flex flex-col gap-2 text-center sm:text-left">
-          <h1 className="text-3xl font-black leading-tight text-slate-900 dark:text-slate-100">Create Account</h1>
-          <p className="text-base text-slate-500 dark:text-slate-400">Join ALiang Gateway to get started</p>
+          <h1 className="text-3xl font-black leading-tight text-[var(--stitch-text)]">Create Account</h1>
+          <p className="text-base text-[var(--stitch-text-muted)]">Join ALiang Gateway to get started</p>
         </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-900 dark:text-slate-100" htmlFor="register-username">
+            <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-username">
               Username
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
                 <MaterialIcon name="person" size={20} />
               </span>
               <input
                 id="register-username"
-                className="h-12 w-full rounded border border-slate-200 bg-white pl-10 pr-4 text-base text-slate-900 placeholder:text-slate-400 focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
                 placeholder="Enter your username"
                 type="text"
                 value={username}
@@ -166,16 +174,16 @@ export default function RegisterPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-900 dark:text-slate-100" htmlFor="register-email">
+            <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-email">
               Email Address
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
                 <MaterialIcon name="mail" size={20} />
               </span>
               <input
                 id="register-email"
-                className="h-12 w-full rounded border border-slate-200 bg-white pl-10 pr-4 text-base text-slate-900 placeholder:text-slate-400 focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
                 placeholder="name@example.com"
                 type="email"
                 value={email}
@@ -186,16 +194,16 @@ export default function RegisterPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-900 dark:text-slate-100" htmlFor="register-password">
+            <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-password">
               Password
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
                 <MaterialIcon name="lock" size={20} />
               </span>
               <input
                 id="register-password"
-                className="h-12 w-full rounded border border-slate-200 bg-white pl-10 pr-4 text-base text-slate-900 placeholder:text-slate-400 focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
                 placeholder="Create a password"
                 type="password"
                 value={password}
@@ -206,16 +214,16 @@ export default function RegisterPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-900 dark:text-slate-100" htmlFor="register-confirm-password">
+            <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-confirm-password">
               Confirm Password
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
                 <MaterialIcon name="verified_user" size={20} />
               </span>
               <input
                 id="register-confirm-password"
-                className="h-12 w-full rounded border border-slate-200 bg-white pl-10 pr-4 text-base text-slate-900 placeholder:text-slate-400 focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
                 placeholder="Confirm your password"
                 type="password"
                 value={confirmPassword}
@@ -227,13 +235,13 @@ export default function RegisterPage() {
 
           <div className="flex items-center gap-3 py-2">
             <input
-              className="size-5 rounded border-slate-300 bg-white text-[var(--stitch-primary)] focus:ring-[var(--stitch-primary)] dark:border-slate-700 dark:bg-slate-800"
+              className="size-5 rounded border-[var(--stitch-border)] bg-[var(--stitch-bg)] text-[var(--stitch-primary)] focus:ring-[var(--stitch-primary)]"
               id="register-terms"
               type="checkbox"
               checked={agreeTerms}
               onChange={(event) => setAgreeTerms(event.target.checked)}
             />
-            <label className="text-sm text-slate-600 dark:text-slate-400" htmlFor="register-terms">
+            <label className="text-sm text-[var(--stitch-text-muted)]" htmlFor="register-terms">
               I agree to the
               <a className="mx-1 text-[var(--stitch-primary)] hover:underline" href="/docs">
                 Terms and Conditions
@@ -245,8 +253,8 @@ export default function RegisterPage() {
             </label>
           </div>
 
-          {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
-          {success ? <p className="text-sm text-emerald-600 dark:text-emerald-400">{success}</p> : null}
+          {error ? <p className="text-sm text-red-500">{error}</p> : null}
+          {success ? <p className="text-sm text-emerald-500">{success}</p> : null}
 
           <button
             className="mt-2 w-full rounded bg-[var(--stitch-primary)] py-3.5 font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-colors hover:bg-[var(--stitch-primary)]/90 disabled:cursor-not-allowed disabled:opacity-60"
@@ -257,7 +265,7 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-slate-600 dark:text-slate-400">
+        <p className="mt-8 text-center text-sm text-[var(--stitch-text-muted)]">
           Already have an account?
           <Link className="ml-1 font-bold text-[var(--stitch-primary)] hover:underline" href="/login">
             Log in
@@ -265,16 +273,16 @@ export default function RegisterPage() {
         </p>
 
         {requireEmailVerification !== false && pendingVerifyEmail.trim() ? (
-          <form className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 dark:border-slate-700" onSubmit={handleVerifyEmail}>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Email Verification</p>
+          <form className="mt-6 flex flex-col gap-3 border-t border-[var(--stitch-border)] pt-5" onSubmit={handleVerifyEmail}>
+            <p className="text-sm font-semibold text-[var(--stitch-text)]">Email Verification</p>
             <input
-              className="h-11 w-full rounded border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              className="h-11 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-3 text-sm text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
               placeholder="Enter verification code"
               value={verificationCode}
               onChange={(event) => setVerificationCode(event.target.value)}
             />
             <button
-              className="w-fit rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              className="w-fit rounded bg-[var(--stitch-text)] px-4 py-2 text-sm font-semibold text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80 disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={isVerifying}
             >
