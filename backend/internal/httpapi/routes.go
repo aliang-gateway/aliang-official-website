@@ -997,6 +997,11 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
+	isEnabled := true
+	if normalized.IsEnabled != nil {
+		isEnabled = *normalized.IsEnabled
+	}
+
 	tx, err := r.db.BeginTx(req.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create package")
@@ -1006,9 +1011,9 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tierID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO tiers(code, name, created_at, updated_at)
-		VALUES (?, ?, ?, ?)
-	`, "id", normalized.Code, normalized.Name, now, now)
+		INSERT INTO tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "id", normalized.Code, normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabled, now, now)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create package: %v", err))
 		return
