@@ -4210,6 +4210,10 @@ func validateAndNormalizeCurrency(raw string) (string, error) {
 func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool) (adminPackageRequest, error) {
 	payload.Code = strings.TrimSpace(payload.Code)
 	payload.Name = strings.TrimSpace(payload.Name)
+	payload.ValueType = strings.TrimSpace(payload.ValueType)
+	payload.Description = strings.TrimSpace(payload.Description)
+	payload.FeaturesJSON = strings.TrimSpace(payload.FeaturesJSON)
+
 	if requireCode && payload.Code == "" {
 		return adminPackageRequest{}, errors.New("code is required")
 	}
@@ -4218,6 +4222,31 @@ func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool)
 	}
 	if len(payload.GroupCodes) == 0 {
 		return adminPackageRequest{}, errors.New("group_codes is required")
+	}
+	if payload.PriceMicros < 0 {
+		return adminPackageRequest{}, errors.New("price_micros must be >= 0")
+	}
+
+	switch payload.ValueType {
+	case "", "days", "balance":
+		// valid
+	default:
+		return adminPackageRequest{}, errors.New("value_type must be empty, 'days', or 'balance'")
+	}
+	if payload.ValueType != "" && payload.ValueAmount <= 0 {
+		return adminPackageRequest{}, errors.New("value_amount must be > 0 when value_type is set")
+	}
+
+	if payload.FeaturesJSON != "" && payload.FeaturesJSON != "[]" {
+		if !json.Valid([]byte(payload.FeaturesJSON)) {
+			return adminPackageRequest{}, errors.New("features_json must be valid JSON")
+		}
+		var arr []string
+		if err := json.Unmarshal([]byte(payload.FeaturesJSON), &arr); err != nil {
+			return adminPackageRequest{}, errors.New("features_json must be a JSON array of strings")
+		}
+	} else {
+		payload.FeaturesJSON = "[]"
 	}
 
 	normalizedGroups := make([]string, 0, len(payload.GroupCodes))
