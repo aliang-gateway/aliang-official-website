@@ -1075,8 +1075,13 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	isEnabledVal := false
+	if normalized.IsEnabled != nil {
+		isEnabledVal = *normalized.IsEnabled
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE tiers SET name = ?, updated_at = ? WHERE id = ?;`), normalized.Name, now, tierID)
+	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabledVal, now, tierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
 		return
