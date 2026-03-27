@@ -515,6 +515,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("POST /public/estimate", r.handlePublicEstimate)
 	mux.HandleFunc("GET /public/articles", r.handlePublicListArticles)
 	mux.HandleFunc("GET /public/articles/{slug}", r.handlePublicGetArticle)
+	mux.HandleFunc("GET /public/packages", http.HandlerFunc(r.handlePublicListPackages))
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
 	mux.Handle("GET /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListUnitPrices))))
 	mux.Handle("PUT /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetUnitPrice))))
@@ -2639,6 +2640,53 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 // @Tags public
 // @Produce json
 // @Success 200 {object} publicArticleListResponse
+func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Request) {
+	rows, err := r.db.QueryContext(req.Context(), db.Rebind(r.sqlDialect, `
+		SELECT code, name, price_micros, value_type, value_amount, description, features_json
+		FROM tiers
+		WHERE is_enabled = 1
+		ORDER BY price_micros ASC;
+	`))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list packages")
+		return
+	}
+	defer rows.Close()
+
+	packages := make([]publicPackageResponse, 0)
+	for rows.Next() {
+		var (
+			code         string
+			name         string
+			priceMicros  int64
+			valueType    string
+			valueAmount  int64
+			description  string
+			featuresJSON string
+		)
+		if err := rows.Scan(&code, &name, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list packages")
+			return
+		}
+		packages = append(packages, publicPackageResponse{
+			Code:         code,
+			Name:         name,
+			PriceMicros:  priceMicros,
+			ValueType:    valueType,
+			ValueAmount:  valueAmount,
+			Description:  description,
+			Features:     parseFeaturesJSON(featuresJSON),
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list packages")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, listPublicPackagesResponse{Packages: packages})
+}
+
 // @Failure 500 {object} errorResponse
 // @Router /public/articles [get]
 func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
