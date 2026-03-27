@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -59,67 +62,45 @@ function PlatformIcon({ name }: { name: string }) {
   return <MaterialIcon name={name} size={40} className="text-[var(--stitch-text)] transition-colors group-hover:text-white" />;
 }
 
-const pricingPlans = [
-  {
-    name: "Free",
-    price: "$0",
-    period: "/mo",
-    description: "Perfect for exploring and personal testing.",
-    features: [
-      { text: "2 Global Nodes", included: true },
-      { text: "50GB Monthly Traffic", included: true },
-      { text: "Community Support", included: true },
-      { text: "Advanced Analytics", included: false },
-    ],
-    cta: "Current Plan",
-    ctaVariant: "outline",
-  },
-  {
-    name: "Pro",
-    price: "$12",
-    period: "/mo",
-    description: "Enhanced speed for dedicated developers.",
-    features: [
-      { text: "10 Global Nodes", included: true },
-      { text: "500GB Monthly Traffic", included: true },
-      { text: "Priority Email Support", included: true },
-      { text: "Basic Analytics", included: true },
-    ],
-    cta: "Upgrade to Pro",
-    ctaVariant: "secondary",
-  },
-  {
-    name: "Plus",
-    price: "$29",
-    period: "/mo",
-    description: "Full power for small to medium AI teams.",
-    features: [
-      { text: "50+ Global Edge Nodes", included: true },
-      { text: "Unlimited Traffic", included: true },
-      { text: "24/7 Priority Support", included: true },
-      { text: "Custom API Integration", included: true },
-    ],
-    cta: "Start Plus Trial",
-    ctaVariant: "primary",
-    recommended: true,
-  },
-  {
-    name: "Ultra",
-    price: "$99",
-    period: "/mo",
-    description: "Enterprise grade reliability and scale.",
-    features: [
-      { text: "Dedicated AI Ingress", included: true },
-      { text: "SLA Guarantees (99.99%)", included: true },
-      { text: "Technical Account Manager", included: true },
-      { text: "On-prem Deployment", included: true },
-    ],
-    cta: "Contact Enterprise",
-    ctaVariant: "secondary",
-  },
-];
+type DynamicPackage = {
+  code: string;
+  name: string;
+  price_micros: number;
+  value_type: string;
+  value_amount: number;
+  description: string;
+  features: string[];
+};
+
+function formatPrice(priceMicros: number): string {
+  if (priceMicros <= 0) return "0";
+  return (priceMicros / 1000000).toFixed(priceMicros % 1000000 === 0 ? 0 : 2);
+}
 
 export default function ServicesPage() {
+  const [packages, setPackages] = useState<DynamicPackage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/packages");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.packages)) {
+          setPackages(data.packages);
+        }
+      } catch {
+        // silent — falls back to empty state
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <>
       <section className="relative overflow-hidden py-20 px-6">
@@ -209,68 +190,52 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      {/* Pricing Plans */}
+      {/* Pricing Plans — Dynamic */}
       <section className="bg-[var(--stitch-bg)] py-24 px-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
             <h2 className="mb-4 text-4xl font-black text-[var(--stitch-text)]">Flexible Service Plans</h2>
             <p className="text-[var(--stitch-text-muted)]">Scalable solutions for developers, researchers, and enterprises</p>
           </div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {pricingPlans.map((plan) => (
-              <div
-                key={plan.name}
-                className={`flex flex-col rounded-2xl border p-8 shadow-sm transition-all hover:shadow-md ${
-                  plan.recommended
-                    ? "relative z-10 scale-105 border-2 border-[var(--stitch-primary)] ring-4 ring-[var(--stitch-primary)]/10"
-                    : "border-[var(--stitch-border)] bg-[var(--stitch-bg)]"
-                }`}
-              >
-                {plan.recommended && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-[var(--stitch-primary)] px-4 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                    Recommended
-                  </div>
-                )}
-                <div className="mb-8">
-                  <h3 className={`mb-2 text-lg font-bold uppercase tracking-tight ${plan.recommended ? "text-[var(--stitch-primary)]" : "text-[var(--stitch-text-muted)]"}`}>
-                    {plan.name}
-                  </h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-black text-[var(--stitch-text)]">{plan.price}</span>
-                    <span className="text-sm text-[var(--stitch-text-muted)]">{plan.period}</span>
-                  </div>
-                  <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{plan.description}</p>
-                </div>
-                <ul className="mb-8 flex-grow space-y-4">
-                  {plan.features.map((feature) => (
-                    <li
-                      key={feature.text}
-                      className={`flex items-center gap-3 text-sm ${!feature.included ? "opacity-50" : ""}`}
-                    >
-                      <MaterialIcon
-                        name={feature.included ? "check_circle" : "cancel"}
-                        size={18}
-                        className={feature.included ? "text-[var(--stitch-primary)]" : "text-[var(--stitch-text-muted)]"}
-                      />
-                      {feature.text}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className={`w-full rounded-lg py-3 font-bold transition-colors ${
-                    plan.ctaVariant === "primary"
-                      ? "bg-[var(--stitch-primary)] text-white shadow-lg shadow-[var(--stitch-primary)]/30 hover:shadow-xl"
-                      : plan.ctaVariant === "outline"
-                      ? "border border-[var(--stitch-primary)] text-[var(--stitch-primary)] hover:bg-[var(--stitch-primary)]/5"
-                      : "bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
-                  }`}
+          {isLoading ? (
+            <p className="text-center text-[var(--stitch-text-muted)]">Loading plans...</p>
+          ) : packages.length === 0 ? (
+            <p className="text-center text-[var(--stitch-text-muted)]">No plans available at this time.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+              {packages.map((pkg) => (
+                <div
+                  key={pkg.code}
+                  className="flex flex-col rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 shadow-sm transition-all hover:shadow-md"
                 >
-                  {plan.cta}
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div className="mb-8">
+                    <h3 className="mb-2 text-lg font-bold uppercase tracking-tight text-[var(--stitch-text-muted)]">
+                      {pkg.name}
+                    </h3>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
+                      {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
+                    </div>
+                    {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}
+                  </div>
+                  <ul className="mb-8 flex-grow space-y-4">
+                    {pkg.features.map((feature) => (
+                      <li key={feature} className="flex items-center gap-3 text-sm">
+                        <MaterialIcon name="check_circle" size={18} className="text-[var(--stitch-primary)]" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg py-3 font-bold transition-colors bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
+                  >
+                    {pkg.price_micros > 0 ? "Get Started" : "Current Plan"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </>
