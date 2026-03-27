@@ -3745,6 +3745,12 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			t.id,
 			t.code,
 			t.name,
+			t.price_micros,
+			t.value_type,
+			t.value_amount,
+			t.description,
+			t.features_json,
+			t.is_enabled,
 			t.created_at,
 			t.updated_at,
 			tgb.group_code
@@ -3763,14 +3769,20 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 	packageIndex := make(map[int64]int)
 	for rows.Next() {
 		var (
-			tierID    int64
-			pkgCode   string
-			pkgName   string
-			createdAt string
-			updatedAt string
-			groupCode sql.NullString
+			tierID       int64
+			pkgCode      string
+			pkgName      string
+			priceMicros  int64
+			valueType    string
+			valueAmount  int64
+			description  string
+			featuresJSON string
+			isEnabled    bool
+			createdAt    string
+			updatedAt    string
+			groupCode    sql.NullString
 		)
-		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &createdAt, &updatedAt, &groupCode); err != nil {
+		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &createdAt, &updatedAt, &groupCode); err != nil {
 			return nil, err
 		}
 
@@ -3779,11 +3791,17 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			idx = len(packages)
 			packageIndex[tierID] = idx
 			packages = append(packages, adminPackageResponse{
-				Code:       pkgCode,
-				Name:       pkgName,
-				GroupCodes: []string{},
-				CreatedAt:  createdAt,
-				UpdatedAt:  updatedAt,
+				Code:         pkgCode,
+				Name:         pkgName,
+				PriceMicros:  priceMicros,
+				ValueType:    valueType,
+				ValueAmount:  valueAmount,
+				Description:  description,
+				Features:     parseFeaturesJSON(featuresJSON),
+				IsEnabled:    isEnabled,
+				GroupCodes:   []string{},
+				CreatedAt:    createdAt,
+				UpdatedAt:    updatedAt,
 			})
 		}
 
@@ -3797,6 +3815,17 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 	}
 
 	return packages, nil
+}
+
+func parseFeaturesJSON(raw string) []string {
+	if raw == "" || raw == "[]" {
+		return []string{}
+	}
+	var features []string
+	if err := json.Unmarshal([]byte(raw), &features); err != nil {
+		return []string{}
+	}
+	return features
 }
 
 func (r *routes) loadAdminPackageByCode(ctx context.Context, packageCode string) (adminPackageResponse, error) {
