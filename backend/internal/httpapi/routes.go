@@ -23,6 +23,7 @@ import (
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
+	portalstripe "ai-api-portal/backend/internal/stripe"
 	"ai-api-portal/backend/internal/sub2apiauth"
 	"ai-api-portal/backend/internal/user"
 )
@@ -36,12 +37,14 @@ type routes struct {
 	userSvc              *user.Service
 	sub2apiAuth          *sub2apiauth.Service
 	proxyClient          *proxy.Client
+	stripeClient         *portalstripe.Client
 	adminBootstrapSecret string
 }
 
 type RoutesOptions struct {
 	UserService          *user.Service
 	ProxyClient          *proxy.Client
+	StripeClient         *portalstripe.Client
 	AdminBootstrapSecret string
 	SQLDialect           string
 }
@@ -103,7 +106,17 @@ type adminPaymentSuccessRequest struct {
 	SubscriptionID  *int64                          `json:"subscription_id"`
 	BalanceRecharge *proxy.UpdateUserBalanceRequest `json:"balance_recharge,omitempty"`
 	APIKey          *proxy.CreateUserAPIKeyRequest  `json:"api_key,omitempty"`
+	TierCode        string                          `json:"tier_code,omitempty"`
 	Payload         json.RawMessage                 `json:"payload,omitempty"`
+}
+
+type createPackageCheckoutSessionRequest struct {
+	TierCode string `json:"tier_code"`
+}
+
+type createPackageCheckoutSessionResponse struct {
+	SessionID  string `json:"session_id"`
+	CheckoutURL string `json:"checkout_url"`
 }
 
 type fulfillmentJobResponse struct {
@@ -122,11 +135,11 @@ type adminPaymentSuccessResponse struct {
 }
 
 type adminGroupResponse struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Code     string `json:"code"`
-	Platform string `json:"platform,omitempty"`
-	Type     string `json:"type,omitempty"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	Platform         string `json:"platform,omitempty"`
+	Type             string `json:"type,omitempty"`
+	SubscriptionType string `json:"subscription_type,omitempty"`
 }
 
 type adminAvailableGroupsResponse struct {
@@ -134,10 +147,10 @@ type adminAvailableGroupsResponse struct {
 }
 
 type adminPackageRequest struct {
-	Code          string   `json:"code,omitempty"`
-	Name          string   `json:"name"`
-	GroupCodes    []string `json:"group_codes"`
-	PriceMicros   int64    `json:"price_micros"`
+	Code          string  `json:"code,omitempty"`
+	Name          string  `json:"name"`
+	GroupIDs      []int64 `json:"group_ids"`
+	PriceMicros   int64   `json:"price_micros"`
 	ValueType     string   `json:"value_type"`
 	ValueAmount   int64    `json:"value_amount"`
 	Description   string   `json:"description"`
@@ -148,7 +161,7 @@ type adminPackageRequest struct {
 type adminPackageResponse struct {
 	Code          string   `json:"code"`
 	Name          string   `json:"name"`
-	GroupCodes    []string `json:"group_codes"`
+	GroupIDs      []int64  `json:"group_ids"`
 	PriceMicros   int64    `json:"price_micros"`
 	ValueType     string   `json:"value_type"`
 	ValueAmount   int64    `json:"value_amount"`
@@ -451,6 +464,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		userSvc:              userSvc,
 		sub2apiAuth:          sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		proxyClient:          opts.ProxyClient,
+		stripeClient:         opts.StripeClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
@@ -480,7 +494,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		// Sub2API passthrough: groups
 		mux.Handle("GET /groups/available", authenticated(http.HandlerFunc(r.handleGroupsAvailablePassthrough)))
 
-		// Sub2API passthrough: subscriptions
+		// Sub2API passthrough: als_subscriptions
 		mux.HandleFunc("GET /subscriptions/summary", r.handleSubscriptionsSummaryPassthrough)
 		mux.HandleFunc("GET /subscriptions/active", r.handleSubscriptionsActivePassthrough)
 		mux.HandleFunc("GET /subscriptions/all", r.handleSubscriptionsAllPassthrough)
@@ -496,6 +510,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("POST /auth/verify-email", r.handleVerifyEmail)
 	mux.HandleFunc("POST /auth/forgot-password", r.handleForgotPassword)
 	mux.HandleFunc("POST /auth/reset-password", r.handleResetPassword)
+	mux.HandleFunc("POST /webhooks/stripe", r.handleStripeWebhook)
 	mux.Handle("GET /user/me", authenticated(http.HandlerFunc(r.handleGetMe)))
 	mux.Handle("PUT /user/me", authenticated(http.HandlerFunc(r.handleUpdateMe)))
 	mux.Handle("PUT /user/password", authenticated(http.HandlerFunc(r.handleChangePassword)))
@@ -517,6 +532,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("GET /public/articles/{slug}", r.handlePublicGetArticle)
 	mux.HandleFunc("GET /public/packages", http.HandlerFunc(r.handlePublicListPackages))
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
+	mux.Handle("POST /checkout/package", authenticated(http.HandlerFunc(r.handleCreatePackageCheckoutSession)))
 	mux.Handle("GET /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListUnitPrices))))
 	mux.Handle("PUT /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetUnitPrice))))
 	mux.Handle("DELETE /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeactivateUnitPrice))))
@@ -583,7 +599,7 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	const query = `INSERT INTO users(email, name, role) VALUES (?, ?, ?)`
+	const query = `INSERT INTO als_users(email, name, role) VALUES (?, ?, ?)`
 	id, err := db.InsertID(req.Context(), r.sqlDialect, tx, query, "id", payload.Email, payload.Name, payload.Role)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create user: %v", err))
@@ -591,7 +607,7 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`), id, sessionTokenHash, expiresAt); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create user session")
@@ -751,7 +767,7 @@ func (r *routes) handleDashboardAccountPassthrough(w http.ResponseWriter, req *h
 	r.handleDashboardPassthrough(w, req, "/api/v1/user/profile")
 }
 
-// ----- Sub2API passthrough handlers for API keys, groups, subscriptions, redeem, usage -----
+// ----- Sub2API passthrough handlers for API keys, groups, als_subscriptions, redeem, usage -----
 
 func (r *routes) handleAPIKeysListPassthrough(w http.ResponseWriter, req *http.Request) {
 	r.handleFilteredAPIKeysListPassthrough(w, req)
@@ -793,18 +809,18 @@ func (r *routes) handleFilteredGroupsAvailablePassthrough(w http.ResponseWriter,
 		return
 	}
 
-	authorizedGroupCodes, err := r.loadAuthorizedGroupCodeSet(req.Context(), user.ID)
+	authorizedGroupIDs, err := r.loadAuthorizedGroupIDSet(req.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupCodes) == 0 {
+	if len(authorizedGroupIDs) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{}})
 		return
 	}
 
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/groups/available", func(payload any) (any, error) {
-		return filterGroupListPayload(payload, authorizedGroupCodes)
+		return filterGroupListPayloadByID(payload, authorizedGroupIDs)
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to fetch groups")
@@ -832,17 +848,17 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 
-	authorizedGroupCodes, err := r.loadAuthorizedGroupCodeSet(req.Context(), user.ID)
+	authorizedGroupIDs, err := r.loadAuthorizedGroupIDSet(req.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupCodes) == 0 {
+	if len(authorizedGroupIDs) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"data": []map[string]any{}, "total": 0, "page": 1, "per_page": 20}})
 		return
 	}
 
-	authorizedGroupIDs, err := r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupCodes)
+	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
 		return
@@ -881,16 +897,16 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 
-	authorizedGroupCodes, err := r.loadAuthorizedGroupCodeSet(req.Context(), user.ID)
+	authorizedGroupIDs, err := r.loadAuthorizedGroupIDSet(req.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupCodes) == 0 {
+	if len(authorizedGroupIDs) == 0 {
 		writeError(w, http.StatusForbidden, "group access forbidden")
 		return
 	}
-	authorizedGroupIDs, err := r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupCodes)
+	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
 		return
@@ -944,12 +960,16 @@ func (r *routes) handleAdminListAvailableGroups(w http.ResponseWriter, req *http
 
 	groups := make([]adminGroupResponse, 0, len(resp.Data))
 	for _, group := range resp.Data {
+		subscriptionType := strings.TrimSpace(group.SubscriptionType)
+		if subscriptionType == "" {
+			subscriptionType = strings.TrimSpace(group.Type)
+		}
 		groups = append(groups, adminGroupResponse{
-			ID:       group.ID,
-			Name:     group.Name,
-			Code:     group.Code,
-			Platform: group.Platform,
-			Type:     group.Type,
+			ID:               group.ID,
+			Name:             group.Name,
+			Platform:         group.Platform,
+			Type:             subscriptionType,
+			SubscriptionType: subscriptionType,
 		})
 	}
 
@@ -1012,7 +1032,7 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tierID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, created_at, updated_at)
+		INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, "id", normalized.Code, normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabled, now, now)
 	if err != nil {
@@ -1020,7 +1040,7 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	if err := r.replaceTierGroupBindingsTx(req.Context(), tx, tierID, normalized.GroupCodes, now); err != nil {
+	if err := r.replaceTierGroupBindingsTx(req.Context(), tx, tierID, normalized.GroupIDs, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save package groups")
 		return
 	}
@@ -1082,7 +1102,7 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabledVal, now, tierID)
+	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabledVal, now, tierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
 		return
@@ -1097,7 +1117,7 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	if err := r.replaceTierGroupBindingsTx(req.Context(), tx, tierID, normalized.GroupCodes, now); err != nil {
+	if err := r.replaceTierGroupBindingsTx(req.Context(), tx, tierID, normalized.GroupIDs, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save package groups")
 		return
 	}
@@ -1313,7 +1333,7 @@ func (r *routes) findLocalUserIDByEmail(ctx context.Context, email string) (int6
 	var userID int64
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT id
-		FROM users
+		FROM als_users
 		WHERE LOWER(email) = LOWER(?)
 		LIMIT 1;
 	`), trimmed).Scan(&userID)
@@ -1336,7 +1356,7 @@ func (r *routes) findLocalUserIDByStoredAccessToken(ctx context.Context, accessT
 	var userID int64
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT user_id
-		FROM sub2api_auth_tokens
+		FROM als_sub2api_auth_tokens
 		WHERE access_token = ?
 		LIMIT 1;
 	`), trimmed).Scan(&userID)
@@ -1359,7 +1379,7 @@ func (r *routes) findLocalUserIDByStoredRefreshToken(ctx context.Context, refres
 	var userID int64
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT user_id
-		FROM sub2api_auth_tokens
+		FROM als_sub2api_auth_tokens
 		WHERE refresh_token = ?
 		LIMIT 1;
 	`), trimmed).Scan(&userID)
@@ -1381,7 +1401,7 @@ func (r *routes) findLocalUserRoleByID(ctx context.Context, userID int64) (strin
 	var role string
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT role
-		FROM users
+		FROM als_users
 		WHERE id = ?
 		LIMIT 1;
 	`), userID).Scan(&role)
@@ -1605,7 +1625,7 @@ func (r *routes) ensureLocalUser(ctx context.Context, identity authIdentity) (in
 		role = "user"
 	}
 
-	userID, err = db.InsertID(ctx, r.sqlDialect, r.db, `INSERT INTO users(email, name, role) VALUES (?, ?, ?);`, "id", email, name, role)
+	userID, err = db.InsertID(ctx, r.sqlDialect, r.db, `INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, "id", email, name, role)
 	if err != nil {
 		return 0, false, fmt.Errorf("create local auth user: %w", err)
 	}
@@ -1620,7 +1640,7 @@ func (r *routes) createLocalSessionToken(ctx context.Context, userID int64) (str
 
 	expiresAt := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
 	if _, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`), userID, tokenHash, expiresAt); err != nil {
 		return "", fmt.Errorf("insert local session: %w", err)
@@ -1696,7 +1716,7 @@ func (r *routes) findLocalUserIDBySessionToken(ctx context.Context, sessionToken
 	)
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT user_id, expires_at
-		FROM sessions
+		FROM als_sessions
 		WHERE token_hash = ?
 		  AND revoked_at IS NULL
 		LIMIT 1;
@@ -2116,14 +2136,14 @@ func (r *routes) handleListSessions(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	sessions, err := r.userSvc.ListSessions(req.Context(), authUser.ID)
+	als_sessions, err := r.userSvc.ListSessions(req.Context(), authUser.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list sessions")
+		writeError(w, http.StatusInternalServerError, "failed to list als_sessions")
 		return
 	}
 
-	response := listSessionsResponse{Sessions: make([]sessionResponse, 0, len(sessions))}
-	for _, item := range sessions {
+	response := listSessionsResponse{Sessions: make([]sessionResponse, 0, len(als_sessions))}
+	for _, item := range als_sessions {
 		response.Sessions = append(response.Sessions, sessionResponse{
 			ID:        item.ID,
 			CreatedAt: item.CreatedAt.Format(time.RFC3339),
@@ -2227,9 +2247,9 @@ func (r *routes) handleAdminListUnitPrices(w http.ResponseWriter, req *http.Requ
 			up.price_per_unit_micros,
 			up.currency,
 			up.effective_from
-		FROM unit_prices up
-		JOIN service_items si ON si.id = up.service_item_id
-		LEFT JOIN tiers t ON t.id = up.tier_id
+		FROM als_unit_prices up
+		JOIN als_service_items si ON si.id = up.service_item_id
+		LEFT JOIN als_tiers t ON t.id = up.tier_id
 		WHERE up.service_item_id = ?
 			AND up.effective_to IS NULL
 	`
@@ -2332,7 +2352,7 @@ func (r *routes) handleAdminSetUnitPrice(w http.ResponseWriter, req *http.Reques
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if hasTier {
 		if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-			UPDATE unit_prices
+			UPDATE als_unit_prices
 			SET effective_to = ?
 			WHERE service_item_id = ?
 				AND tier_id = ?
@@ -2343,7 +2363,7 @@ func (r *routes) handleAdminSetUnitPrice(w http.ResponseWriter, req *http.Reques
 		}
 	} else {
 		if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-			UPDATE unit_prices
+			UPDATE als_unit_prices
 			SET effective_to = ?
 			WHERE service_item_id = ?
 				AND tier_id IS NULL
@@ -2359,7 +2379,7 @@ func (r *routes) handleAdminSetUnitPrice(w http.ResponseWriter, req *http.Reques
 		tierArg = tierID
 	}
 	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-		INSERT INTO unit_prices(service_item_id, tier_id, price_per_unit_micros, currency, effective_from)
+		INSERT INTO als_unit_prices(service_item_id, tier_id, price_per_unit_micros, currency, effective_from)
 		VALUES (?, ?, ?, ?, ?);
 	`), serviceItemID, tierArg, payload.PricePerUnitMicros, currency, now); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to set unit price: %v", err))
@@ -2421,7 +2441,7 @@ func (r *routes) handleAdminDeactivateUnitPrice(w http.ResponseWriter, req *http
 	var result sql.Result
 	if hasTier {
 		result, err = r.db.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-			UPDATE unit_prices
+			UPDATE als_unit_prices
 			SET effective_to = ?
 			WHERE service_item_id = ?
 				AND tier_id = ?
@@ -2429,7 +2449,7 @@ func (r *routes) handleAdminDeactivateUnitPrice(w http.ResponseWriter, req *http
 		`), now, serviceItemID, tierID)
 	} else {
 		result, err = r.db.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-			UPDATE unit_prices
+			UPDATE als_unit_prices
 			SET effective_to = ?
 			WHERE service_item_id = ?
 				AND tier_id IS NULL
@@ -2455,8 +2475,8 @@ func (r *routes) handleAdminDeactivateUnitPrice(w http.ResponseWriter, req *http
 }
 
 // handlePublicTiers godoc
-// @Summary List public tiers
-// @Description List all public subscription tiers and included default service items.
+// @Summary List public als_tiers
+// @Description List all public subscription als_tiers and included default service items.
 // @Tags public
 // @Produce json
 // @Success 200 {object} listPublicTiersResponse
@@ -2472,20 +2492,20 @@ func (r *routes) handlePublicTiers(w http.ResponseWriter, req *http.Request) {
 			si.name,
 			si.unit,
 			tdi.included_units
-		FROM tiers t
-		LEFT JOIN tier_default_items tdi ON tdi.tier_id = t.id
-		LEFT JOIN service_items si ON si.id = tdi.service_item_id
+		FROM als_tiers t
+		LEFT JOIN als_tier_default_items tdi ON tdi.tier_id = t.id
+		LEFT JOIN als_service_items si ON si.id = tdi.service_item_id
 		ORDER BY t.id ASC, si.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(req.Context(), query)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list tiers")
+		writeError(w, http.StatusInternalServerError, "failed to list als_tiers")
 		return
 	}
 	defer rows.Close()
 
-	tiers := make([]publicTierResponse, 0)
+	als_tiers := make([]publicTierResponse, 0)
 	tierIndex := make(map[int64]int)
 	for rows.Next() {
 		var (
@@ -2498,19 +2518,19 @@ func (r *routes) handlePublicTiers(w http.ResponseWriter, req *http.Request) {
 			includedUnits sql.NullInt64
 		)
 		if err := rows.Scan(&tierID, &tierCode, &tierName, &itemCode, &itemName, &itemUnit, &includedUnits); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to read tiers")
+			writeError(w, http.StatusInternalServerError, "failed to read als_tiers")
 			return
 		}
 
 		idx, found := tierIndex[tierID]
 		if !found {
-			idx = len(tiers)
+			idx = len(als_tiers)
 			tierIndex[tierID] = idx
-			tiers = append(tiers, publicTierResponse{Code: tierCode, Name: tierName, DefaultItems: []publicTierItemResponse{}})
+			als_tiers = append(als_tiers, publicTierResponse{Code: tierCode, Name: tierName, DefaultItems: []publicTierItemResponse{}})
 		}
 
 		if itemCode.Valid {
-			tiers[idx].DefaultItems = append(tiers[idx].DefaultItems, publicTierItemResponse{
+			als_tiers[idx].DefaultItems = append(als_tiers[idx].DefaultItems, publicTierItemResponse{
 				Code:          itemCode.String,
 				Name:          itemName.String,
 				Unit:          itemUnit.String,
@@ -2520,11 +2540,11 @@ func (r *routes) handlePublicTiers(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list tiers")
+		writeError(w, http.StatusInternalServerError, "failed to list als_tiers")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, listPublicTiersResponse{Tiers: tiers})
+	writeJSON(w, http.StatusOK, listPublicTiersResponse{Tiers: als_tiers})
 }
 
 // handlePublicEstimate godoc
@@ -2556,7 +2576,7 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 		tierID   int64
 		tierName string
 	)
-	err := r.db.QueryRowContext(req.Context(), db.Rebind(r.sqlDialect, `SELECT id, name FROM tiers WHERE code = ?;`), payload.TierCode).Scan(&tierID, &tierName)
+	err := r.db.QueryRowContext(req.Context(), db.Rebind(r.sqlDialect, `SELECT id, name FROM als_tiers WHERE code = ?;`), payload.TierCode).Scan(&tierID, &tierName)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "tier not found")
 		return
@@ -2573,8 +2593,8 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 			si.name,
 			si.unit,
 			tdi.included_units
-		FROM tier_default_items tdi
-		JOIN service_items si ON si.id = tdi.service_item_id
+		FROM als_tier_default_items tdi
+		JOIN als_service_items si ON si.id = tdi.service_item_id
 		WHERE tdi.tier_id = ?
 		ORDER BY si.id ASC;
 	`
@@ -2635,18 +2655,18 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 }
 
 // handlePublicListArticles godoc
-// @Summary List published articles
-// @Description List all published articles for public website.
+// @Summary List published als_articles
+// @Description List all published als_articles for public website.
 // @Tags public
 // @Produce json
 // @Success 200 {object} publicArticleListResponse
 func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Request) {
 	rows, err := r.db.QueryContext(req.Context(), db.Rebind(r.sqlDialect, `
 		SELECT code, name, price_micros, value_type, value_amount, description, features_json
-		FROM tiers
-		WHERE is_enabled = 1
+		FROM als_tiers
+		WHERE is_enabled = ?
 		ORDER BY price_micros ASC;
-	`))
+	`), true)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list packages")
 		return
@@ -2690,14 +2710,14 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 // @Failure 500 {object} errorResponse
 // @Router /public/articles [get]
 func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
-	articles, err := r.articleSvc.ListPublishedArticles(req.Context())
+	als_articles, err := r.articleSvc.ListPublishedArticles(req.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list articles")
+		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
 
-	response := publicArticleListResponse{Articles: make([]publicArticleDTO, 0, len(articles))}
-	for _, item := range articles {
+	response := publicArticleListResponse{Articles: make([]publicArticleDTO, 0, len(als_articles))}
+	for _, item := range als_articles {
 		if item.PublishedAt == nil {
 			continue
 		}
@@ -2771,14 +2791,14 @@ func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request
 }
 
 func (r *routes) handleAdminListArticles(w http.ResponseWriter, req *http.Request) {
-	articles, err := r.articleSvc.ListArticles(req.Context(), article.ListArticlesFilters{})
+	als_articles, err := r.articleSvc.ListArticles(req.Context(), article.ListArticlesFilters{})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list articles")
+		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
 
-	response := adminArticleListResponse{Articles: make([]adminArticleDTO, 0, len(articles))}
-	for _, item := range articles {
+	response := adminArticleListResponse{Articles: make([]adminArticleDTO, 0, len(als_articles))}
+	for _, item := range als_articles {
 		response.Articles = append(response.Articles, toAdminArticleDTO(item))
 	}
 
@@ -3067,6 +3087,156 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 	writeJSON(w, http.StatusOK, toAdminArticleDTO(*updated))
 }
 
+func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *http.Request) {
+	if r.stripeClient == nil {
+		writeError(w, http.StatusServiceUnavailable, "stripe checkout is not configured")
+		return
+	}
+
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var payload createPackageCheckoutSessionRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	payload.TierCode = strings.TrimSpace(payload.TierCode)
+	if payload.TierCode == "" {
+		writeError(w, http.StatusBadRequest, "tier_code is required")
+		return
+	}
+
+	pkg, err := r.loadAdminPackageByCode(req.Context(), payload.TierCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "package not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load package")
+		return
+	}
+	if !pkg.IsEnabled {
+		writeError(w, http.StatusBadRequest, "package is not enabled")
+		return
+	}
+	amountMinor, err := microsToCurrencyMinor(pkg.PriceMicros)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	customerEmail := strings.TrimSpace(authUser.Email)
+	if customerEmail == "" {
+		profile, err := r.userSvc.GetProfile(req.Context(), authUser.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load profile")
+			return
+		}
+		customerEmail = strings.TrimSpace(profile.Email)
+	}
+
+	session, err := r.stripeClient.CreateCheckoutSession(req.Context(), portalstripe.CheckoutSessionInput{
+		PackageCode:   pkg.Code,
+		PackageName:   pkg.Name,
+		UserID:        authUser.ID,
+		CustomerEmail: customerEmail,
+		AmountMinor:   amountMinor,
+	})
+	if err != nil {
+		log.Printf("stripe checkout session creation failed for user_id=%d tier_code=%s: %v", authUser.ID, pkg.Code, err)
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to create stripe checkout session: %v", err))
+		return
+	}
+	if err := r.recordCheckoutSession(req.Context(), "stripe", session.ID, authUser.ID, pkg, customerEmail, amountMinor, r.stripeClient.Currency()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to persist checkout session")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, createPackageCheckoutSessionResponse{
+		SessionID:   session.ID,
+		CheckoutURL: session.URL,
+	})
+}
+
+func (r *routes) handleStripeWebhook(w http.ResponseWriter, req *http.Request) {
+	if r.stripeClient == nil {
+		writeError(w, http.StatusServiceUnavailable, "stripe checkout is not configured")
+		return
+	}
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read stripe webhook body")
+		return
+	}
+
+	event, err := r.stripeClient.ConstructEvent(body, req.Header.Get("Stripe-Signature"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid stripe webhook signature")
+		return
+	}
+
+	switch event.Type {
+	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
+	default:
+		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
+		return
+	}
+
+	var session portalstripe.CheckoutSessionCompleted
+	if err := json.Unmarshal(event.Data.Object, &session); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid stripe checkout session payload")
+		return
+	}
+	if strings.TrimSpace(session.PaymentStatus) != "paid" {
+		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
+		return
+	}
+
+	userID, err := parsePositiveInt64(session.Metadata["user_id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "stripe checkout session metadata user_id is invalid")
+		return
+	}
+	tierCode := strings.TrimSpace(session.Metadata["tier_code"])
+	if tierCode == "" {
+		writeError(w, http.StatusBadRequest, "stripe checkout session metadata tier_code is required")
+		return
+	}
+
+	payloadBytes, _ := json.Marshal(map[string]any{
+		"stripe_event_type":     event.Type,
+		"stripe_checkout_id":    session.ID,
+		"payment_status":        session.PaymentStatus,
+		"currency":              session.Currency,
+		"amount_total":          session.AmountTotal,
+		"customer_email":        session.CustomerEmail,
+	})
+
+	job, err := r.ingestAndMaybeExecutePaymentSuccess(req.Context(), adminPaymentSuccessRequest{
+		PaymentEventID: event.ID,
+		OrderID:        strings.TrimSpace(session.ID),
+		Provider:       "stripe",
+		UserID:         userID,
+		TierCode:       tierCode,
+		Payload:        payloadBytes,
+	}, "stripe:"+event.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to process stripe checkout completion")
+		return
+	}
+	if err := r.markCheckoutSessionCompleted(req.Context(), "stripe", session.ID, event.ID, tierCode, userID, session.CustomerEmail, session.AmountTotal, session.Currency, job.ID, body); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to persist stripe payment record")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, adminPaymentSuccessResponse{Job: toFulfillmentJobResponse(job)})
+}
+
 func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Request) {
 	if r.fulfillmentSvc == nil {
 		writeError(w, http.StatusInternalServerError, "fulfillment service is not configured")
@@ -3104,12 +3274,27 @@ func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	job, err := r.ingestAndMaybeExecutePaymentSuccess(req.Context(), payload, idempotencyKey)
+	if err != nil {
+		if errors.Is(err, fulfillment.ErrIdempotencyConflict) {
+			writeError(w, http.StatusConflict, "idempotency key already used with different payment payload")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to execute payment fulfillment")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, adminPaymentSuccessResponse{Job: toFulfillmentJobResponse(job)})
+}
+
+func (r *routes) ingestAndMaybeExecutePaymentSuccess(ctx context.Context, payload adminPaymentSuccessRequest, idempotencyKey string) (*fulfillment.Job, error) {
 	normalizedPayload, err := json.Marshal(struct {
 		PaymentEventID  string                          `json:"payment_event_id"`
 		OrderID         string                          `json:"order_id,omitempty"`
 		Provider        string                          `json:"provider,omitempty"`
 		BalanceRecharge *proxy.UpdateUserBalanceRequest `json:"balance_recharge,omitempty"`
 		APIKey          *proxy.CreateUserAPIKeyRequest  `json:"api_key,omitempty"`
+		TierCode        string                          `json:"tier_code,omitempty"`
 		Payload         json.RawMessage                 `json:"payload,omitempty"`
 	}{
 		PaymentEventID:  payload.PaymentEventID,
@@ -3117,14 +3302,14 @@ func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Requ
 		Provider:        payload.Provider,
 		BalanceRecharge: payload.BalanceRecharge,
 		APIKey:          payload.APIKey,
+		TierCode:        strings.TrimSpace(payload.TierCode),
 		Payload:         payload.Payload,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to normalize payment event")
-		return
+		return nil, fmt.Errorf("normalize payment event: %w", err)
 	}
 
-	job, err := r.fulfillmentSvc.CreateOrLoadJobByIdempotency(req.Context(), &fulfillment.CreateJobInput{
+	job, err := r.fulfillmentSvc.CreateOrLoadJobByIdempotency(ctx, &fulfillment.CreateJobInput{
 		UserID:         &payload.UserID,
 		SubscriptionID: payload.SubscriptionID,
 		EventType:      "payment_succeeded",
@@ -3132,27 +3317,92 @@ func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Requ
 		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
-		if errors.Is(err, fulfillment.ErrIdempotencyConflict) {
-			writeError(w, http.StatusConflict, "idempotency key already used with different payment payload")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "failed to ingest payment success event")
-		return
+		return nil, err
 	}
 
 	if shouldExecutePaymentSuccessFulfillment(payload) {
-		job, err = r.executePaymentSuccessFulfillment(req.Context(), job, payload, idempotencyKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to execute payment fulfillment")
-			return
-		}
+		return r.executePaymentSuccessFulfillment(ctx, job, payload, idempotencyKey)
 	}
-
-	writeJSON(w, http.StatusAccepted, adminPaymentSuccessResponse{Job: toFulfillmentJobResponse(job)})
+	return job, nil
 }
 
 func shouldExecutePaymentSuccessFulfillment(payload adminPaymentSuccessRequest) bool {
-	return payload.BalanceRecharge != nil || payload.APIKey != nil
+	return payload.BalanceRecharge != nil || payload.APIKey != nil || payload.TierCode != ""
+}
+
+func (r *routes) recordCheckoutSession(ctx context.Context, provider, checkoutSessionID string, userID int64, pkg adminPackageResponse, customerEmail string, amountMinor int64, currency string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	payloadJSON, _ := json.Marshal(map[string]any{
+		"checkout_session_id": checkoutSessionID,
+		"tier_code":           pkg.Code,
+	})
+	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_payment_records(
+			provider,
+			checkout_session_id,
+			user_id,
+			tier_code,
+			package_name,
+			customer_email,
+			amount_minor,
+			currency,
+			status,
+			payload_json,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+	`), provider, checkoutSessionID, userID, pkg.Code, pkg.Name, strings.TrimSpace(customerEmail), amountMinor, strings.ToLower(strings.TrimSpace(currency)), "checkout_created", string(payloadJSON), now, now)
+	return err
+}
+
+func (r *routes) markCheckoutSessionCompleted(ctx context.Context, provider, checkoutSessionID, paymentEventID, tierCode string, userID int64, customerEmail string, amountMinor int64, currency string, fulfillmentJobID int64, payload []byte) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		UPDATE als_payment_records
+		SET payment_event_id = ?,
+			user_id = ?,
+			tier_code = ?,
+			customer_email = ?,
+			amount_minor = ?,
+			currency = ?,
+			status = ?,
+			fulfillment_job_id = ?,
+			payload_json = ?,
+			completed_at = ?,
+			updated_at = ?
+		WHERE provider = ? AND checkout_session_id = ?;
+	`), paymentEventID, userID, tierCode, strings.TrimSpace(customerEmail), amountMinor, strings.ToLower(strings.TrimSpace(currency)), "payment_succeeded", fulfillmentJobID, string(payload), now, now, provider, checkoutSessionID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected > 0 {
+		return nil
+	}
+	_, err = r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_payment_records(
+			provider,
+			checkout_session_id,
+			payment_event_id,
+			user_id,
+			tier_code,
+			customer_email,
+			amount_minor,
+			currency,
+			status,
+			fulfillment_job_id,
+			payload_json,
+			completed_at,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+	`), provider, checkoutSessionID, paymentEventID, userID, tierCode, strings.TrimSpace(customerEmail), amountMinor, strings.ToLower(strings.TrimSpace(currency)), "payment_succeeded", fulfillmentJobID, string(payload), now, now, now)
+	return err
 }
 
 func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) (*fulfillment.Job, error) {
@@ -3190,6 +3440,17 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 				return job, nil
 			}
 			return nil, apiKeyErr
+		}
+	}
+
+	if strings.TrimSpace(payload.TierCode) != "" {
+		packageErr := r.executePackagePurchaseFulfillment(ctx, job, payload, parentIdempotencyKey)
+		job, _ = r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		if packageErr != nil {
+			if job != nil {
+				return job, nil
+			}
+			return nil, packageErr
 		}
 	}
 
@@ -3247,6 +3508,82 @@ func (r *routes) executeDelegatedAPIKeyCreation(ctx context.Context, job *fulfil
 	childKey := parentIdempotencyKey + ":api_key"
 	_, err = r.proxyClient.CreateUserAPIKey(ctx, bearerToken, *payload.APIKey, childKey)
 	_, applyErr := r.fulfillmentSvc.ApplyAPIKeyCreationResult(ctx, job.ID, err)
+	if applyErr != nil {
+		return applyErr
+	}
+	return nil
+}
+
+func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) error {
+	pkg, err := r.loadAdminPackageByCode(ctx, strings.TrimSpace(payload.TierCode))
+	if err != nil {
+		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, err)
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+	if !pkg.IsEnabled {
+		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, errors.New("package is not enabled"))
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+	if len(pkg.GroupIDs) == 0 {
+		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, errors.New("package has no bound groups"))
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+
+	if _, _, err := r.ensureActiveSubscriptionForUser(ctx, payload.UserID, pkg.Code); err != nil {
+		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, err)
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+
+	var redeemErr error
+	switch strings.TrimSpace(pkg.ValueType) {
+	case "days":
+		if pkg.ValueAmount <= 0 {
+			redeemErr = errors.New("package days value must be positive")
+			break
+		}
+		validityDays := int(pkg.ValueAmount)
+		for _, groupID := range pkg.GroupIDs {
+			childKey := parentIdempotencyKey + ":package:" + strconv.FormatInt(groupID, 10)
+			groupIDCopy := groupID
+			_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
+				Code:         buildRedeemCode(payload.OrderID, payload.PaymentEventID, groupID),
+				Type:         proxy.RedeemTypeSubscription,
+				Value:        0,
+				UserID:       payload.UserID,
+				GroupID:      &groupIDCopy,
+				ValidityDays: &validityDays,
+				Notes:        fmt.Sprintf("stripe package purchase %s", pkg.Code),
+			}, childKey)
+			if redeemErr != nil {
+				break
+			}
+		}
+	case "balance":
+		amount := microsToFloatCurrency(pkg.ValueAmount)
+		_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
+			Code:   buildRedeemCode(payload.OrderID, payload.PaymentEventID, 0),
+			Type:   proxy.RedeemTypeBalance,
+			Value:  amount,
+			UserID: payload.UserID,
+			Notes:  fmt.Sprintf("stripe package purchase %s", pkg.Code),
+		}, parentIdempotencyKey+":package:balance")
+	default:
+		redeemErr = errors.New("package value_type is not supported for fulfillment")
+	}
+
+	_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, redeemErr)
 	if applyErr != nil {
 		return applyErr
 	}
@@ -3408,86 +3745,13 @@ func (r *routes) handleCreateSubscription(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusBadRequest, "tier_code is required")
 		return
 	}
-
-	tierID, tierName, err := r.lookupTier(req.Context(), payload.TierCode)
+	_, _, tierName, quotas, err := r.createOrReplaceSubscription(req.Context(), user.ID, payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "tier not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load tier")
-		return
-	}
-
-	tx, err := r.db.BeginTx(req.Context(), nil)
-	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create subscription")
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-		UPDATE subscriptions
-		SET status = 'ended', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;
-	`), user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to replace active subscription")
-		return
-	}
-
-	subscriptionID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO subscriptions(user_id, tier_id, status, started_at)
-		VALUES (?, ?, 'active', CURRENT_TIMESTAMP)
-	`, "id", user.ID, tierID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create subscription")
-		return
-	}
-
-	seenCodes := make(map[string]struct{})
-	for _, override := range payload.Overrides {
-		code := strings.TrimSpace(override.ServiceItemCode)
-		if code == "" {
-			writeError(w, http.StatusBadRequest, "override service_item_code is required")
-			return
-		}
-		if override.IncludedUnits < 0 {
-			writeError(w, http.StatusBadRequest, "override included_units must be non-negative")
-			return
-		}
-		if _, exists := seenCodes[code]; exists {
-			writeError(w, http.StatusBadRequest, "duplicate override service_item_code")
-			return
-		}
-		seenCodes[code] = struct{}{}
-
-		serviceItemID, err := lookupServiceItemID(req.Context(), tx, r.sqlDialect, code)
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusBadRequest, "override service_item_code not found")
-			return
-		}
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create subscription")
-			return
-		}
-
-		if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-			INSERT INTO subscription_overrides(subscription_id, service_item_id, included_units)
-			VALUES (?, ?, ?);
-		`), subscriptionID, serviceItemID, override.IncludedUnits); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create subscription")
-			return
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create subscription")
-		return
-	}
-
-	quotas, err := r.loadEffectiveQuotas(req.Context(), tierID, subscriptionID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load subscription")
 		return
 	}
 
@@ -3496,6 +3760,96 @@ func (r *routes) handleCreateSubscription(w http.ResponseWriter, req *http.Reque
 		TierName: tierName,
 		Quotas:   quotas,
 	}})
+}
+
+func (r *routes) createOrReplaceSubscription(ctx context.Context, userID int64, payload createSubscriptionRequest) (int64, int64, string, []subscriptionQuotaResponse, error) {
+	tierID, tierName, err := r.lookupTier(ctx, payload.TierCode)
+	if err != nil {
+		return 0, 0, "", nil, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, "", nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		UPDATE als_subscriptions
+		SET status = 'ended', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;
+	`), userID); err != nil {
+		return 0, 0, "", nil, err
+	}
+
+	subscriptionID, err := db.InsertID(ctx, r.sqlDialect, tx, `
+		INSERT INTO als_subscriptions(user_id, tier_id, status, started_at)
+		VALUES (?, ?, 'active', CURRENT_TIMESTAMP)
+	`, "id", userID, tierID)
+	if err != nil {
+		return 0, 0, "", nil, err
+	}
+
+	seenCodes := make(map[string]struct{})
+	for _, override := range payload.Overrides {
+		code := strings.TrimSpace(override.ServiceItemCode)
+		if code == "" {
+			return 0, 0, "", nil, errors.New("override service_item_code is required")
+		}
+		if override.IncludedUnits < 0 {
+			return 0, 0, "", nil, errors.New("override included_units must be non-negative")
+		}
+		if _, exists := seenCodes[code]; exists {
+			return 0, 0, "", nil, errors.New("duplicate override service_item_code")
+		}
+		seenCodes[code] = struct{}{}
+
+		serviceItemID, err := lookupServiceItemID(ctx, tx, r.sqlDialect, code)
+		if err != nil {
+			return 0, 0, "", nil, err
+		}
+
+		if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+			INSERT INTO als_subscription_overrides(subscription_id, service_item_id, included_units)
+			VALUES (?, ?, ?);
+		`), subscriptionID, serviceItemID, override.IncludedUnits); err != nil {
+			return 0, 0, "", nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, "", nil, err
+	}
+
+	quotas, err := r.loadEffectiveQuotas(ctx, tierID, subscriptionID)
+	if err != nil {
+		return 0, 0, "", nil, err
+	}
+
+	return subscriptionID, tierID, tierName, quotas, nil
+}
+
+func (r *routes) ensureActiveSubscriptionForUser(ctx context.Context, userID int64, tierCode string) (int64, string, error) {
+	current, found, err := r.loadActiveSubscription(ctx, userID)
+	if err == nil && found && current.TierCode == tierCode {
+		var subscriptionID int64
+		err = r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+			SELECT id
+			FROM als_subscriptions
+			WHERE user_id = ? AND status = 'active' AND ended_at IS NULL
+			ORDER BY id DESC
+			LIMIT 1;
+		`), userID).Scan(&subscriptionID)
+		if err == nil {
+			return subscriptionID, current.TierName, nil
+		}
+	}
+
+	subscriptionID, _, tierName, _, err := r.createOrReplaceSubscription(ctx, userID, createSubscriptionRequest{TierCode: tierCode})
+	if err != nil {
+		return 0, "", err
+	}
+	return subscriptionID, tierName, nil
 }
 
 func (r *routes) handleGetSubscription(w http.ResponseWriter, req *http.Request) {
@@ -3604,7 +3958,7 @@ func (r *routes) handleAIRequest(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
-		INSERT INTO usage_records(user_id, api_key_id, service_item_id, quantity, usage_timestamp)
+		INSERT INTO als_usage_records(user_id, api_key_id, service_item_id, quantity, usage_timestamp)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
 	`), authResult.UserID, authResult.APIKeyID, serviceItemID, payload.Quantity); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to record usage")
@@ -3651,8 +4005,8 @@ func (r *routes) loadActiveSubscription(ctx context.Context, userID int64) (subs
 			t.id,
 			t.code,
 			t.name
-		FROM subscriptions s
-		JOIN tiers t ON t.id = s.tier_id
+		FROM als_subscriptions s
+		JOIN als_tiers t ON t.id = s.tier_id
 		WHERE s.user_id = ?
 			AND s.status = 'active'
 			AND s.ended_at IS NULL
@@ -3688,7 +4042,7 @@ func (r *routes) lookupActiveSubscriptionContext(ctx context.Context, userID int
 			s.id,
 			s.tier_id,
 			s.started_at
-		FROM subscriptions s
+		FROM als_subscriptions s
 		WHERE s.user_id = ?
 			AND s.status = 'active'
 			AND s.ended_at IS NULL
@@ -3715,11 +4069,11 @@ func (r *routes) lookupActiveSubscriptionContext(ctx context.Context, userID int
 func (r *routes) lookupEffectiveIncludedUnits(ctx context.Context, tierID, subscriptionID, serviceItemID int64) (int64, bool, error) {
 	const query = `
 		SELECT COALESCE(so.included_units, tdi.included_units) AS included_units
-		FROM service_items si
-		LEFT JOIN tier_default_items tdi
+		FROM als_service_items si
+		LEFT JOIN als_tier_default_items tdi
 			ON tdi.service_item_id = si.id
 			AND tdi.tier_id = ?
-		LEFT JOIN subscription_overrides so
+		LEFT JOIN als_subscription_overrides so
 			ON so.service_item_id = si.id
 			AND so.subscription_id = ?
 		WHERE si.id = ?
@@ -3742,7 +4096,7 @@ func (r *routes) lookupEffectiveIncludedUnits(ctx context.Context, tierID, subsc
 func lookupUsedUnitsInSubscriptionWindow(ctx context.Context, tx *sql.Tx, sqlDialect string, userID, serviceItemID int64, startedAt string) (int64, error) {
 	const query = `
 		SELECT COALESCE(SUM(quantity), 0)
-		FROM usage_records
+		FROM als_usage_records
 		WHERE user_id = ?
 			AND service_item_id = ?
 			AND usage_timestamp >= ?;
@@ -3764,11 +4118,11 @@ func (r *routes) loadEffectiveQuotas(ctx context.Context, tierID, subscriptionID
 			si.name,
 			si.unit,
 			COALESCE(so.included_units, tdi.included_units) AS included_units
-		FROM service_items si
-		LEFT JOIN tier_default_items tdi
+		FROM als_service_items si
+		LEFT JOIN als_tier_default_items tdi
 			ON tdi.service_item_id = si.id
 			AND tdi.tier_id = ?
-		LEFT JOIN subscription_overrides so
+		LEFT JOIN als_subscription_overrides so
 			ON so.service_item_id = si.id
 			AND so.subscription_id = ?
 		WHERE tdi.id IS NOT NULL OR so.id IS NOT NULL
@@ -3811,10 +4165,10 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			t.is_enabled,
 			t.created_at,
 			t.updated_at,
-			tgb.group_code
-		FROM tiers t
-		LEFT JOIN tier_group_bindings tgb ON tgb.tier_id = t.id
-		ORDER BY t.id ASC, tgb.group_code ASC;
+			tgb.group_id
+		FROM als_tiers t
+		LEFT JOIN als_tier_group_bindings tgb ON tgb.tier_id = t.id
+		ORDER BY t.id ASC, tgb.group_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query))
@@ -3838,9 +4192,9 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			isEnabled    bool
 			createdAt    string
 			updatedAt    string
-			groupCode    sql.NullString
+			groupID      sql.NullInt64
 		)
-		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &createdAt, &updatedAt, &groupCode); err != nil {
+		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &createdAt, &updatedAt, &groupID); err != nil {
 			return nil, err
 		}
 
@@ -3857,14 +4211,14 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 				Description:  description,
 				Features:     parseFeaturesJSON(featuresJSON),
 				IsEnabled:    isEnabled,
-				GroupCodes:   []string{},
+				GroupIDs:     []int64{},
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
 			})
 		}
 
-		if groupCode.Valid {
-			packages[idx].GroupCodes = append(packages[idx].GroupCodes, groupCode.String)
+		if groupID.Valid {
+			packages[idx].GroupIDs = append(packages[idx].GroupIDs, groupID.Int64)
 		}
 	}
 
@@ -3899,30 +4253,29 @@ func (r *routes) loadAdminPackageByCode(ctx context.Context, packageCode string)
 	return adminPackageResponse{}, sql.ErrNoRows
 }
 
-func (r *routes) loadAuthorizedGroupCodeSet(ctx context.Context, userID int64) (map[string]struct{}, error) {
+func (r *routes) loadAuthorizedGroupIDSet(ctx context.Context, userID int64) (map[int64]struct{}, error) {
 	_, tierID, _, found, err := r.lookupActiveSubscriptionContext(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return map[string]struct{}{}, nil
+		return map[int64]struct{}{}, nil
 	}
 
-	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `SELECT group_code FROM tier_group_bindings WHERE tier_id = ? ORDER BY group_code ASC;`), tierID)
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `SELECT group_id FROM als_tier_group_bindings WHERE tier_id = ? ORDER BY group_id ASC;`), tierID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string]struct{})
+	result := make(map[int64]struct{})
 	for rows.Next() {
-		var groupCode string
-		if err := rows.Scan(&groupCode); err != nil {
+		var groupID int64
+		if err := rows.Scan(&groupID); err != nil {
 			return nil, err
 		}
-		groupCode = strings.TrimSpace(groupCode)
-		if groupCode != "" {
-			result[groupCode] = struct{}{}
+		if groupID > 0 {
+			result[groupID] = struct{}{}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -3932,15 +4285,15 @@ func (r *routes) loadAuthorizedGroupCodeSet(ctx context.Context, userID int64) (
 	return result, nil
 }
 
-func (r *routes) loadAuthorizedVisibleGroupIDs(req *http.Request, authorizedGroupCodes map[string]struct{}) (map[int64]struct{}, error) {
-	if len(authorizedGroupCodes) == 0 {
+func (r *routes) loadAuthorizedVisibleGroupIDs(req *http.Request, authorizedGroupIDs map[int64]struct{}) (map[int64]struct{}, error) {
+	if len(authorizedGroupIDs) == 0 {
 		return map[int64]struct{}{}, nil
 	}
 	payload, err := r.loadUpstreamJSONPayload(req, "/api/v1/groups/available")
 	if err != nil {
 		return nil, err
 	}
-	return extractAuthorizedGroupIDs(payload, authorizedGroupCodes), nil
+	return extractAuthorizedGroupIDs(payload, authorizedGroupIDs), nil
 }
 
 func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string) (any, error) {
@@ -4015,16 +4368,16 @@ func writeForwardedJSON(w http.ResponseWriter, statusCode int, headers http.Head
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func filterGroupListPayload(payload any, authorizedGroupCodes map[string]struct{}) (any, error) {
+func filterGroupListPayloadByID(payload any, authorizedGroupIDs map[int64]struct{}) (any, error) {
 	if root, ok := payload.(map[string]any); ok {
 		cloned := cloneMap(root)
 		if groups, ok := root["data"].([]any); ok {
-			cloned["data"] = filterGroupItems(groups, authorizedGroupCodes)
+			cloned["data"] = filterGroupItemsByID(groups, authorizedGroupIDs)
 			return cloned, nil
 		}
 	}
 	if groups, ok := payload.([]any); ok {
-		return filterGroupItems(groups, authorizedGroupCodes), nil
+		return filterGroupItemsByID(groups, authorizedGroupIDs), nil
 	}
 	return payload, nil
 }
@@ -4066,27 +4419,27 @@ func isAPIKeyPayloadAuthorized(payload any, authorizedGroupIDs map[int64]struct{
 	return allowed, nil
 }
 
-func filterGroupItems(groups []any, authorizedGroupCodes map[string]struct{}) []any {
+func filterGroupItemsByID(groups []any, authorizedGroupIDs map[int64]struct{}) []any {
 	filtered := make([]any, 0, len(groups))
 	for _, raw := range groups {
 		item, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
-		groupCode := strings.TrimSpace(asString(item["code"]))
-		if groupCode == "" {
-			groupCode = strings.TrimSpace(asString(item["group_code"]))
+		groupID, ok := asInt64(item["id"])
+		if !ok {
+			continue
 		}
-		if _, allowed := authorizedGroupCodes[groupCode]; allowed {
+		if _, allowed := authorizedGroupIDs[groupID]; allowed {
 			filtered = append(filtered, item)
 		}
 	}
 	return filtered
 }
 
-func extractAuthorizedGroupIDs(payload any, authorizedGroupCodes map[string]struct{}) map[int64]struct{} {
+func extractAuthorizedGroupIDs(payload any, authorizedGroupIDs map[int64]struct{}) map[int64]struct{} {
 	result := make(map[int64]struct{})
-	filtered, _ := filterGroupListPayload(payload, authorizedGroupCodes)
+	filtered, _ := filterGroupListPayloadByID(payload, authorizedGroupIDs)
 	for _, item := range extractGroupItems(filtered) {
 		if groupID, ok := asInt64(item["id"]); ok {
 			result[groupID] = struct{}{}
@@ -4196,15 +4549,15 @@ func asInt64(value any) (int64, bool) {
 	return 0, false
 }
 
-func (r *routes) replaceTierGroupBindingsTx(ctx context.Context, tx *sql.Tx, tierID int64, groupCodes []string, now string) error {
-	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `DELETE FROM tier_group_bindings WHERE tier_id = ?;`), tierID); err != nil {
+func (r *routes) replaceTierGroupBindingsTx(ctx context.Context, tx *sql.Tx, tierID int64, groupIDs []int64, now string) error {
+	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `DELETE FROM als_tier_group_bindings WHERE tier_id = ?;`), tierID); err != nil {
 		return err
 	}
-	for _, groupCode := range groupCodes {
+	for _, groupID := range groupIDs {
 		if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
-			INSERT INTO tier_group_bindings(tier_id, group_code, created_at, updated_at)
+			INSERT INTO als_tier_group_bindings(tier_id, group_id, created_at, updated_at)
 			VALUES (?, ?, ?, ?);
-		`), tierID, groupCode, now, now); err != nil {
+		`), tierID, groupID, now, now); err != nil {
 			return err
 		}
 	}
@@ -4216,7 +4569,7 @@ func (r *routes) lookupTier(ctx context.Context, tierCode string) (int64, string
 		tierID   int64
 		tierName string
 	)
-	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id, name FROM tiers WHERE code = ?;`), tierCode).Scan(&tierID, &tierName)
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id, name FROM als_tiers WHERE code = ?;`), tierCode).Scan(&tierID, &tierName)
 	if err != nil {
 		return 0, "", err
 	}
@@ -4225,7 +4578,7 @@ func (r *routes) lookupTier(ctx context.Context, tierCode string) (int64, string
 
 func (r *routes) lookupTierID(ctx context.Context, tierCode string) (int64, error) {
 	var tierID int64
-	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id FROM tiers WHERE code = ?;`), tierCode).Scan(&tierID)
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id FROM als_tiers WHERE code = ?;`), tierCode).Scan(&tierID)
 	if err != nil {
 		return 0, err
 	}
@@ -4234,7 +4587,7 @@ func (r *routes) lookupTierID(ctx context.Context, tierCode string) (int64, erro
 
 func (r *routes) lookupServiceItemID(ctx context.Context, serviceItemCode string) (int64, error) {
 	var serviceItemID int64
-	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id FROM service_items WHERE code = ?;`), serviceItemCode).Scan(&serviceItemID)
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id FROM als_service_items WHERE code = ?;`), serviceItemCode).Scan(&serviceItemID)
 	if err != nil {
 		return 0, err
 	}
@@ -4243,7 +4596,7 @@ func (r *routes) lookupServiceItemID(ctx context.Context, serviceItemCode string
 
 func lookupServiceItemID(ctx context.Context, tx *sql.Tx, sqlDialect string, serviceItemCode string) (int64, error) {
 	var serviceItemID int64
-	err := tx.QueryRowContext(ctx, db.Rebind(sqlDialect, `SELECT id FROM service_items WHERE code = ?;`), serviceItemCode).Scan(&serviceItemID)
+	err := tx.QueryRowContext(ctx, db.Rebind(sqlDialect, `SELECT id FROM als_service_items WHERE code = ?;`), serviceItemCode).Scan(&serviceItemID)
 	if err != nil {
 		return 0, err
 	}
@@ -4265,6 +4618,56 @@ func validateAndNormalizeCurrency(raw string) (string, error) {
 	return raw, nil
 }
 
+func parsePositiveInt64(raw string) (int64, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, errors.New("value must be a positive integer")
+	}
+	return value, nil
+}
+
+func microsToCurrencyMinor(micros int64) (int64, error) {
+	if micros <= 0 {
+		return 0, errors.New("package price must be positive")
+	}
+	return int64((micros + 5000) / 10000), nil
+}
+
+func microsToFloatCurrency(micros int64) float64 {
+	if micros <= 0 {
+		return 0
+	}
+	return float64(micros) / 1_000_000
+}
+
+func buildRedeemCode(orderID, fallback string, groupID int64) string {
+	base := strings.TrimSpace(orderID)
+	if base == "" {
+		base = strings.TrimSpace(fallback)
+	}
+	base = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(base, " ", "-"), "/", "-"))
+	base = strings.Map(func(r rune) rune {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, base)
+	for strings.Contains(base, "--") {
+		base = strings.ReplaceAll(base, "--", "-")
+	}
+	base = strings.Trim(base, "-")
+	if base == "" {
+		base = "ALS-PAYMENT"
+	}
+	if groupID > 0 {
+		base = fmt.Sprintf("%s-G%d", base, groupID)
+	}
+	if len(base) > 120 {
+		base = base[:120]
+	}
+	return base
+}
+
 func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool) (adminPackageRequest, error) {
 	payload.Code = strings.TrimSpace(payload.Code)
 	payload.Name = strings.TrimSpace(payload.Name)
@@ -4278,8 +4681,8 @@ func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool)
 	if payload.Name == "" {
 		return adminPackageRequest{}, errors.New("name is required")
 	}
-	if len(payload.GroupCodes) == 0 {
-		return adminPackageRequest{}, errors.New("group_codes is required")
+	if len(payload.GroupIDs) == 0 {
+		return adminPackageRequest{}, errors.New("group_ids is required")
 	}
 	if payload.PriceMicros < 0 {
 		return adminPackageRequest{}, errors.New("price_micros must be >= 0")
@@ -4307,24 +4710,23 @@ func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool)
 		payload.FeaturesJSON = "[]"
 	}
 
-	normalizedGroups := make([]string, 0, len(payload.GroupCodes))
-	seen := make(map[string]struct{}, len(payload.GroupCodes))
-	for _, raw := range payload.GroupCodes {
-		groupCode := strings.TrimSpace(raw)
-		if groupCode == "" {
-			return adminPackageRequest{}, errors.New("group_codes must not contain empty values")
+	normalizedGroupIDs := make([]int64, 0, len(payload.GroupIDs))
+	seen := make(map[int64]struct{}, len(payload.GroupIDs))
+	for _, rawID := range payload.GroupIDs {
+		if rawID <= 0 {
+			return adminPackageRequest{}, errors.New("group_ids must be positive integers")
 		}
-		if _, exists := seen[groupCode]; exists {
+		if _, exists := seen[rawID]; exists {
 			continue
 		}
-		seen[groupCode] = struct{}{}
-		normalizedGroups = append(normalizedGroups, groupCode)
+		seen[rawID] = struct{}{}
+		normalizedGroupIDs = append(normalizedGroupIDs, rawID)
 	}
-	if len(normalizedGroups) == 0 {
-		return adminPackageRequest{}, errors.New("group_codes is required")
+	if len(normalizedGroupIDs) == 0 {
+		return adminPackageRequest{}, errors.New("group_ids is required")
 	}
-	sort.Strings(normalizedGroups)
-	payload.GroupCodes = normalizedGroups
+	sort.Slice(normalizedGroupIDs, func(i, j int) bool { return normalizedGroupIDs[i] < normalizedGroupIDs[j] })
+	payload.GroupIDs = normalizedGroupIDs
 	return payload, nil
 }
 
@@ -4422,13 +4824,13 @@ func toAdminArticleDTO(item model.Article) adminArticleDTO {
 }
 
 func (r *routes) findAdminArticleBySlug(ctx context.Context, slug string) (*model.Article, error) {
-	articles, err := r.articleSvc.ListArticles(ctx, article.ListArticlesFilters{})
+	als_articles, err := r.articleSvc.ListArticles(ctx, article.ListArticlesFilters{})
 	if err != nil {
 		return nil, err
 	}
-	for idx := range articles {
-		if articles[idx].Slug == slug {
-			item := articles[idx]
+	for idx := range als_articles {
+		if als_articles[idx].Slug == slug {
+			item := als_articles[idx]
 			return &item, nil
 		}
 	}
@@ -4445,7 +4847,7 @@ func (r *routes) lookupActiveUnitPrice(ctx context.Context, serviceItemID, tierI
 		SELECT
 			price_per_unit_micros,
 			currency
-		FROM unit_prices
+		FROM als_unit_prices
 		WHERE service_item_id = ?
 			AND effective_to IS NULL
 			AND (tier_id = ? OR tier_id IS NULL)

@@ -52,7 +52,7 @@ func TestAIRequestRejectsInvalidAndRevokedAPIKeys(t *testing.T) {
 		t.Fatalf("create api key: %v", err)
 	}
 
-	if _, err := database.ExecContext(ctx, `UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?;`, created.ID); err != nil {
+	if _, err := database.ExecContext(ctx, `UPDATE als_api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?;`, created.ID); err != nil {
 		t.Fatalf("revoke api key directly: %v", err)
 	}
 
@@ -127,8 +127,8 @@ func TestAIRequestQuotaExceeded(t *testing.T) {
 	var usageCount int64
 	err = database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM usage_records
-		WHERE user_id = ? AND service_item_id = ? AND usage_timestamp >= (SELECT started_at FROM subscriptions WHERE id = ?);
+		FROM als_usage_records
+		WHERE user_id = ? AND service_item_id = ? AND usage_timestamp >= (SELECT started_at FROM als_subscriptions WHERE id = ?);
 	`, userID, itemID, subscriptionID).Scan(&usageCount)
 	if err != nil {
 		t.Fatalf("count usage after quota deny: %v", err)
@@ -192,8 +192,8 @@ func TestAIRequestSuccessRecordsUsage(t *testing.T) {
 	)
 	err = database.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(quantity), 0)
-		FROM usage_records
-		WHERE user_id = ? AND service_item_id = ? AND usage_timestamp >= (SELECT started_at FROM subscriptions WHERE id = ?);
+		FROM als_usage_records
+		WHERE user_id = ? AND service_item_id = ? AND usage_timestamp >= (SELECT started_at FROM als_subscriptions WHERE id = ?);
 	`, userID, itemID, subscriptionID).Scan(&totalUsed)
 	if err != nil {
 		t.Fatalf("sum usage in active window: %v", err)
@@ -204,7 +204,7 @@ func TestAIRequestSuccessRecordsUsage(t *testing.T) {
 
 	err = database.QueryRowContext(ctx, `
 		SELECT quantity, api_key_id
-		FROM usage_records
+		FROM als_usage_records
 		WHERE user_id = ? AND service_item_id = ?
 		ORDER BY id DESC
 		LIMIT 1;
@@ -224,7 +224,7 @@ func insertActiveSubscription(t *testing.T, ctx context.Context, database *sql.D
 	t.Helper()
 
 	result, err := database.ExecContext(ctx, `
-		INSERT INTO subscriptions(user_id, tier_id, status, started_at)
+		INSERT INTO als_subscriptions(user_id, tier_id, status, started_at)
 		VALUES (?, ?, 'active', ?);
 	`, userID, tierID, startedAt)
 	if err != nil {
@@ -243,7 +243,7 @@ func insertUsageRecord(t *testing.T, ctx context.Context, database *sql.DB, user
 	t.Helper()
 
 	_, err := database.ExecContext(ctx, `
-		INSERT INTO usage_records(user_id, api_key_id, service_item_id, quantity, usage_timestamp)
+		INSERT INTO als_usage_records(user_id, api_key_id, service_item_id, quantity, usage_timestamp)
 		VALUES (?, ?, ?, ?, ?);
 	`, userID, apiKeyID, serviceItemID, quantity, usageTimestamp)
 	if err != nil {

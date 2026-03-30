@@ -8,6 +8,7 @@ import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-respo
 
 type LoginResponse = {
   access_token?: string;
+  session_token?: string;
   refresh_token?: string;
   user?: {
     id?: number;
@@ -51,9 +52,12 @@ export default function LoginPage() {
 
       const data = unwrapData<LoginResponse>(payload);
       const legacyPayload = asRecord(payload);
+      const nestedPayload = asRecord(legacyPayload?.data);
       const sessionToken =
-        asString(data?.access_token) ||
-        asString(legacyPayload?.session_token);
+        asString(legacyPayload?.session_token) ||
+        asString(nestedPayload?.session_token) ||
+        asString(data?.session_token) ||
+        asString(data?.access_token);
       if (!sessionToken) {
         throw new Error(extractApiError(payload, "Login succeeded but access token is missing"));
       }

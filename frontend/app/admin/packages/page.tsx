@@ -11,15 +11,16 @@ const SESSION_TOKEN_STORAGE_KEY = "session_token";
 type AdminGroup = {
   id: number;
   name: string;
-  code: string;
+  code?: string;
   platform?: string;
+  subscription_type?: string;
   type?: string;
 };
 
 type AdminPackage = {
   code: string;
   name: string;
-  group_codes: string[];
+  group_ids: number[];
   price_micros: number;
   value_type: string;
   value_amount: number;
@@ -41,7 +42,7 @@ type GroupsResponse = {
 type PackageFormState = {
   code: string;
   name: string;
-  groupCodes: string[];
+  groupIds: number[];
   priceMicros: number;
   valueType: string;
   valueAmount: number;
@@ -53,7 +54,7 @@ type PackageFormState = {
 const defaultFormState: PackageFormState = {
   code: "",
   name: "",
-  groupCodes: [],
+  groupIds: [],
   priceMicros: 0,
   valueType: "",
   valueAmount: 0,
@@ -97,22 +98,23 @@ function parseGroupsPayload(payload: unknown) {
 }
 
 function normalizeAdminGroups(groups: AdminGroup[]) {
-  const seenCodes = new Set<string>();
+  const seenIDs = new Set<number>();
   const normalized: AdminGroup[] = [];
 
   for (const group of groups) {
-    const code = String(group.code ?? "").trim();
-    if (!code || seenCodes.has(code)) {
+    const id = Number(group.id) || 0;
+    if (id <= 0 || seenIDs.has(id)) {
       continue;
     }
 
-    seenCodes.add(code);
+    seenIDs.add(id);
     normalized.push({
       ...group,
-      id: Number(group.id) || 0,
-      name: String(group.name ?? "").trim() || code,
-      code,
+      id,
+      name: String(group.name ?? "").trim() || `Group #${id}`,
+      code: String(group.code ?? "").trim() || undefined,
       platform: String(group.platform ?? "").trim() || undefined,
+      subscription_type: String(group.subscription_type ?? "").trim() || undefined,
       type: String(group.type ?? "").trim() || undefined,
     });
   }
@@ -266,15 +268,15 @@ export default function AdminPackagesPage() {
   }, [isHydrated, loadGroups, loadPackages]);
 
   const handleFormChange = useCallback(
-    (key: keyof PackageFormState, value: string | string[] | boolean) => {
+    (key: keyof PackageFormState, value: string | string[] | number[] | boolean) => {
       setFormError(null);
       setGlobalSuccess(null);
       setFormState((prev) => {
         if (key === "code") {
           return { ...prev, code: normalizeCode(String(value)) };
         }
-        if (key === "groupCodes") {
-          return { ...prev, groupCodes: Array.isArray(value) ? value : prev.groupCodes };
+        if (key === "groupIds") {
+          return { ...prev, groupIds: Array.isArray(value) ? (value as number[]) : prev.groupIds };
         }
         if (key === "isEnabled") {
           return { ...prev, isEnabled: value as boolean };
@@ -291,23 +293,35 @@ export default function AdminPackagesPage() {
     [],
   );
 
-  const toggleGroupCode = (groupCode: string) => {
+  const toggleGroupID = (groupID: number) => {
     setFormError(null);
     setGlobalSuccess(null);
     setFormState((previous: PackageFormState) => {
-      const isSelected = previous.groupCodes.includes(groupCode);
+      const isSelected = previous.groupIds.includes(groupID);
       return {
         ...previous,
-        groupCodes: isSelected
-          ? previous.groupCodes.filter((code: string) => code !== groupCode)
-          : [...previous.groupCodes, groupCode],
+        groupIds: isSelected
+          ? previous.groupIds.filter((id: number) => id !== groupID)
+          : [...previous.groupIds, groupID],
       };
     });
   };
 
+  const availableGroupByID = useMemo(() => {
+    const index = new Map<number, AdminGroup>();
+    for (const group of availableGroups) {
+      index.set(group.id, group);
+    }
+    return index;
+  }, [availableGroups]);
+
   const selectedGroups = useMemo(
-    () => availableGroups.filter((group: AdminGroup) => formState.groupCodes.includes(group.code)),
-    [availableGroups, formState.groupCodes],
+    () =>
+      formState.groupIds.map((groupID: number) => {
+        const group = availableGroupByID.get(groupID);
+        return group ?? { id: groupID, name: `Group #${groupID}` };
+      }),
+    [availableGroupByID, formState.groupIds],
   );
 
   const handleEdit = async (packageCode: string) => {
@@ -344,7 +358,7 @@ export default function AdminPackagesPage() {
       setFormState({
         code: pkg.code,
         name: pkg.name,
-        groupCodes: Array.isArray(pkg.group_codes) ? pkg.group_codes : [],
+        groupIds: Array.isArray(pkg.group_ids) ? pkg.group_ids.map((id: number) => Number(id)).filter((id: number) => id > 0) : [],
         priceMicros: Number(pkg.price_micros) || 0,
         valueType: String(pkg.value_type ?? ""),
         valueAmount: Number(pkg.value_amount) || 0,
@@ -367,7 +381,7 @@ export default function AdminPackagesPage() {
 
     const normalizedCode = normalizeCode(formState.code);
     const trimmedName = formState.name.trim();
-    const uniqueGroupCodes = Array.from(new Set(formState.groupCodes));
+    const uniqueGroupIDs = Array.from(new Set(formState.groupIds)).filter((id: number) => id > 0);
 
     if (!sessionToken) {
       setFormError("Missing session token. Please login first.");
@@ -381,7 +395,7 @@ export default function AdminPackagesPage() {
       setFormError("Package name is required.");
       return;
     }
-    if (uniqueGroupCodes.length === 0) {
+    if (uniqueGroupIDs.length === 0) {
       setFormError("Select at least one group to bind to this package.");
       return;
     }
@@ -395,7 +409,7 @@ export default function AdminPackagesPage() {
     const payload = editingCode
       ? {
           name: trimmedName,
-          group_codes: uniqueGroupCodes,
+          group_ids: uniqueGroupIDs,
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
           value_amount: formState.valueAmount,
@@ -406,7 +420,7 @@ export default function AdminPackagesPage() {
       : {
           code: normalizedCode,
           name: trimmedName,
-          group_codes: uniqueGroupCodes,
+          group_ids: uniqueGroupIDs,
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
           value_amount: formState.valueAmount,
@@ -564,17 +578,21 @@ export default function AdminPackagesPage() {
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex flex-wrap gap-2">
-                            {pkg.group_codes.length === 0 ? (
+                            {pkg.group_ids.length === 0 ? (
                               <span className="text-xs text-[var(--portal-muted)]">No groups bound</span>
                             ) : (
-                              pkg.group_codes.map((groupCode: string) => (
+                              pkg.group_ids.map((groupID: number) => {
+                                const group = availableGroupByID.get(groupID);
+                                const label = group?.name ?? `Group #${groupID}`;
+                                return (
                                 <span
-                                  key={`${pkg.code}-${groupCode}`}
+                                  key={`${pkg.code}-${groupID}`}
                                   className="inline-flex rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] px-2 py-1 text-xs text-[var(--portal-ink)]"
                                 >
-                                  {groupCode}
+                                  {label}
                                 </span>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                         </td>
@@ -788,11 +806,11 @@ export default function AdminPackagesPage() {
                 <div className="flex flex-wrap gap-2">
                   {selectedGroups.map((group: AdminGroup) => (
                     <span
-                      key={`selected-${group.code}-${group.id}`}
+                      key={`selected-${group.id}`}
                       className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/60 dark:bg-emerald-500/20 dark:text-emerald-300"
                     >
                       {group.name}
-                      <span className="ml-1 font-mono text-[10px] opacity-75">{group.code}</span>
+                      <span className="ml-1 font-mono text-[10px] opacity-75">#{group.id}</span>
                     </span>
                   ))}
                 </div>
@@ -807,11 +825,11 @@ export default function AdminPackagesPage() {
               ) : (
                 <div className="grid gap-2">
                   {availableGroups.map((group: AdminGroup) => {
-                    const isChecked = formState.groupCodes.includes(group.code);
-                    const meta = [group.platform, group.type].filter(Boolean).join(" · ");
+                    const isChecked = formState.groupIds.includes(group.id);
+                    const meta = [group.platform, group.subscription_type || group.type].filter(Boolean).join(" · ");
                     return (
                       <label
-                        key={`${group.code}-${group.id}`}
+                        key={group.id}
                         className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
                           isChecked
                             ? "border-emerald-400/45 bg-emerald-500/10 dark:border-emerald-400/60 dark:bg-emerald-500/20"
@@ -822,12 +840,12 @@ export default function AdminPackagesPage() {
                           className="mt-1 size-4 accent-emerald-500"
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => toggleGroupCode(group.code)}
+                          onChange={() => toggleGroupID(group.id)}
                           disabled={isBlocked || isSubmittingForm}
                         />
                         <span className="grid gap-1">
                           <span className="text-sm font-semibold text-[var(--portal-ink)]">{group.name}</span>
-                          <span className="font-mono text-xs text-[var(--portal-muted)]">{group.code}</span>
+                          <span className="font-mono text-xs text-[var(--portal-muted)]">#{group.id}</span>
                           {meta ? <span className="text-xs text-[var(--portal-muted)]">{meta}</span> : null}
                         </span>
                       </label>

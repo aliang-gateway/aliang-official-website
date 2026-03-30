@@ -3,15 +3,394 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"ai-api-portal/backend/internal/proxy"
 )
+
+func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	userID := createUser(t, ctx, database, "token-login@example.com", "Token Login", "user")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/login" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"up-at-1","refresh_token":"up-rt-1","user":{"id":7001,"email":"token-login@example.com"}}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"token-login@example.com","password":"secret"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&payload); err != nil {
+		t.Fatalf("decode login response payload: %v", err)
+	}
+	if got := payload["session_token"]; got == nil || got == "" {
+		t.Fatalf("expected root session_token to be injected, got %#v", got)
+	}
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested data object, got %#v", payload["data"])
+	}
+	if data["access_token"] != "up-at-1" {
+		t.Fatalf("expected access_token up-at-1, got %#v", data["access_token"])
+	}
+	if data["refresh_token"] != "up-rt-1" {
+		t.Fatalf("expected refresh_token up-rt-1, got %#v", data["refresh_token"])
+	}
+	if got := data["session_token"]; got == nil || got == "" {
+		t.Fatalf("expected nested session_token to be injected, got %#v", got)
+	}
+	if got := rec.Header().Get("Content-Length"); got != "" && got != strconv.Itoa(rec.Body.Len()) {
+		t.Fatalf("expected Content-Length %d, got %q", rec.Body.Len(), got)
+	}
+
+	var (
+		storedUserID   int64
+		storedAccess   string
+		storedRefresh  sql.NullString
+		storedUpstream sql.NullInt64
+	)
+	err = database.QueryRowContext(ctx, `
+		SELECT user_id, access_token, refresh_token, upstream_user_id
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?;
+	`, userID).Scan(&storedUserID, &storedAccess, &storedRefresh, &storedUpstream)
+	if err != nil {
+		t.Fatalf("query stored sub2api tokens: %v", err)
+	}
+	if storedUserID != userID {
+		t.Fatalf("expected stored user id %d, got %d", userID, storedUserID)
+	}
+	if storedAccess != "up-at-1" {
+		t.Fatalf("expected stored access token up-at-1, got %q", storedAccess)
+	}
+	if !storedRefresh.Valid || storedRefresh.String != "up-rt-1" {
+		t.Fatalf("expected stored refresh token up-rt-1, got %+v", storedRefresh)
+	}
+	if !storedUpstream.Valid || storedUpstream.Int64 != 7001 {
+		t.Fatalf("expected stored upstream user id 7001, got %+v", storedUpstream)
+	}
+
+	var sessionCount int64
+	err = database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_sessions WHERE user_id = ?;`, userID).Scan(&sessionCount)
+	if err != nil {
+		t.Fatalf("count local als_sessions: %v", err)
+	}
+	if sessionCount != 1 {
+		t.Fatalf("expected one local session for login, got %d", sessionCount)
+	}
+}
+
+func TestAuthRefreshPassthroughUpdatesStoredSub2APITokens(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	userID := createUser(t, ctx, database, "token-refresh@example.com", "Token Refresh", "user")
+
+	_, err := database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
+		VALUES (?, ?, ?);
+	`, userID, "old-access", "old-refresh")
+	if err != nil {
+		t.Fatalf("seed als_sub2api_auth_tokens row: %v", err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/refresh" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"new-access","refresh_token":"new-refresh"}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader([]byte(`{"refresh_token":"old-refresh"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if rec.Body.String() != `{"access_token":"new-access","refresh_token":"new-refresh"}` {
+		t.Fatalf("expected unchanged passthrough body, got %q", rec.Body.String())
+	}
+
+	var (
+		storedAccess  string
+		storedRefresh sql.NullString
+	)
+	err = database.QueryRowContext(ctx, `
+		SELECT access_token, refresh_token
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?;
+	`, userID).Scan(&storedAccess, &storedRefresh)
+	if err != nil {
+		t.Fatalf("query updated sub2api tokens: %v", err)
+	}
+	if storedAccess != "new-access" {
+		t.Fatalf("expected updated access token new-access, got %q", storedAccess)
+	}
+	if !storedRefresh.Valid || storedRefresh.String != "new-refresh" {
+		t.Fatalf("expected updated refresh token new-refresh, got %+v", storedRefresh)
+	}
+}
+
+func TestAuthMePassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var seenAuthorization string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/me" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		seenAuthorization = req.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":9999,"email":"from-upstream@example.com"}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	userID, localSessionToken := createUserViaAPI(t, m, "passthrough-authme@example.com", "Auth Me User", "user", "")
+
+	_, err = database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
+		VALUES (?, ?, ?);
+	`, userID, "stored-upstream-access", "stored-upstream-refresh")
+	if err != nil {
+		t.Fatalf("seed als_sub2api_auth_tokens row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+localSessionToken)
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if seenAuthorization != "Bearer stored-upstream-access" {
+		t.Fatalf("expected upstream Authorization to use stored upstream token, got %q", seenAuthorization)
+	}
+}
+
+func TestAuthMeReturnsLocalProfileWhenNoUpstreamTokenExists(t *testing.T) {
+	t.Parallel()
+
+	database := setupTestDB(t)
+
+	upstreamHits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamHits++
+		t.Fatalf("unexpected upstream request for %s", req.URL.Path)
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{
+		AdminBootstrapSecret: "test-admin-secret",
+		ProxyClient:          proxyClient,
+	})
+
+	_, adminSessionToken := createUserViaAPI(t, m, "local-admin@example.com", "Local Admin", "admin", "test-admin-secret")
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+adminSessionToken)
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if upstreamHits != 0 {
+		t.Fatalf("expected no upstream calls, got %d", upstreamHits)
+	}
+
+	var payload struct {
+		ID    int64  `json:"id"`
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode local auth/me response: %v", err)
+	}
+	if payload.Email != "local-admin@example.com" || payload.Name != "Local Admin" || payload.Role != "admin" {
+		t.Fatalf("unexpected local auth/me payload: %+v", payload)
+	}
+}
+
+func TestDashboardPassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var seenAuthorization string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/usage/dashboard/stats" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		seenAuthorization = req.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"source":"dashboard-upstream"}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	userID, localSessionToken := createUserViaAPI(t, m, "dashboard-auth@example.com", "Dashboard User", "user", "")
+
+	_, err = database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
+		VALUES (?, ?, ?);
+	`, userID, "dashboard-upstream-access", "dashboard-upstream-refresh")
+	if err != nil {
+		t.Fatalf("seed als_sub2api_auth_tokens row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/home", nil)
+	req.Header.Set("Authorization", "Bearer "+localSessionToken)
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+	if seenAuthorization != "Bearer dashboard-upstream-access" {
+		t.Fatalf("expected upstream Authorization to use stored upstream token, got %q", seenAuthorization)
+	}
+}
+
+func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/login" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"missing-user-access","refresh_token":"missing-user-refresh","user":{"email":"unknown@example.com"}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"unknown@example.com","password":"secret"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&payload); err != nil {
+		t.Fatalf("decode login response payload: %v", err)
+	}
+	if got := payload["session_token"]; got == nil || got == "" {
+		t.Fatalf("expected root session_token to be injected, got %#v", got)
+	}
+	if payload["access_token"] != "missing-user-access" {
+		t.Fatalf("expected access_token missing-user-access, got %#v", payload["access_token"])
+	}
+	if payload["refresh_token"] != "missing-user-refresh" {
+		t.Fatalf("expected refresh_token missing-user-refresh, got %#v", payload["refresh_token"])
+	}
+	userPayload, ok := payload["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected user payload, got %#v", payload["user"])
+	}
+	if userPayload["email"] != "unknown@example.com" {
+		t.Fatalf("expected upstream email unknown@example.com, got %#v", userPayload["email"])
+	}
+
+	var count int64
+	err = database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_sub2api_auth_tokens;`).Scan(&count)
+	if err != nil {
+		t.Fatalf("count als_sub2api_auth_tokens rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one stored token row for auto-created local user, got %d", count)
+	}
+
+	var sessionCount int64
+	err = database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_sessions;`).Scan(&sessionCount)
+	if err != nil {
+		t.Fatalf("count als_sessions rows: %v", err)
+	}
+	if sessionCount != 1 {
+		t.Fatalf("expected one local session for auto-created user, got %d", sessionCount)
+	}
+}
 
 func TestAuthPassthroughRoutesForwardMethodPathAndBody(t *testing.T) {
 	t.Parallel()

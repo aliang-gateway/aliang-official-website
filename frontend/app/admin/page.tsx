@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -152,6 +153,17 @@ export default function AdminPage() {
               {adminProfile ? `${adminProfile.name} (${adminProfile.email})` : ""}
             </p>
           </div>
+        </div>
+
+        <div className="mb-6 flex flex-wrap gap-2">
+          <Link href="/admin/packages" className="nav-pill">
+            <MaterialIcon name="inventory_2" size={16} className="mr-1" />
+            Packages
+          </Link>
+          <Link href="/admin/articles" className="nav-pill">
+            <MaterialIcon name="article" size={16} className="mr-1" />
+            Articles
+          </Link>
         </div>
 
         {authError ? <p className="mb-4 text-sm text-red-500">{authError}</p> : null}

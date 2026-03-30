@@ -12,6 +12,20 @@ cp frontend/.env.example frontend/.env.local
 cp backend/.env.example backend/.env
 ```
 
+Backend config now supports both SQLite and PostgreSQL. The simplest local defaults remain SQLite:
+
+```bash
+DB_DRIVER=sqlite
+DB_PATH=./data.db
+```
+
+For PostgreSQL, set:
+
+```bash
+DB_DRIVER=postgres
+DB_DSN=postgres://user:password@127.0.0.1:5432/ai_api_portal?sslmode=disable
+```
+
 ## Run Locally
 
 Terminal 1 (frontend):
@@ -32,6 +46,16 @@ go run ./backend
 npm -C frontend run build
 go test ./...    # run from backend/
 ```
+
+Repository verification helper:
+
+```bash
+scripts/verify.sh backend-sqlite
+scripts/verify.sh backend-postgres   # requires DB_DSN
+scripts/verify.sh frontend-build
+```
+
+See `docs/admin-package-rollout.md` for rollout order, dual-engine verification, and package/fulfillment operational checks.
 
 Health check once backend is running:
 

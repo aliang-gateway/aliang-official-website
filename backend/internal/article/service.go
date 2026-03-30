@@ -47,7 +47,7 @@ func (s *Service) CreateArticle(ctx context.Context, article *model.Article) err
 
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO articles(
+		INSERT INTO als_articles(
 			legacy_id,
 			slug,
 			title,
@@ -124,7 +124,7 @@ func (s *Service) UpdateArticle(ctx context.Context, slug string, article *model
 
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE articles
+		UPDATE als_articles
 		SET
 			legacy_id = ?,
 			slug = ?,
@@ -204,7 +204,7 @@ func (s *Service) GetArticleBySlug(ctx context.Context, slug string) (*model.Art
 				updated_by_user_id,
 				created_at,
 				updated_at
-			FROM articles
+			FROM als_articles
 			WHERE slug = ? AND status = ?
 			LIMIT 1;
 		`, strings.TrimSpace(slug), statusPublished),
@@ -242,7 +242,7 @@ func (s *Service) GetArticleByID(ctx context.Context, id int64) (*model.Article,
 				updated_by_user_id,
 				created_at,
 				updated_at
-			FROM articles
+			FROM als_articles
 			WHERE id = ?
 			LIMIT 1;
 		`, id),
@@ -278,7 +278,7 @@ func (s *Service) ListArticles(ctx context.Context, filters ListArticlesFilters)
 			updated_by_user_id,
 			created_at,
 			updated_at
-		FROM articles
+		FROM als_articles
 	`
 	args := make([]any, 0, 1)
 
@@ -295,24 +295,24 @@ func (s *Service) ListArticles(ctx context.Context, filters ListArticlesFilters)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query articles: %w", err)
+		return nil, fmt.Errorf("query als_articles: %w", err)
 	}
 	defer rows.Close()
 
-	articles := make([]model.Article, 0)
+	als_articles := make([]model.Article, 0)
 	for rows.Next() {
 		var article model.Article
 		if err := scanArticle(rows, &article); err != nil {
 			return nil, fmt.Errorf("scan article: %w", err)
 		}
-		articles = append(articles, article)
+		als_articles = append(als_articles, article)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate articles: %w", err)
+		return nil, fmt.Errorf("iterate als_articles: %w", err)
 	}
 
-	return articles, nil
+	return als_articles, nil
 }
 
 func (s *Service) ListPublishedArticles(ctx context.Context) ([]model.Article, error) {
@@ -322,7 +322,7 @@ func (s *Service) ListPublishedArticles(ctx context.Context) ([]model.Article, e
 func (s *Service) PublishArticle(ctx context.Context, slug string) error {
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE articles
+		UPDATE als_articles
 		SET status = ?, published_at = ?, updated_at = ?
 		WHERE slug = ?;
 	`, statusPublished, now, now, strings.TrimSpace(slug))
@@ -344,7 +344,7 @@ func (s *Service) PublishArticle(ctx context.Context, slug string) error {
 func (s *Service) UnpublishArticle(ctx context.Context, slug string) error {
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE articles
+		UPDATE als_articles
 		SET status = ?, published_at = NULL, updated_at = ?
 		WHERE slug = ?;
 	`, statusDraft, now, strings.TrimSpace(slug))
@@ -364,7 +364,7 @@ func (s *Service) UnpublishArticle(ctx context.Context, slug string) error {
 }
 
 func (s *Service) DeleteArticle(ctx context.Context, slug string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM articles WHERE slug = ?;`, strings.TrimSpace(slug))
+	result, err := s.db.ExecContext(ctx, `DELETE FROM als_articles WHERE slug = ?;`, strings.TrimSpace(slug))
 	if err != nil {
 		return fmt.Errorf("delete article: %w", err)
 	}
@@ -403,7 +403,7 @@ func (s *Service) getArticleBySlugAnyStatus(ctx context.Context, slug string) (*
 				updated_by_user_id,
 				created_at,
 				updated_at
-			FROM articles
+			FROM als_articles
 			WHERE slug = ?
 			LIMIT 1;
 		`, slug),
@@ -419,7 +419,7 @@ func (s *Service) getArticleBySlugAnyStatus(ctx context.Context, slug string) (*
 }
 
 func (s *Service) ensureSlugUnique(ctx context.Context, slug string, exceptID *int64) error {
-	query := `SELECT id FROM articles WHERE slug = ?`
+	query := `SELECT id FROM als_articles WHERE slug = ?`
 	args := []any{slug}
 	if exceptID != nil {
 		query += ` AND id != ?`

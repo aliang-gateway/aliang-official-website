@@ -65,7 +65,7 @@ func (s *Service) CreateKey(ctx context.Context, userID int64, label string) (Cr
 	hash := HashAPIKey(plaintext)
 	createdAt := time.Now().UTC()
 
-	const query = `INSERT INTO api_keys(user_id, key_hash, label, created_at) VALUES (?, ?, ?, ?);`
+	const query = `INSERT INTO als_api_keys(user_id, key_hash, label, created_at) VALUES (?, ?, ?, ?);`
 	result, err := s.db.ExecContext(ctx, query, userID, hash, label, createdAt)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("insert api key: %w", err)
@@ -85,7 +85,7 @@ func (s *Service) RevokeKey(ctx context.Context, keyID int64, requesterID int64,
 	}
 
 	const query = `
-UPDATE api_keys
+UPDATE als_api_keys
 SET revoked_at = ?
 WHERE id = ?
   AND revoked_at IS NULL
@@ -115,7 +115,7 @@ func (s *Service) IsKeyActive(ctx context.Context, plaintext string) (bool, erro
 	}
 
 	hash := HashAPIKey(plaintext)
-	const query = `SELECT key_hash FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL LIMIT 1;`
+	const query = `SELECT key_hash FROM als_api_keys WHERE key_hash = ? AND revoked_at IS NULL LIMIT 1;`
 
 	var storedHash string
 	err := s.db.QueryRowContext(ctx, query, hash).Scan(&storedHash)
@@ -139,7 +139,7 @@ func (s *Service) AuthenticateKey(ctx context.Context, plaintext string) (AuthRe
 	}
 
 	hash := HashAPIKey(plaintext)
-	const query = `SELECT id, user_id, key_hash FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL LIMIT 1;`
+	const query = `SELECT id, user_id, key_hash FROM als_api_keys WHERE key_hash = ? AND revoked_at IS NULL LIMIT 1;`
 
 	var (
 		result     AuthResult

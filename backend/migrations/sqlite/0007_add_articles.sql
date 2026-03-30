@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS articles (
+CREATE TABLE IF NOT EXISTS als_articles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     legacy_id INTEGER,
     slug TEXT NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS articles (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug);
-CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
-CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_legacy_id_non_null ON articles(legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_slug ON als_articles(slug);
+CREATE INDEX IF NOT EXISTS idx_articles_status ON als_articles(status);
+CREATE INDEX IF NOT EXISTS idx_articles_published_at ON als_articles(published_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_legacy_id_non_null ON als_articles(legacy_id) WHERE legacy_id IS NOT NULL;

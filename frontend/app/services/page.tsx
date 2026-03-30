@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 const platforms = [
@@ -78,8 +79,16 @@ function formatPrice(priceMicros: number): string {
 }
 
 export default function ServicesPage() {
+  const router = useRouter();
   const [packages, setPackages] = useState<DynamicPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionToken, setSessionToken] = useState("");
+  const [checkoutPendingCode, setCheckoutPendingCode] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSessionToken(localStorage.getItem("session_token") ?? "");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +109,49 @@ export default function ServicesPage() {
     void load();
     return () => { cancelled = true; };
   }, []);
+
+  const handlePackageCheckout = async (pkg: DynamicPackage) => {
+    setCheckoutError(null);
+
+    if (pkg.price_micros <= 0) {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (!sessionToken) {
+      router.push("/login");
+      return;
+    }
+
+    setCheckoutPendingCode(pkg.code);
+
+    try {
+      const response = await fetch("/api/checkout/package", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ tier_code: pkg.code }),
+      });
+
+      const payload = (await response.json()) as { error?: string; checkout_url?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to start package checkout");
+      }
+
+      const checkoutURL = String(payload.checkout_url ?? "").trim();
+      if (!checkoutURL) {
+        throw new Error("Checkout session did not return a redirect URL");
+      }
+
+      window.location.assign(checkoutURL);
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Failed to start package checkout");
+      setCheckoutPendingCode(null);
+    }
+  };
 
   return (
     <>
@@ -196,6 +248,11 @@ export default function ServicesPage() {
           <div className="mb-16 text-center">
             <h2 className="mb-4 text-4xl font-black text-[var(--stitch-text)]">Flexible Service Plans</h2>
             <p className="text-[var(--stitch-text-muted)]">Scalable solutions for developers, researchers, and enterprises</p>
+            {checkoutError ? (
+              <p className="mx-auto mt-4 max-w-2xl rounded-xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:border-red-400/45 dark:text-red-300">
+                {checkoutError}
+              </p>
+            ) : null}
           </div>
           {isLoading ? (
             <p className="text-center text-[var(--stitch-text-muted)]">Loading plans...</p>
@@ -229,8 +286,14 @@ export default function ServicesPage() {
                   <button
                     type="button"
                     className="w-full rounded-lg py-3 font-bold transition-colors bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
+                    onClick={() => void handlePackageCheckout(pkg)}
+                    disabled={checkoutPendingCode === pkg.code}
                   >
-                    {pkg.price_micros > 0 ? "Get Started" : "Current Plan"}
+                    {checkoutPendingCode === pkg.code
+                      ? "Redirecting..."
+                      : pkg.price_micros > 0
+                        ? "Buy with Stripe"
+                        : "Open Dashboard"}
                   </button>
                 </div>
               ))}

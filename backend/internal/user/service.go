@@ -169,7 +169,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthUser,
 	var emailVerified bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, email, name, role, password_hash, email_verified
-		FROM users
+		FROM als_users
 		WHERE email = ?;
 	`, email).Scan(&user.ID, &user.Email, &user.Name, &user.Role, &passwordHash, &emailVerified)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -198,7 +198,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthUser,
 
 	expiresAt := time.Now().UTC().Add(24 * time.Hour)
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`, user.ID, tokenHash, expiresAt)
 	if err != nil {
@@ -213,7 +213,7 @@ func (s *Service) GetProfile(ctx context.Context, userID int64) (*UserProfile, e
 	var profile UserProfile
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, email, name, role, created_at, updated_at
-		FROM users
+		FROM als_users
 		WHERE id = ?;
 	`, userID).Scan(&profile.ID, &profile.Email, &profile.Name, &profile.Role, &profile.CreatedAt, &profile.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -235,7 +235,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, name, email s
 
 	var existingID int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id FROM users WHERE email = ? AND id != ?;
+		SELECT id FROM als_users WHERE email = ? AND id != ?;
 	`, email, userID).Scan(&existingID)
 	if err == nil {
 		return ErrEmailTaken
@@ -245,7 +245,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, name, email s
 	}
 
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE users
+		UPDATE als_users
 		SET name = ?, email = ?, updated_at = ?
 		WHERE id = ?;
 	`, name, email, time.Now().UTC(), userID)
@@ -273,7 +273,7 @@ func (s *Service) SetInitialPassword(ctx context.Context, userID int64, newPassw
 
 	var passwordHash sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT password_hash FROM users WHERE id = ?;
+		SELECT password_hash FROM als_users WHERE id = ?;
 	`, userID).Scan(&passwordHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrUserNotFound
@@ -292,7 +292,7 @@ func (s *Service) SetInitialPassword(ctx context.Context, userID int64, newPassw
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?;
+		UPDATE als_users SET password_hash = ?, updated_at = ? WHERE id = ?;
 	`, newHash, time.Now().UTC(), userID)
 	if err != nil {
 		return fmt.Errorf("update password hash: %w", err)
@@ -310,7 +310,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPassword,
 
 	var passwordHash sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT password_hash FROM users WHERE id = ?;
+		SELECT password_hash FROM als_users WHERE id = ?;
 	`, userID).Scan(&passwordHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrUserNotFound
@@ -333,7 +333,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPassword,
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?;
+		UPDATE als_users SET password_hash = ?, updated_at = ? WHERE id = ?;
 	`, newHash, time.Now().UTC(), userID)
 	if err != nil {
 		return fmt.Errorf("update password hash: %w", err)
@@ -345,16 +345,16 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPassword,
 func (s *Service) ListSessions(ctx context.Context, userID int64) ([]SessionInfo, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, created_at, expires_at, revoked_at
-		FROM sessions
+		FROM als_sessions
 		WHERE user_id = ?
 		ORDER BY created_at DESC, id DESC;
 	`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("query sessions: %w", err)
+		return nil, fmt.Errorf("query als_sessions: %w", err)
 	}
 	defer rows.Close()
 
-	var sessions []SessionInfo
+	var als_sessions []SessionInfo
 	for rows.Next() {
 		var (
 			s         SessionInfo
@@ -368,14 +368,14 @@ func (s *Service) ListSessions(ctx context.Context, userID int64) ([]SessionInfo
 			t := revokedAt.Time
 			s.RevokedAt = &t
 		}
-		sessions = append(sessions, s)
+		als_sessions = append(als_sessions, s)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate sessions: %w", err)
+		return nil, fmt.Errorf("iterate als_sessions: %w", err)
 	}
 
-	return sessions, nil
+	return als_sessions, nil
 }
 
 func (s *Service) Logout(ctx context.Context, userID int64, sessionToken string) error {
@@ -385,7 +385,7 @@ func (s *Service) Logout(ctx context.Context, userID int64, sessionToken string)
 	}
 
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE sessions
+		UPDATE als_sessions
 		SET revoked_at = ?
 		WHERE user_id = ?
 			AND token_hash = ?
@@ -452,7 +452,7 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 	}
 
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO users(email, name, role, password_hash, email_verified)
+		INSERT INTO als_users(email, name, role, password_hash, email_verified)
 		VALUES (?, ?, 'user', ?, ?);
 	`, email, name, hash, emailVerified)
 	if err != nil {
@@ -468,14 +468,14 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO user_wallets(user_id, balance_micros, currency)
+		INSERT INTO als_user_wallets(user_id, balance_micros, currency)
 		VALUES (?, 0, 'CNY');
 	`, userID); err != nil {
 		return nil, fmt.Errorf("create wallet: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`, userID, tokenHash, time.Now().UTC().Add(24*time.Hour)); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
@@ -483,7 +483,7 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 
 	if s.requireEmailVerification {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO email_verification_tokens(user_id, code, expires_at)
+			INSERT INTO als_email_verification_tokens(user_id, code, expires_at)
 			VALUES (?, ?, ?);
 		`, userID, verificationCode, time.Now().UTC().Add(30*time.Minute)); err != nil {
 			return nil, fmt.Errorf("create email verification token: %w", err)
@@ -492,7 +492,7 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 		subject := "Verify your email"
 		body := "Your verification code is: " + verificationCode
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO email_outbox(to_email, subject, body)
+			INSERT INTO als_email_outbox(to_email, subject, body)
 			VALUES (?, ?, ?);
 		`, email, subject, body); err != nil {
 			return nil, fmt.Errorf("write email outbox: %w", err)
@@ -541,8 +541,8 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) error {
 	)
 	err = tx.QueryRowContext(ctx, `
 		SELECT evt.id, evt.user_id, evt.expires_at
-		FROM email_verification_tokens evt
-		JOIN users u ON u.id = evt.user_id
+		FROM als_email_verification_tokens evt
+		JOIN als_users u ON u.id = evt.user_id
 		WHERE u.email = ?
 			AND evt.code = ?
 			AND evt.used_at IS NULL
@@ -561,7 +561,7 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) error {
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE email_verification_tokens
+		UPDATE als_email_verification_tokens
 		SET used_at = ?
 		WHERE id = ?;
 	`, time.Now().UTC(), tokenID); err != nil {
@@ -569,7 +569,7 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) error {
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE users
+		UPDATE als_users
 		SET email_verified = 1, updated_at = ?
 		WHERE id = ?;
 	`, time.Now().UTC(), userID); err != nil {
@@ -590,7 +590,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	}
 
 	var userID int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ?;`, email).Scan(&userID)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM als_users WHERE email = ?;`, email).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -604,7 +604,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	}
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO password_reset_tokens(user_id, code, expires_at)
+		INSERT INTO als_password_reset_tokens(user_id, code, expires_at)
 		VALUES (?, ?, ?);
 	`, userID, code, time.Now().UTC().Add(30*time.Minute)); err != nil {
 		return fmt.Errorf("create password reset token: %w", err)
@@ -613,7 +613,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	subject := "Reset your password"
 	body := "Your password reset code is: " + code
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO email_outbox(to_email, subject, body)
+		INSERT INTO als_email_outbox(to_email, subject, body)
 		VALUES (?, ?, ?);
 	`, email, subject, body); err != nil {
 		return fmt.Errorf("write reset email outbox: %w", err)
@@ -647,8 +647,8 @@ func (s *Service) ResetPasswordByCode(ctx context.Context, email, code, newPassw
 	)
 	err = tx.QueryRowContext(ctx, `
 		SELECT prt.id, prt.user_id, prt.expires_at
-		FROM password_reset_tokens prt
-		JOIN users u ON u.id = prt.user_id
+		FROM als_password_reset_tokens prt
+		JOIN als_users u ON u.id = prt.user_id
 		WHERE u.email = ?
 			AND prt.code = ?
 			AND prt.used_at IS NULL
@@ -672,7 +672,7 @@ func (s *Service) ResetPasswordByCode(ctx context.Context, email, code, newPassw
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE users
+		UPDATE als_users
 		SET password_hash = ?, updated_at = ?
 		WHERE id = ?;
 	`, hash, time.Now().UTC(), userID); err != nil {
@@ -680,7 +680,7 @@ func (s *Service) ResetPasswordByCode(ctx context.Context, email, code, newPassw
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE password_reset_tokens
+		UPDATE als_password_reset_tokens
 		SET used_at = ?
 		WHERE id = ?;
 	`, time.Now().UTC(), tokenID); err != nil {
@@ -696,7 +696,7 @@ func (s *Service) ResetPasswordByCode(ctx context.Context, email, code, newPassw
 
 func (s *Service) GetWallet(ctx context.Context, userID int64) (*Wallet, error) {
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO user_wallets(user_id, balance_micros, currency)
+		INSERT INTO als_user_wallets(user_id, balance_micros, currency)
 		VALUES (?, 0, 'CNY')
 		ON CONFLICT(user_id) DO NOTHING;
 	`, userID); err != nil {
@@ -706,7 +706,7 @@ func (s *Service) GetWallet(ctx context.Context, userID int64) (*Wallet, error) 
 	var wallet Wallet
 	err := s.db.QueryRowContext(ctx, `
 		SELECT user_id, balance_micros, currency, updated_at
-		FROM user_wallets
+		FROM als_user_wallets
 		WHERE user_id = ?;
 	`, userID).Scan(&wallet.UserID, &wallet.BalanceMicros, &wallet.Currency, &wallet.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -732,7 +732,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO user_wallets(user_id, balance_micros, currency)
+		INSERT INTO als_user_wallets(user_id, balance_micros, currency)
 		VALUES (?, 0, 'CNY')
 		ON CONFLICT(user_id) DO NOTHING;
 	`, userID); err != nil {
@@ -748,7 +748,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	)
 	err = tx.QueryRowContext(ctx, `
 		SELECT id, amount_micros, currency, expires_at, redeemed_by_user_id
-		FROM recharge_cards
+		FROM als_recharge_cards
 		WHERE card_code = ?;
 	`, cardCode).Scan(&cardID, &amountMicros, &currency, &expiresAt, &redeemedBy)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -768,7 +768,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	var balanceAfter int64
 	err = tx.QueryRowContext(ctx, `
 		SELECT balance_micros + ?
-		FROM user_wallets
+		FROM als_user_wallets
 		WHERE user_id = ?;
 	`, amountMicros, userID).Scan(&balanceAfter)
 	if err != nil {
@@ -776,7 +776,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE user_wallets
+		UPDATE als_user_wallets
 		SET balance_micros = ?, updated_at = ?
 		WHERE user_id = ?;
 	`, balanceAfter, time.Now().UTC(), userID); err != nil {
@@ -784,7 +784,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE recharge_cards
+		UPDATE als_recharge_cards
 		SET redeemed_by_user_id = ?, redeemed_at = ?
 		WHERE id = ?;
 	`, userID, time.Now().UTC(), cardID); err != nil {
@@ -792,7 +792,7 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO wallet_transactions(
+		INSERT INTO als_wallet_transactions(
 			user_id, tx_type, amount_micros, currency, balance_after_micros, reference_type, reference_id, description
 		)
 		VALUES (?, 'recharge', ?, ?, ?, 'recharge_card', ?, ?);
@@ -814,7 +814,7 @@ func (s *Service) ListWalletTransactions(ctx context.Context, userID int64, limi
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, tx_type, amount_micros, currency, balance_after_micros, COALESCE(description, ''), created_at
-		FROM wallet_transactions
+		FROM als_wallet_transactions
 		WHERE user_id = ?
 		ORDER BY id DESC
 		LIMIT ?;
@@ -860,7 +860,7 @@ func (s *Service) CreateProfileConfig(ctx context.Context, userID int64, profile
 
 	if isActive {
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE user_profiles
+			UPDATE als_user_profiles
 			SET is_active = 0, updated_at = ?
 			WHERE user_id = ? AND profile_type = ?;
 		`, time.Now().UTC(), userID, profileType); err != nil {
@@ -869,7 +869,7 @@ func (s *Service) CreateProfileConfig(ctx context.Context, userID int64, profile
 	}
 
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO user_profiles(user_id, profile_name, profile_type, is_active, content_format, content_text)
+		INSERT INTO als_user_profiles(user_id, profile_name, profile_type, is_active, content_format, content_text)
 		VALUES (?, ?, ?, ?, ?, ?);
 	`, userID, profileName, profileType, boolToInt(isActive), contentFormat, contentText)
 	if err != nil {
@@ -898,7 +898,7 @@ func (s *Service) GetProfileConfig(ctx context.Context, userID, profileID int64)
 	)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, user_id, profile_name, profile_type, is_active, content_format, content_text, created_at, updated_at
-		FROM user_profiles
+		FROM als_user_profiles
 		WHERE user_id = ? AND id = ?;
 	`, userID, profileID).Scan(
 		&cfg.ID, &cfg.UserID, &cfg.ProfileName, &cfg.ProfileType, &isActive,
@@ -918,7 +918,7 @@ func (s *Service) ListProfileConfigs(ctx context.Context, userID int64, profileT
 	profileType = strings.TrimSpace(profileType)
 	query := `
 		SELECT id, user_id, profile_name, profile_type, is_active, content_format, content_text, created_at, updated_at
-		FROM user_profiles
+		FROM als_user_profiles
 		WHERE user_id = ?
 	`
 	args := []any{userID}
@@ -977,7 +977,7 @@ func (s *Service) UpdateProfileConfig(ctx context.Context, userID, profileID int
 
 	if isActive {
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE user_profiles
+			UPDATE als_user_profiles
 			SET is_active = 0, updated_at = ?
 			WHERE user_id = ? AND profile_type = ? AND id != ?;
 		`, time.Now().UTC(), userID, profileType, profileID); err != nil {
@@ -986,7 +986,7 @@ func (s *Service) UpdateProfileConfig(ctx context.Context, userID, profileID int
 	}
 
 	result, err := tx.ExecContext(ctx, `
-		UPDATE user_profiles
+		UPDATE als_user_profiles
 		SET profile_name = ?, profile_type = ?, is_active = ?, content_format = ?, content_text = ?, updated_at = ?
 		WHERE user_id = ? AND id = ?;
 	`, profileName, profileType, boolToInt(isActive), contentFormat, contentText, time.Now().UTC(), userID, profileID)
@@ -1014,7 +1014,7 @@ func (s *Service) UpdateProfileConfig(ctx context.Context, userID, profileID int
 
 func (s *Service) DeleteProfileConfig(ctx context.Context, userID, profileID int64) error {
 	result, err := s.db.ExecContext(ctx, `
-		DELETE FROM user_profiles
+		DELETE FROM als_user_profiles
 		WHERE user_id = ? AND id = ?;
 	`, userID, profileID)
 	if err != nil {

@@ -73,7 +73,7 @@ func TestLoginReturnsUserAndCreatesSession(t *testing.T) {
 	)
 	err = database.QueryRowContext(ctx, `
 		SELECT token_hash, expires_at, revoked_at
-		FROM sessions
+		FROM als_sessions
 		WHERE user_id = ?
 		ORDER BY id DESC
 		LIMIT 1;
@@ -232,23 +232,23 @@ func TestListSessionsAndLogout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HashPassword() error = %v", err)
 	}
-	userID := createUserWithPassword(t, ctx, database, "sessions@example.com", "Sessions User", "user", hash)
+	userID := createUserWithPassword(t, ctx, database, "als_sessions@example.com", "Sessions User", "user", hash)
 
-	loginOne, err := service.Login(ctx, "sessions@example.com", "Password#123")
+	loginOne, err := service.Login(ctx, "als_sessions@example.com", "Password#123")
 	if err != nil {
 		t.Fatalf("first login error = %v", err)
 	}
-	_, err = service.Login(ctx, "sessions@example.com", "Password#123")
+	_, err = service.Login(ctx, "als_sessions@example.com", "Password#123")
 	if err != nil {
 		t.Fatalf("second login error = %v", err)
 	}
 
-	sessions, err := service.ListSessions(ctx, userID)
+	als_sessions, err := service.ListSessions(ctx, userID)
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
-	if len(sessions) != 2 {
-		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	if len(als_sessions) != 2 {
+		t.Fatalf("expected 2 als_sessions, got %d", len(als_sessions))
 	}
 
 	err = service.Logout(ctx, userID, loginOne.SessionToken)
@@ -256,13 +256,13 @@ func TestListSessionsAndLogout(t *testing.T) {
 		t.Fatalf("Logout() error = %v", err)
 	}
 
-	sessions, err = service.ListSessions(ctx, userID)
+	als_sessions, err = service.ListSessions(ctx, userID)
 	if err != nil {
 		t.Fatalf("ListSessions() after logout error = %v", err)
 	}
 
 	var revokedCount int
-	for _, session := range sessions {
+	for _, session := range als_sessions {
 		if session.RevokedAt != nil {
 			revokedCount++
 		}
@@ -277,13 +277,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 	ctx := context.Background()
 	dbFile := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(ctx, dbFile)
+	database, err := db.Open(ctx, "sqlite", dbFile)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 
-	if err := db.ApplyMigrations(ctx, database); err != nil {
+	if err := db.ApplyMigrations(ctx, database, "sqlite"); err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
 
@@ -294,7 +294,7 @@ func createUserWithPassword(t *testing.T, ctx context.Context, database *sql.DB,
 	t.Helper()
 
 	result, err := database.ExecContext(ctx, `
-		INSERT INTO users(email, name, role, password_hash)
+		INSERT INTO als_users(email, name, role, password_hash)
 		VALUES (?, ?, ?, ?);
 	`, email, name, role, passwordHash)
 	if err != nil {

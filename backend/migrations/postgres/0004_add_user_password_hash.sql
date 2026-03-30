@@ -1,0 +1,1 @@
+ALTER TABLE als_users ADD COLUMN IF NOT EXISTS password_hash TEXT;

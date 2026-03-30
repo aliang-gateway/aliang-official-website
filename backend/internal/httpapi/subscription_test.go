@@ -59,11 +59,11 @@ func TestCreateSubscriptionWithTierCode(t *testing.T) {
 	var activeCount int64
 	err := database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM subscriptions
+		FROM als_subscriptions
 		WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;
 	`, userID).Scan(&activeCount)
 	if err != nil {
-		t.Fatalf("query active subscriptions: %v", err)
+		t.Fatalf("query active als_subscriptions: %v", err)
 	}
 	if activeCount != 1 {
 		t.Fatalf("expected exactly one active subscription, got %d", activeCount)
@@ -164,7 +164,7 @@ func TestReplacingActiveSubscriptionEndsPrevious(t *testing.T) {
 	)
 	err := database.QueryRowContext(ctx, `
 		SELECT status, ended_at
-		FROM subscriptions
+		FROM als_subscriptions
 		WHERE user_id = ?
 		ORDER BY started_at ASC, id ASC
 		LIMIT 1;
@@ -179,11 +179,11 @@ func TestReplacingActiveSubscriptionEndsPrevious(t *testing.T) {
 	var activeCount int64
 	err = database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM subscriptions
+		FROM als_subscriptions
 		WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;
 	`, userID).Scan(&activeCount)
 	if err != nil {
-		t.Fatalf("count active subscriptions: %v", err)
+		t.Fatalf("count active als_subscriptions: %v", err)
 	}
 	if activeCount != 1 {
 		t.Fatalf("expected one active subscription after replacement, got %d", activeCount)
@@ -214,7 +214,7 @@ func TestReplacingActiveSubscriptionEndsPrevious(t *testing.T) {
 func insertUser(t *testing.T, ctx context.Context, database *sql.DB, email, name, role string) int64 {
 	t.Helper()
 
-	result, err := database.ExecContext(ctx, `INSERT INTO users(email, name, role) VALUES (?, ?, ?);`, email, name, role)
+	result, err := database.ExecContext(ctx, `INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, email, name, role)
 	if err != nil {
 		t.Fatalf("insert user error = %v", err)
 	}

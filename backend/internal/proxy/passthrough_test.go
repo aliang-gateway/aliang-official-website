@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -377,6 +378,284 @@ func TestCopyResponse_PreservesStatusBodyAndWWWAuthenticate(t *testing.T) {
 	}
 	if got := rec.Header().Get("Connection"); got != "" {
 		t.Fatalf("expected hop-by-hop response header stripped, got %q", got)
+	}
+}
+
+func TestDoAdminJSON_SendsAdminAuthAndIdempotencyKey(t *testing.T) {
+	t.Parallel()
+
+	var seenAPIKey string
+	var seenIdempotencyKey string
+	var seenContentType string
+	var requestBody map[string]any
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAPIKey = r.Header.Get("x-api-key")
+		seenIdempotencyKey = r.Header.Get("Idempotency-Key")
+		seenContentType = r.Header.Get("Content-Type")
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"ok":true}}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			OK bool `json:"ok"`
+		} `json:"data"`
+	}
+	err = client.DoAdminJSON(context.Background(), AdminRequest{
+		Method:         http.MethodPost,
+		Path:           "/api/v1/admin/redeem-codes/create-and-redeem",
+		Body:           map[string]any{"code": "PKG-001", "value": 30},
+		IdempotencyKey: "idem-123",
+	}, &response)
+	if err != nil {
+		t.Fatalf("DoAdminJSON() error = %v", err)
+	}
+	if seenAPIKey != "admin-key-123" {
+		t.Fatalf("expected x-api-key header, got %q", seenAPIKey)
+	}
+	if seenIdempotencyKey != "idem-123" {
+		t.Fatalf("expected Idempotency-Key header, got %q", seenIdempotencyKey)
+	}
+	if seenContentType != "application/json" {
+		t.Fatalf("expected content-type application/json, got %q", seenContentType)
+	}
+	if requestBody["code"] != "PKG-001" {
+		t.Fatalf("expected code field, got %#v", requestBody["code"])
+	}
+	if !response.Data.OK {
+		t.Fatalf("expected decoded success payload")
+	}
+}
+
+func TestDoAdminJSON_MapsAPIErrorAndRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	retryAt := time.Now().UTC().Add(2 * time.Second).Format(http.TimeFormat)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", retryAt)
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":40901,"message":"idempotency conflict","reason":"IDEMPOTENCY_KEY_CONFLICT"}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	err = client.DoAdminJSON(context.Background(), AdminRequest{Method: http.MethodPost, Path: "/api/v1/admin/redeem-codes/create-and-redeem"}, nil)
+	if err == nil {
+		t.Fatalf("expected api error")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d", apiErr.StatusCode)
+	}
+	if apiErr.Reason != "IDEMPOTENCY_KEY_CONFLICT" {
+		t.Fatalf("expected reason IDEMPOTENCY_KEY_CONFLICT, got %q", apiErr.Reason)
+	}
+	if apiErr.Code != 40901 {
+		t.Fatalf("expected code 40901, got %d", apiErr.Code)
+	}
+	if apiErr.RetryAfter <= 0 {
+		t.Fatalf("expected positive retry-after, got %v", apiErr.RetryAfter)
+	}
+}
+
+func TestCreateAndRedeem_UsesExpectedRouteAndEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var seenPath string
+	var seenMethod string
+	var payload CreateAndRedeemRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenMethod = r.Method
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"redeem_code":{"id":7,"code":"PKG-007","type":"subscription","value":30,"status":"used","used_by":11,"group_id":99,"validity_days":30,"notes":"created by portal"}}}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	groupID := int64(99)
+	validityDays := 30
+	resp, err := client.CreateAndRedeem(context.Background(), CreateAndRedeemRequest{
+		Code:         "PKG-007",
+		Type:         "subscription",
+		Value:        30,
+		UserID:       11,
+		GroupID:      &groupID,
+		ValidityDays: &validityDays,
+		Notes:        "created by portal",
+	}, "idem-007")
+	if err != nil {
+		t.Fatalf("CreateAndRedeem() error = %v", err)
+	}
+	if seenMethod != http.MethodPost {
+		t.Fatalf("expected POST, got %s", seenMethod)
+	}
+	if seenPath != "/api/v1/admin/redeem-codes/create-and-redeem" {
+		t.Fatalf("unexpected path: %s", seenPath)
+	}
+	if payload.Code != "PKG-007" || payload.UserID != 11 {
+		t.Fatalf("unexpected request payload: %#v", payload)
+	}
+	if resp.Data.RedeemCode.Code != "PKG-007" {
+		t.Fatalf("unexpected redeem code response: %#v", resp.Data.RedeemCode)
+	}
+	if resp.Data.RedeemCode.GroupID == nil || *resp.Data.RedeemCode.GroupID != 99 {
+		t.Fatalf("expected group_id 99, got %#v", resp.Data.RedeemCode.GroupID)
+	}
+}
+
+func TestUpdateUserBalance_UsesExpectedRouteAndEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var seenPath string
+	var seenMethod string
+	var seenAPIKey string
+	var seenIdempotency string
+	var payload UpdateUserBalanceRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenMethod = r.Method
+		seenAPIKey = r.Header.Get("x-api-key")
+		seenIdempotency = r.Header.Get("Idempotency-Key")
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":17,"balance":188.5,"email":"user@example.com"}}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.UpdateUserBalance(context.Background(), 17, UpdateUserBalanceRequest{Balance: 88.5, Operation: "add", Notes: "package purchase"}, "idem-balance-17")
+	if err != nil {
+		t.Fatalf("UpdateUserBalance() error = %v", err)
+	}
+	if seenMethod != http.MethodPost {
+		t.Fatalf("expected POST, got %s", seenMethod)
+	}
+	if seenPath != "/api/v1/admin/users/17/balance" {
+		t.Fatalf("unexpected path: %s", seenPath)
+	}
+	if seenAPIKey != "admin-key-123" {
+		t.Fatalf("expected admin api key header, got %q", seenAPIKey)
+	}
+	if seenIdempotency != "idem-balance-17" {
+		t.Fatalf("expected idempotency header, got %q", seenIdempotency)
+	}
+	if payload.Operation != "add" || payload.Balance != 88.5 {
+		t.Fatalf("unexpected request payload: %#v", payload)
+	}
+	if resp.Data.ID != 17 || resp.Data.Balance != 188.5 {
+		t.Fatalf("unexpected balance response: %#v", resp.Data)
+	}
+}
+
+func TestCreateUserAPIKey_UsesBearerAndGroupBinding(t *testing.T) {
+	t.Parallel()
+
+	var seenAuth string
+	var seenIdempotency string
+	var seenPath string
+	var payload CreateUserAPIKeyRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = r.Header.Get("Authorization")
+		seenIdempotency = r.Header.Get("Idempotency-Key")
+		seenPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"pkg-key","key":"sk-live","group_id":77,"user_id":12,"status":"active"}}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "unused-admin-key"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.CreateUserAPIKey(context.Background(), "jwt-123", CreateUserAPIKeyRequest{Name: "pkg-key", GroupID: 77, ExpiresInDays: 30}, "idem-key-1")
+	if err != nil {
+		t.Fatalf("CreateUserAPIKey() error = %v", err)
+	}
+	if seenPath != "/api/v1/keys" {
+		t.Fatalf("unexpected path: %s", seenPath)
+	}
+	if seenAuth != "Bearer jwt-123" {
+		t.Fatalf("expected bearer auth, got %q", seenAuth)
+	}
+	if seenIdempotency != "idem-key-1" {
+		t.Fatalf("expected idempotency header, got %q", seenIdempotency)
+	}
+	if payload.Name != "pkg-key" || payload.GroupID != 77 {
+		t.Fatalf("unexpected api key payload: %#v", payload)
+	}
+	if resp.Data.ID != 91 || resp.Data.GroupID != 77 {
+		t.Fatalf("unexpected api key response: %#v", resp.Data)
+	}
+}
+
+func TestListAdminGroups_UsesExpectedRouteAndQuery(t *testing.T) {
+	t.Parallel()
+
+	var seenPath string
+	var seenQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":[{"id":1,"name":"vip-sub","platform":"openai","subscription_type":"subscription"}]}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.ListAdminGroups(context.Background(), "openai")
+	if err != nil {
+		t.Fatalf("ListAdminGroups() error = %v", err)
+	}
+	if seenPath != "/api/v1/admin/groups/all" {
+		t.Fatalf("unexpected path: %s", seenPath)
+	}
+	if seenQuery != "platform=openai" {
+		t.Fatalf("unexpected query: %s", seenQuery)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].ID != 1 || resp.Data[0].SubscriptionType != "subscription" {
+		t.Fatalf("unexpected groups response: %#v", resp.Data)
 	}
 }
 

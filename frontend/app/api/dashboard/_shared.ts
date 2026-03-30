@@ -29,9 +29,9 @@ type BalanceSummary = {
 type PurchaseOptions = {
   package_purchase: {
     durations: Array<{
-      code: "one_week" | "one_month" | "three_months";
+      code: "configured";
       label: string;
-      days: number;
+      days: number | null;
     }>;
     tiers: Array<{
       code: string;
@@ -180,11 +180,7 @@ function normalizePurchaseOptions(data: unknown, currencyHint: string): Purchase
 
   return {
     package_purchase: {
-      durations: [
-        { code: "one_week", label: "1 week", days: 7 },
-        { code: "one_month", label: "1 month", days: 30 },
-        { code: "three_months", label: "3 months", days: 90 },
-      ],
+      durations: [],
       tiers,
     },
     prepaid_topup: {

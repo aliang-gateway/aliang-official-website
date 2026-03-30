@@ -1,7 +1,9 @@
 server:
   port: "18080"
 database:
+  driver: "sqlite"
   path: "./qa-f3.db"
+  dsn: ""
 auth:
   admin_bootstrap_secret: ""
 register:
@@ -20,3 +22,6 @@ redis:
   addr: ""
   password: ""
   db: 0
+
+sub2api_base_url: "http://127.0.0.1:18081"
+sub2api_admin_key: ""

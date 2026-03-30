@@ -2,7 +2,9 @@ server:
   port: "8081"
 
 database:
-  path: "./data.db"
+  driver: "postgres"
+  # path: "./data.db"
+  dsn: "postgresql://postgres:asd123456@172.16.238.2:31279/sub2api?sslmode=disable"
 
 auth:
   admin_bootstrap_secret: ""
@@ -27,3 +29,12 @@ redis:
   db: 0
 
 sub2api_base_url: "http://sub2api.liang.home"
+sub2api_admin_key: "admin-23b6bc204bb56a1e8528d7ccbf4d52f74072427204dcb252b45eb0ba3ad3208a"
+
+stripe:
+  secret_key: "sk_test_51Rq97bGiJiYsvsNOHEWVekvPYrY1URV4fdvZ7wezszfO8k6TyWIYIbsa9S1HF5QhHmXwSfw1NQmESH5MRiIiZtlo00Vnxs2pYo"
+  publishable_key: "pk_test_51Rq97bGiJiYsvsNOA4SYRQmK4P9D3Yflb5ZDkASkL3u3jyJb1Uu6nksM3Mes5SsRfINyw4J0X7ONIKZBX0uZfUgo00M6lZOxrF"
+  webhook_secret: "whsec_hy1OzQ0gZ2ftEoJm6tYPGg7zr7YfJ9TN"
+  currency: "cny"
+  success_url: "http://localhost:3001/dashboard?checkout=success"
+  cancel_url: "http://localhost:3001/dashboard?checkout=cancelled"

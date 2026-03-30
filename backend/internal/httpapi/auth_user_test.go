@@ -215,8 +215,8 @@ func TestVerifyEmailAndDomainRestrictedRegisterViaService(t *testing.T) {
 
 	var code string
 	err = database.QueryRowContext(ctx, `
-		SELECT code FROM email_verification_tokens evt
-		JOIN users u ON u.id = evt.user_id
+		SELECT code FROM als_email_verification_tokens evt
+		JOIN als_users u ON u.id = evt.user_id
 		WHERE u.email = ?
 		ORDER BY evt.id DESC
 		LIMIT 1;
@@ -265,7 +265,7 @@ func TestRegisterWithoutEmailVerificationAllowsImmediateLoginViaService(t *testi
 	}
 
 	var tokens int
-	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM email_verification_tokens;`).Scan(&tokens); err != nil {
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_email_verification_tokens;`).Scan(&tokens); err != nil {
 		t.Fatalf("count verification tokens: %v", err)
 	}
 	if tokens != 0 {
@@ -290,7 +290,7 @@ func TestLoginAllowsExistingUnverifiedUserWhenEmailVerificationDisabled(t *testi
 	}
 
 	if _, err := database.ExecContext(ctx, `
-		INSERT INTO users(email, name, role, password_hash, email_verified)
+		INSERT INTO als_users(email, name, role, password_hash, email_verified)
 		VALUES (?, ?, 'user', ?, 0);
 	`, "existing-unverified@example.com", "Existing Unverified", passwordHash); err != nil {
 		t.Fatalf("insert unverified user: %v", err)
@@ -316,10 +316,10 @@ func TestWalletRedeemAndProfileCRUD(t *testing.T) {
 
 	userID := createUser(t, ctx, database, "wallet-user@example.com", "Wallet User", "user")
 
-	if _, err := database.ExecContext(ctx, `INSERT INTO user_wallets(user_id, balance_micros, currency) VALUES (?, 0, 'CNY');`, userID); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_user_wallets(user_id, balance_micros, currency) VALUES (?, 0, 'CNY');`, userID); err != nil {
 		t.Fatalf("insert wallet: %v", err)
 	}
-	if _, err := database.ExecContext(ctx, `INSERT INTO recharge_cards(card_code, amount_micros, currency) VALUES ('CARD-OK-100', 1000000, 'CNY');`); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_recharge_cards(card_code, amount_micros, currency) VALUES ('CARD-OK-100', 1000000, 'CNY');`); err != nil {
 		t.Fatalf("insert recharge card: %v", err)
 	}
 
@@ -330,14 +330,14 @@ func TestWalletRedeemAndProfileCRUD(t *testing.T) {
 		t.Fatalf("get wallet status = %d, body=%s", getWalletRec.Code, getWalletRec.Body.String())
 	}
 
-	redeemReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPost, "/wallet/redeem", []byte(`{"card_code":"CARD-OK-100"}`), userID)
+	redeemReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPost, "/wallet/redeem", []byte(`{"code":"CARD-OK-100"}`), userID)
 	redeemRec := httptest.NewRecorder()
 	server.Config.Handler.ServeHTTP(redeemRec, redeemReq)
 	if redeemRec.Code != http.StatusOK {
 		t.Fatalf("redeem card status = %d, body=%s", redeemRec.Code, redeemRec.Body.String())
 	}
 
-	redeemAgainReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPost, "/wallet/redeem", []byte(`{"card_code":"CARD-OK-100"}`), userID)
+	redeemAgainReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPost, "/wallet/redeem", []byte(`{"code":"CARD-OK-100"}`), userID)
 	redeemAgainRec := httptest.NewRecorder()
 	server.Config.Handler.ServeHTTP(redeemAgainRec, redeemAgainReq)
 	if redeemAgainRec.Code != http.StatusConflict {
@@ -404,6 +404,23 @@ func TestWalletRedeemAndProfileCRUD(t *testing.T) {
 	}
 }
 
+func TestWalletRedeemRejectsLegacyCardCodeField(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	server, database := setupTestServer(t)
+
+	userID := createUser(t, ctx, database, "wallet-legacy@example.com", "Wallet Legacy", "user")
+
+	legacyReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPost, "/wallet/redeem", []byte(`{"card_code":"CARD-OK-100"}`), userID)
+	legacyRec := httptest.NewRecorder()
+	server.Config.Handler.ServeHTTP(legacyRec, legacyReq)
+
+	if legacyRec.Code != http.StatusBadRequest {
+		t.Fatalf("legacy redeem field status = %d, body=%s", legacyRec.Code, legacyRec.Body.String())
+	}
+}
+
 func TestDeleteSessionSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -441,14 +458,14 @@ func TestListSessions(t *testing.T) {
 
 	ctx := context.Background()
 	server, database := setupTestServer(t)
-	userID := createUser(t, ctx, database, "sessions-httpapi@example.com", "Sessions HTTP API", "user")
+	userID := createUser(t, ctx, database, "als_sessions-httpapi@example.com", "Sessions HTTP API", "user")
 
 	_, secondSessionTokenHash, err := auth.NewSessionToken()
 	if err != nil {
 		t.Fatalf("generate second session token: %v", err)
 	}
 	if _, err := database.ExecContext(ctx, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`, userID, secondSessionTokenHash, time.Now().UTC().Add(24*time.Hour).Format("2006-01-02 15:04:05")); err != nil {
 		t.Fatalf("insert second session: %v", err)
@@ -474,7 +491,7 @@ func TestListSessions(t *testing.T) {
 		t.Fatalf("decode /sessions response: %v", err)
 	}
 	if len(payload.Sessions) < 2 {
-		t.Fatalf("expected at least 2 sessions, got %d", len(payload.Sessions))
+		t.Fatalf("expected at least 2 als_sessions, got %d", len(payload.Sessions))
 	}
 	for _, s := range payload.Sessions {
 		if s.ID <= 0 {
@@ -537,8 +554,8 @@ func TestForgotPasswordSendsVerificationCodesAndResetWorks(t *testing.T) {
 	var resetCode string
 	err = database.QueryRowContext(ctx, `
 		SELECT prt.code
-		FROM password_reset_tokens prt
-		JOIN users u ON u.id = prt.user_id
+		FROM als_password_reset_tokens prt
+		JOIN als_users u ON u.id = prt.user_id
 		WHERE u.email = ?
 		ORDER BY prt.id DESC
 		LIMIT 1;
@@ -561,8 +578,8 @@ func TestForgotPasswordSendsVerificationCodesAndResetWorks(t *testing.T) {
 	var verifyCode string
 	err = database.QueryRowContext(ctx, `
 		SELECT evt.code
-		FROM email_verification_tokens evt
-		JOIN users u ON u.id = evt.user_id
+		FROM als_email_verification_tokens evt
+		JOIN als_users u ON u.id = evt.user_id
 		WHERE u.email = ?
 		ORDER BY evt.id DESC
 		LIMIT 1;
@@ -587,7 +604,7 @@ func createUser(t *testing.T, ctx context.Context, database *sql.DB, email, name
 	t.Helper()
 
 	result, err := database.ExecContext(ctx, `
-		INSERT INTO users(email, name, role)
+		INSERT INTO als_users(email, name, role)
 		VALUES (?, ?, ?);
 	`, email, name, role)
 	if err != nil {
@@ -606,7 +623,7 @@ func createUserWithPasswordHash(t *testing.T, ctx context.Context, database *sql
 	t.Helper()
 
 	result, err := database.ExecContext(ctx, `
-		INSERT INTO users(email, name, role, password_hash)
+		INSERT INTO als_users(email, name, role, password_hash)
 		VALUES (?, ?, ?, ?);
 	`, email, name, role, passwordHash)
 	if err != nil {
@@ -630,7 +647,7 @@ func makeAuthenticatedRequest(t *testing.T, ctx context.Context, database *sql.D
 	}
 
 	if _, err := database.ExecContext(ctx, `
-		INSERT INTO sessions(user_id, token_hash, expires_at)
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
 	`, userID, tokenHash, time.Now().UTC().Add(24*time.Hour).Format("2006-01-02 15:04:05")); err != nil {
 		t.Fatalf("insert session for authenticated request: %v", err)

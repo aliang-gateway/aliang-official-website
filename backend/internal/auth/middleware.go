@@ -7,6 +7,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
+
+	"ai-api-portal/backend/internal/db"
 )
 
 type contextKey string
@@ -30,6 +33,10 @@ func UserFromContext(ctx context.Context) (AuthenticatedUser, bool) {
 }
 
 func RequireUser(database *sql.DB) func(http.Handler) http.Handler {
+	return RequireUserWithDialect(database, "")
+}
+
+func RequireUserWithDialect(database *sql.DB, sqlDialect string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
@@ -48,22 +55,34 @@ func RequireUser(database *sql.DB) func(http.Handler) http.Handler {
 			tokenHash := HashSessionToken(token)
 
 			const query = `
-				SELECT u.id, u.email, u.name, u.role
-				FROM sessions s
-				JOIN users u ON u.id = s.user_id
+				SELECT u.id, u.email, u.name, u.role, s.expires_at
+				FROM als_sessions s
+				JOIN als_users u ON u.id = s.user_id
 				WHERE s.token_hash = ?
 					AND s.revoked_at IS NULL
-					AND datetime(substr(s.expires_at, 1, 19)) > datetime('now')
 				LIMIT 1;
 			`
-			var user AuthenticatedUser
-			err := database.QueryRowContext(r.Context(), query, tokenHash).Scan(&user.ID, &user.Email, &user.Name, &user.Role)
+			var (
+				user      AuthenticatedUser
+				expiresAt time.Time
+			)
+			err := database.QueryRowContext(r.Context(), db.Rebind(sqlDialect, query), tokenHash).Scan(
+				&user.ID,
+				&user.Email,
+				&user.Name,
+				&user.Role,
+				&expiresAt,
+			)
 			if errors.Is(err, sql.ErrNoRows) {
 				writeError(w, http.StatusUnauthorized, "invalid or expired session")
 				return
 			}
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to authenticate user")
+				return
+			}
+			if !expiresAt.After(time.Now().UTC()) {
+				writeError(w, http.StatusUnauthorized, "invalid or expired session")
 				return
 			}
 

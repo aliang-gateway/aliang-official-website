@@ -16,6 +16,7 @@ import (
 	"ai-api-portal/backend/internal/httpapi"
 	"ai-api-portal/backend/internal/mailer"
 	"ai-api-portal/backend/internal/proxy"
+	portalstripe "ai-api-portal/backend/internal/stripe"
 	"ai-api-portal/backend/internal/user"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -50,7 +51,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	database, err := db.Open(ctx, cfg.Database.Path)
+	database, err := db.Open(ctx, cfg.Database.Driver, cfg.Database.EffectiveDSN())
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
 	}
@@ -60,7 +61,7 @@ func main() {
 		}
 	}()
 
-	if err := db.ApplyMigrations(ctx, database); err != nil {
+	if err := db.ApplyMigrations(ctx, database, cfg.Database.Driver); err != nil {
 		log.Fatalf("failed to apply migrations: %v", err)
 	}
 
@@ -88,9 +89,23 @@ func main() {
 		log.Printf("redis configured at %s (db=%d)", cfg.Redis.Addr, cfg.Redis.DB)
 	}
 
-	proxyClient, err := proxy.NewClient(cfg.Sub2APIBaseURL)
+	proxyClient, err := proxy.NewClientWithOptions(cfg.Sub2APIBaseURL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: cfg.Sub2APIAdminKey})
 	if err != nil {
 		log.Fatalf("failed to init sub2api proxy client: %v", err)
+	}
+
+	var stripeClient *portalstripe.Client
+	if cfg.Stripe.SecretKey != "" {
+		stripeClient, err = portalstripe.NewClient(portalstripe.Config{
+			SecretKey:      cfg.Stripe.SecretKey,
+			WebhookSecret:  cfg.Stripe.WebhookSecret,
+			Currency:       cfg.Stripe.Currency,
+			SuccessURL:     cfg.Stripe.SuccessURL,
+			CancelURL:      cfg.Stripe.CancelURL,
+		})
+		if err != nil {
+			log.Fatalf("failed to init stripe client: %v", err)
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -99,7 +114,9 @@ func main() {
 	httpapi.RegisterRoutesWithOptions(mux, database, httpapi.RoutesOptions{
 		UserService:          userSvc,
 		ProxyClient:          proxyClient,
+		StripeClient:         stripeClient,
 		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,
+		SQLDialect:           cfg.Database.Driver,
 	})
 
 	addr := ":" + cfg.Server.Port
