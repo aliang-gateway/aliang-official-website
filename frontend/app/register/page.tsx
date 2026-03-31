@@ -70,7 +70,7 @@ export default function RegisterPage() {
       }
 
       const registerPayload = unwrapData<RegisterResponse>(payload) ?? ((asRecord(payload) as RegisterResponse | null) ?? {});
-      const sessionToken = asString(registerPayload.access_token) || asString(registerPayload.session_token);
+      const sessionToken = asString(registerPayload.session_token) || asString(registerPayload.access_token);
       if (sessionToken) {
         localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
       }

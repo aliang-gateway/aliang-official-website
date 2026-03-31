@@ -21,11 +21,17 @@ type APIKey struct {
 }
 
 type Tier struct {
-	ID        int64
-	Code      string
-	Name      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           int64
+	Code         string
+	Name         string
+	PriceMicros  int64
+	ValueType    string
+	ValueAmount  int64
+	Description  string
+	FeaturesJSON string
+	IsEnabled    bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type ServiceItem struct {

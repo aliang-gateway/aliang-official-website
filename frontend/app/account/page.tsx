@@ -30,13 +30,6 @@ type ApiKeyItem = {
   created_at: string;
 };
 
-type GroupItem = {
-  id: number;
-  name: string;
-  platform: string;
-  status: string;
-};
-
 type SubscriptionRow = {
   id: number;
   group_id: number;
@@ -80,7 +73,16 @@ const SESSION_TOKEN_KEY = "session_token";
 /* ------------------------------------------------------------------ */
 
 function asNumber(value: unknown, fallback = 0) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
 }
 
 function authHeaders(sessionToken: string) {
@@ -91,20 +93,34 @@ function authHeaders(sessionToken: string) {
   };
 }
 
+function maskApiKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "***";
+  if (trimmed.length <= 10) return `${trimmed.slice(0, 3)}***`;
+  return `${trimmed.slice(0, 8)}***${trimmed.slice(-4)}`;
+}
+
 function parsePagination(payload: unknown): PaginationInfo {
   const root = asRecord(payload);
   const pag = asRecord(root?.pagination);
   const total = asNumber(pag?.total ?? root?.total);
   const page = Math.max(1, asNumber(pag?.page ?? root?.page, 1));
   const per_page = Math.max(1, asNumber(pag?.per_page ?? pag?.page_size ?? root?.per_page, 20));
-  const total_pages = Math.max(1, Math.ceil(total / per_page));
+  const total_pages = Math.max(1, asNumber(pag?.pages ?? root?.pages, Math.ceil(total / per_page)));
   return { page, per_page, total, total_pages, has_next: page < total_pages, has_prev: page > 1 };
 }
 
 function parseApiKeysList(payload: unknown): { keys: ApiKeyItem[]; pagination: PaginationInfo } {
   const root = asRecord(payload);
   const inner = asRecord(root?.data) ?? root;
-  const list = Array.isArray(inner?.data) ? inner.data : Array.isArray(inner?.api_keys) ? inner.api_keys : Array.isArray(root?.data) ? root.data : [];
+  const list =
+    Array.isArray(inner?.data) ? inner.data
+      : Array.isArray(inner?.items) ? inner.items
+        : Array.isArray(inner?.list) ? inner.list
+          : Array.isArray(inner?.api_keys) ? inner.api_keys
+            : Array.isArray(root?.data) ? root.data
+              : Array.isArray(root?.items) ? root.items
+                : [];
   const keys = list
     .map((item: unknown) => asRecord(item))
     .filter((item): item is Record<string, unknown> => Boolean(item))
@@ -123,23 +139,8 @@ function parseApiKeysList(payload: unknown): { keys: ApiKeyItem[]; pagination: P
         created_at: asString(item.created_at),
       };
     });
-  const pagination = parsePagination(root?.data ?? inner ?? payload);
+  const pagination = parsePagination(payload);
   return { keys, pagination };
-}
-
-function parseGroupsList(payload: unknown): GroupItem[] {
-  const root = asRecord(payload);
-  const data = Array.isArray(root?.data) ? root.data : Array.isArray(payload) ? payload : [];
-  return data
-    .map((item: unknown) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item))
-    .map((item) => ({
-      id: asNumber(item.id),
-      name: asString(item.name),
-      platform: asString(item.platform),
-      status: asString(item.status, "active"),
-    }))
-    .filter((g) => g.status === "active");
 }
 
 function parseSubscriptionSummary(payload: unknown): SubscriptionSummary | null {
@@ -209,14 +210,9 @@ export default function AccountPage() {
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
   const [keyPagination, setKeyPagination] = useState<PaginationInfo>({ page: 1, per_page: 20, total: 0, total_pages: 1, has_next: false, has_prev: false });
-  const [keyName, setKeyName] = useState("");
-  const [keyGroupId, setKeyGroupId] = useState<number | "">("");
-  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
-
-  // Groups
-  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   // Change password
   const [oldPwd, setOldPwd] = useState("");
@@ -273,7 +269,7 @@ export default function AccountPage() {
     setApiKeyLoading(true);
     setApiKeyError(null);
     try {
-      const res = await fetch(`/api/api-keys?page=${page}&per_page=20`, {
+      const res = await fetch(`/api-keys?page=${page}&per_page=20`, {
         headers: authHeaders(sessionToken),
         cache: "no-store",
       });
@@ -293,60 +289,17 @@ export default function AccountPage() {
     }
   }, [sessionToken]);
 
-  const loadGroups = useCallback(async () => {
-    if (!sessionToken) return;
-    try {
-      const res = await fetch("/api/groups/available", {
-        headers: authHeaders(sessionToken),
-        cache: "no-store",
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setGroups(parseGroupsList(data));
-    } catch {}
-  }, [sessionToken]);
-
   useEffect(() => {
     if (isReady && sessionToken) {
       void loadApiKeys(1);
-      void loadGroups();
     }
-  }, [isReady, sessionToken, loadApiKeys, loadGroups]);
-
-  const handleCreateApiKey = async (e: { preventDefault: () => void }) => {
-    e.preventDefault();
-    setApiKeyError(null);
-    setNewlyCreatedKey(null);
-    try {
-      const body: Record<string, unknown> = {};
-      if (keyName) body.name = keyName;
-      if (typeof keyGroupId === "number") body.group_id = keyGroupId;
-
-      const res = await fetch("/api/api-keys", {
-        method: "POST",
-        headers: authHeaders(sessionToken),
-        body: JSON.stringify(body),
-        cache: "no-store",
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(extractApiError(payload, "Failed to create API key"));
-      const created = asRecord(payload?.data) ?? asRecord(payload);
-      const keyValue = asString(created?.key) || asString(created?.api_key);
-      if (!keyValue) throw new Error("Incomplete response");
-      setNewlyCreatedKey(keyValue);
-      setKeyName("");
-      setKeyGroupId("");
-      void loadApiKeys(1);
-    } catch (err) {
-      setApiKeyError(err instanceof Error ? err.message : "Failed to create API key");
-    }
-  };
+  }, [isReady, sessionToken, loadApiKeys]);
 
   const handleToggleApiKey = async (keyId: number, currentStatus: string) => {
     setApiKeyError(null);
     const newStatus = currentStatus === "active" ? "inactive" : "active";
     try {
-      const res = await fetch(`/api/api-keys/${keyId}`, {
+      const res = await fetch(`/api-keys/${keyId}`, {
         method: "PUT",
         headers: authHeaders(sessionToken),
         body: JSON.stringify({ status: newStatus }),
@@ -365,7 +318,7 @@ export default function AccountPage() {
   const handleDeleteApiKey = async (keyId: number) => {
     setApiKeyError(null);
     try {
-      const res = await fetch(`/api/api-keys/${keyId}`, {
+      const res = await fetch(`/api-keys/${keyId}`, {
         method: "DELETE",
         headers: authHeaders(sessionToken),
         cache: "no-store",
@@ -379,6 +332,20 @@ export default function AccountPage() {
       setApiKeyError(err instanceof Error ? err.message : "Failed to delete API key");
     }
   };
+
+  const handleCopyApiKey = useCallback(async (keyId: number, keyValue: string) => {
+    if (!keyValue.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(keyValue);
+      setCopiedKeyId(keyId);
+      window.setTimeout(() => {
+        setCopiedKeyId((current) => (current === keyId ? null : current));
+      }, 1800);
+    } catch {
+      setApiKeyError("Failed to copy API key");
+    }
+  }, []);
 
   /* --- Change password -------------------------------------------- */
 
@@ -531,58 +498,6 @@ export default function AccountPage() {
           )}
         </h3>
 
-        {/* Create form */}
-        <form className="clay-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-end" onSubmit={handleCreateApiKey}>
-          <div className="min-w-[160px] flex-1 space-y-1.5">
-            <label htmlFor="ak-name" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Name</label>
-            <input id="ak-name" className="field" type="text" placeholder="e.g. Production" value={keyName} onChange={(e) => setKeyName(e.target.value)} />
-          </div>
-          {groups.length > 0 && (
-            <div className="min-w-[180px] space-y-1.5">
-              <label htmlFor="ak-group" className="text-xs font-semibold uppercase tracking-wider text-[var(--portal-muted)]">Group</label>
-              <select
-                id="ak-group"
-                className="field"
-                value={keyGroupId}
-                onChange={(e) => setKeyGroupId(e.target.value ? Number(e.target.value) : "")}
-              >
-                <option value="">Auto select</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}{g.platform ? ` (${g.platform})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <button type="submit" className="btn-primary whitespace-nowrap">
-            <MaterialIcon name="add" size={16} className="mr-1" />
-            Create Key
-          </button>
-        </form>
-
-        {/* Newly created key alert */}
-        {newlyCreatedKey && (
-          <div className="relative overflow-hidden rounded-xl border border-[var(--portal-accent)]/20 p-4" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02))" }}>
-            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full" style={{ background: "radial-gradient(circle, rgba(16,185,129,0.1), transparent 70%)" }} />
-            <p className="relative mb-2 flex items-center gap-2 text-sm font-bold text-[var(--portal-accent)]">
-              <MaterialIcon name="check_circle" size={16} />
-              New API Key Created
-            </p>
-            <p className="relative mb-2 text-xs text-[var(--portal-muted)]">Save it now — this is the only time the key will be shown.</p>
-            <div className="relative flex items-center gap-2">
-              <code className="flex-1 break-all rounded-lg bg-[var(--portal-ink)]/5 px-3 py-2 font-mono text-xs text-[var(--portal-ink)]">{newlyCreatedKey}</code>
-              <button
-                type="button"
-                className="btn-ghost shrink-0 rounded-lg border border-[var(--portal-line)] px-3 py-2 text-xs font-medium"
-                onClick={() => { navigator.clipboard.writeText(newlyCreatedKey); }}
-              >
-                <MaterialIcon name="content_copy" size={14} />
-              </button>
-            </div>
-          </div>
-        )}
-
         {apiKeyError && <p className="rounded-lg bg-red-500/5 px-4 py-2.5 text-sm text-red-500">{apiKeyError}</p>}
 
         {/* Key list */}
@@ -596,7 +511,7 @@ export default function AccountPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--portal-accent)]/5">
               <MaterialIcon name="key_off" size={22} className="text-[var(--portal-muted)]" />
             </div>
-            <p className="text-sm text-[var(--portal-muted)]">No API keys yet. Create one above to get started.</p>
+            <p className="text-sm text-[var(--portal-muted)]">No visible API keys were returned for this account.</p>
           </div>
         ) : (
           <>
@@ -616,6 +531,10 @@ export default function AccountPage() {
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--portal-muted)]">
+                      <span className="flex items-center gap-1 font-mono">
+                        <MaterialIcon name="key" size={12} />
+                        {maskApiKey(key.key)}
+                      </span>
                       <span className="flex items-center gap-1">
                         <MaterialIcon name="group" size={12} />
                         {key.group_name}
@@ -629,6 +548,15 @@ export default function AccountPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyApiKey(key.id, key.key)}
+                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)] disabled:opacity-40"
+                      title="Copy API key"
+                      disabled={!key.key}
+                    >
+                      <MaterialIcon name={copiedKeyId === key.id ? "check" : "content_copy"} size={16} className={copiedKeyId === key.id ? "text-emerald-500" : ""} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void handleToggleApiKey(key.id, key.status)}

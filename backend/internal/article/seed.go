@@ -9,15 +9,15 @@ import (
 	"ai-api-portal/backend/internal/model"
 )
 
-// SeedLegacyArticles inserts the 5 hardcoded blog articles from the frontend
-// into the articles table. It is idempotent: articles whose legacy_id already
+// SeedLegacyArticles inserts the 5 hardcoded blog als_articles from the frontend
+// into the als_articles table. It is idempotent: als_articles whose legacy_id already
 // exists are skipped.
 func SeedLegacyArticles(db *sql.DB) error {
 	svc := NewService(db)
 	ctx := context.Background()
 
-	articles := legacyArticles()
-	for _, a := range articles {
+	als_articles := legacyArticles()
+	for _, a := range als_articles {
 		exists, err := legacyIDExists(db, *a.LegacyID)
 		if err != nil {
 			return fmt.Errorf("check legacy_id %d: %w", *a.LegacyID, err)
@@ -35,7 +35,7 @@ func SeedLegacyArticles(db *sql.DB) error {
 
 func legacyIDExists(db *sql.DB, legacyID int64) (bool, error) {
 	var count int
-	err := db.QueryRow(`SELECT COUNT(1) FROM articles WHERE legacy_id = ?;`, legacyID).Scan(&count)
+	err := db.QueryRow(`SELECT COUNT(1) FROM als_articles WHERE legacy_id = ?;`, legacyID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("query legacy_id existence: %w", err)
 	}

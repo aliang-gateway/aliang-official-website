@@ -3,6 +3,7 @@ module ai-api-portal/backend
 go 1.25.1
 
 require (
+	github.com/lib/pq v1.10.9
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.49.0

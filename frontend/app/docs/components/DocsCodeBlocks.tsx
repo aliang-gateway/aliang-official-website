@@ -3,8 +3,8 @@ import type { MDXComponents } from 'mdx/types';
 
 export const DocsCodeBlocks: MDXComponents = {
   pre: ({ children, ...props }) => (
-    <pre 
-      className="mb-6 mt-6 overflow-x-auto rounded-xl bg-slate-950 dark:bg-black py-4 px-4 border border-slate-800" 
+    <pre
+      className="mb-6 mt-6 overflow-x-auto rounded-xl bg-slate-900 dark:bg-black py-4 px-4 border border-slate-200 dark:border-slate-800"
       {...props}
     >
       {children}
@@ -26,7 +26,7 @@ export const DocsCodeBlocks: MDXComponents = {
 
     return (
       <code 
-        className={`relative font-mono text-sm text-slate-50 ${className || ''}`} 
+        className={`relative font-mono text-sm text-slate-200 dark:text-slate-50 ${className || ''}`}
         {...props}
       >
         {children}

@@ -13,7 +13,7 @@ type Article = {
   publishedAt: string;
   excerpt: string;
   readTime: string;
-  image: string;
+  image?: string;
   author: {
     name: string;
     avatar?: string;
@@ -73,6 +73,11 @@ function formatPublishedDate(value: string) {
   }).format(date);
 }
 
+function normalizeOptionalAsset(value?: string | null) {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
 function normalizeArticle(article: PublicArticle): Article {
   return {
     slug: article.slug,
@@ -81,10 +86,10 @@ function normalizeArticle(article: PublicArticle): Article {
     publishedAt: formatPublishedDate(article.published_at),
     excerpt: article.excerpt,
     readTime: article.read_time,
-    image: article.cover_image_url,
+    image: normalizeOptionalAsset(article.cover_image_url),
     author: {
       name: article.author_name,
-      avatar: article.author_avatar_url,
+      avatar: normalizeOptionalAsset(article.author_avatar_url),
       icon: "person",
     },
   };
@@ -334,14 +339,23 @@ export default function BlogPage() {
               style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)' }}
             >
               <div className="aspect-video relative overflow-hidden">
-                <Image 
-                  src={article.image} 
-                  alt={article.title} 
-                  width={400}
-                  height={300}
-                  className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
-                  unoptimized
-                />
+                {article.image ? (
+                  <Image 
+                    src={article.image} 
+                    alt={article.title} 
+                    width={400}
+                    height={300}
+                    className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                    unoptimized
+                  />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center bg-[var(--stitch-bg-elevated)] text-[var(--stitch-text-muted)]"
+                    aria-hidden="true"
+                  >
+                    <MaterialIcon name="article" size={40} />
+                  </div>
+                )}
                 <div className="absolute top-4 left-4">
                   <span className="text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 90%, transparent)' }}>
                     {article.tag}

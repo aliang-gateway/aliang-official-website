@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { asRecord, asString, extractApiError } from "@/lib/api-response";
 import { parseDashboardModelsEnvelope, parseDashboardSimpleTrendPoints, parseDashboardTrendEnvelope } from "@/lib/dashboard-analytics-adapter";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -16,13 +16,6 @@ type TrendGranularity = "day" | "week" | "month";
 
 type ClientTemplateId = "claude-code" | "codex" | "openai" | "gemini";
 type TemplateFormat = "json" | "yaml" | "shell";
-
-type CreateApiKeyResponse = {
-  id: number;
-  label: string;
-  api_key: string;
-  created_at: string;
-};
 
 type TrendPoint = {
   bucket_start: string;
@@ -438,38 +431,6 @@ function buildSinglePointTrendSeries(value: number): TrendSeries {
   };
 }
 
-function parseQuotaList(value: unknown): PackageQuota[] {
-  const root = extractEnvelopeOrRoot(value);
-  const subscriptions = Array.isArray(root?.subscriptions) ? root.subscriptions : [];
-  const activeSubscription = subscriptions
-    .map((item) => asRecord(item))
-    .filter((item): item is UnknownRecord => Boolean(item))
-    .find((item) => asString(item.status) === "active");
-
-  if (!activeSubscription) {
-    return [];
-  }
-
-  const periodDefinitions = [
-    { key: "daily", label: "Daily" },
-    { key: "weekly", label: "Weekly" },
-    { key: "monthly", label: "Monthly" },
-  ] as const;
-
-  return periodDefinitions.map(({ key, label }) => {
-    const usedUSD = asOptionalNumber(activeSubscription[`${key}_used_usd`]);
-    const limitUSD = asOptionalNumber(activeSubscription[`${key}_limit_usd`]);
-
-    return {
-      period: key,
-      label,
-      used_usd: usedUSD,
-      limit_usd: limitUSD,
-      percentage: usedUSD !== null && limitUSD !== null && limitUSD > 0 ? (usedUSD / limitUSD) * 100 : null,
-    };
-  });
-}
-
 function parsePackageQuotaListFromSubscription(subscription: UnknownRecord): PackageQuota[] {
   const periodDefinitions = [
     { key: "daily", label: "Daily" },
@@ -806,11 +767,8 @@ function DashboardPageContent() {
   const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplateId>("claude-code");
   const [selectedFormat, setSelectedFormat] = useState<TemplateFormat>("shell");
   const [userKey, setUserKey] = useState("");
-  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
-  const [keyError, setKeyError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [selectedPackageTierCode, setSelectedPackageTierCode] = useState("");
-  const [selectedDurationCode, setSelectedDurationCode] = useState<PurchaseOptions["package_purchase"]["durations"][number]["code"] | "">("");
   const [selectedPackageSummaryId, setSelectedPackageSummaryId] = useState<number | null>(null);
   const [packageActionLoading, setPackageActionLoading] = useState(false);
   const [redeemCode, setRedeemCode] = useState("");
@@ -1064,19 +1022,34 @@ function DashboardPageContent() {
   }, [dashboard, selectedPackageSummaryId]);
 
   useEffect(() => {
-    const durations = dashboard?.purchase_options.package_purchase.durations ?? [];
-    if (durations.length === 0) {
-      if (selectedDurationCode) {
-        setSelectedDurationCode("");
-      }
+    const checkoutState = searchParams.get("checkout");
+    if (!checkoutState) {
       return;
     }
 
-    const hasSelectedDuration = durations.some((duration) => duration.code === selectedDurationCode);
-    if (!hasSelectedDuration) {
-      setSelectedDurationCode(durations[0].code);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("checkout");
+    nextParams.delete("session_id");
+    const nextQuery = nextParams.toString();
+    const nextHref = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+
+    if (checkoutState === "success") {
+      setPurchaseMessage({
+        tone: "success",
+        text: "Stripe payment completed. We are refreshing your dashboard package summary and applying entitlements now.",
+      });
+      if (sessionToken) {
+        void loadDashboard();
+      }
+    } else if (checkoutState === "cancelled") {
+      setPurchaseMessage({
+        tone: "error",
+        text: "Stripe checkout was cancelled before payment completed. No package changes were applied.",
+      });
     }
-  }, [dashboard, selectedDurationCode]);
+
+    router.replace(nextHref);
+  }, [loadDashboard, pathname, router, searchParams, sessionToken]);
 
   useEffect(() => {
     const nextFormat = selectedTemplateDefinition.supportedFormats.includes(selectedFormat)
@@ -1146,47 +1119,6 @@ function DashboardPageContent() {
     };
   }, [closeConfigModal, isConfigModalOpen]);
 
-  const handleGenerateKey = useCallback(async () => {
-    setKeyError(null);
-    setCopyState("idle");
-
-    if (!sessionToken) {
-      setKeyError("Your session token is missing. Sign in again before creating a new user key.");
-      return;
-    }
-
-    setIsGeneratingKey(true);
-
-    try {
-      const response = await fetch("/api/api-keys", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({ label: "dashboard-config-modal" }),
-      });
-
-      const payload = (await response.json()) as unknown;
-      if (!response.ok) {
-        throw new Error(extractApiError(payload, "Failed to create a user key"));
-      }
-
-      const createdPayload = unwrapData<CreateApiKeyResponse>(payload) ?? (asRecord(payload) as CreateApiKeyResponse | null);
-      const createdKey = asString(createdPayload?.api_key);
-      if (!createdKey) {
-        throw new Error(extractApiError(payload, "User key creation succeeded but no API key was returned"));
-      }
-
-      setUserKey(createdKey);
-    } catch (createError) {
-      setKeyError(createError instanceof Error ? createError.message : "Failed to create a user key");
-    } finally {
-      setIsGeneratingKey(false);
-    }
-  }, [sessionToken]);
-
   const handleCopyConfig = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(renderedConfig);
@@ -1200,22 +1132,20 @@ function DashboardPageContent() {
     setPurchaseMessage(null);
 
     if (!sessionToken) {
-      setPurchaseMessage({ tone: "error", text: "Your session token is missing. Sign in again before starting a package entry." });
+      router.push(`/login?next=${encodeURIComponent("/dashboard")}`);
       return;
     }
 
     const selectedTier = dashboard?.purchase_options.package_purchase.tiers.find((tier) => tier.code === selectedPackageTierCode);
-    const selectedDuration = dashboard?.purchase_options.package_purchase.durations.find((duration) => duration.code === selectedDurationCode);
-
-    if (!selectedTier || !selectedDuration) {
-      setPurchaseMessage({ tone: "error", text: "Choose both a package tier and one duration before submitting the package entry." });
+    if (!selectedTier) {
+      setPurchaseMessage({ tone: "error", text: "Choose one package tier before starting checkout." });
       return;
     }
 
     setPackageActionLoading(true);
 
     try {
-      const response = await fetch("/api/subscription", {
+      const response = await fetch("/api/checkout/package", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -1224,33 +1154,35 @@ function DashboardPageContent() {
         },
         body: JSON.stringify({
           tier_code: selectedTier.code,
-          duration_code: selectedDuration.code,
-          overrides: [],
         }),
       });
 
       const payload = (await response.json()) as unknown;
       if (!response.ok) {
-        throw new Error(extractApiError(payload, "Package entry is unavailable right now."));
+        throw new Error(extractApiError(payload, "Package checkout is unavailable right now."));
       }
 
-      setPurchaseMessage({
-        tone: "success",
-        text: `Package entry submitted for ${selectedTier.name} (${selectedDuration.label}). Your dashboard package summary was refreshed, but this screen does not claim payment completion or final billing settlement.`,
-      });
-      await loadDashboard();
+      const checkout = unwrapData<{ checkout_url?: string }>(payload) ?? (asRecord(payload) as { checkout_url?: string } | null);
+      const checkoutURL = asString(checkout?.checkout_url);
+      if (!checkoutURL) {
+        throw new Error(extractApiError(payload, "Stripe checkout session was created without a redirect URL."));
+      }
+
+      window.location.assign(checkoutURL);
+      return;
+
     } catch (packageError) {
       setPurchaseMessage({
         tone: "error",
         text:
           packageError instanceof Error
-            ? `Package entry could not be completed: ${packageError.message} You can still review plans on /services or retry later.`
-            : "Package entry could not be completed. You can still review plans on /services or retry later.",
+            ? `Package checkout could not be started: ${packageError.message} You can still review plans on /services or retry later.`
+            : "Package checkout could not be started. You can still review plans on /services or retry later.",
       });
     } finally {
       setPackageActionLoading(false);
     }
-  }, [dashboard, loadDashboard, selectedDurationCode, selectedPackageTierCode, sessionToken]);
+  }, [dashboard, router, selectedPackageTierCode, sessionToken]);
 
   const handlePrepaidTopUp = useCallback(async () => {
     setPurchaseMessage(null);
@@ -1278,7 +1210,7 @@ function DashboardPageContent() {
           accept: "application/json",
           Authorization: `Bearer ${sessionToken}`,
         },
-        body: JSON.stringify({ card_code: normalizedCode }),
+        body: JSON.stringify({ code: normalizedCode }),
       });
 
       const payload = (await response.json()) as unknown;
@@ -1377,7 +1309,6 @@ function DashboardPageContent() {
   const modelShareItems = modelShare?.items ?? [];
   const quotaPreview = visiblePackageSummary?.quotas ?? [];
   const packageTiers = purchaseOptions?.package_purchase.tiers ?? [];
-  const packageDurations = purchaseOptions?.package_purchase.durations ?? [];
   const redeemEndpoint = purchaseOptions?.prepaid_topup.redeem_endpoint ?? "/api/wallet/redeem";
   const appliedTrendRangeLabel = TREND_RANGE_OPTIONS.find((option) => option.value === selectedTrendRange)?.label ?? selectedTrendRange;
   const appliedTrendGranularityLabel =
@@ -1716,7 +1647,7 @@ function DashboardPageContent() {
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Package purchase</p>
                     <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                      Pick a visible duration first: 1 week, 1 month, or 3 months. This is an entry surface, so it submits the current tier setup without claiming a completed payment session.
+                      Choose one package tier, then continue to Stripe Checkout. The actual entitlement that gets fulfilled after payment comes from the package configuration saved in admin.
                     </p>
                   </div>
                   <Link href="/services" className="btn-ghost inline-flex items-center justify-center no-underline">
@@ -1745,31 +1676,6 @@ function DashboardPageContent() {
                     </select>
                   </div>
 
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Package durations</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {packageDurations.map((duration) => {
-                        const isSelected = duration.code === selectedDurationCode;
-                        return (
-                          <button
-                            key={duration.code}
-                            type="button"
-                            className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
-                              isSelected
-                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                                : "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
-                            }`}
-                            onClick={() => setSelectedDurationCode(duration.code)}
-                            disabled={packageActionLoading}
-                            aria-pressed={isSelected}
-                          >
-                            {duration.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
@@ -1777,7 +1683,7 @@ function DashboardPageContent() {
                       onClick={() => void handlePackagePurchase()}
                       disabled={packageActionLoading}
                     >
-                      {packageActionLoading ? "Submitting package entry..." : "Start package entry"}
+                      {packageActionLoading ? "Redirecting to Stripe..." : "Checkout with Stripe"}
                     </button>
                   </div>
                 </div>
@@ -1959,29 +1865,23 @@ function DashboardPageContent() {
                     <textarea
                       id="dashboard-user-key"
                       className="field min-h-[112px] resize-y font-mono text-sm"
-                      placeholder="Paste a routed user key or mint a fresh one below"
+                      placeholder="Paste an existing routed user key"
                       value={userKey}
                       onChange={(event) => {
                         setUserKey(event.target.value);
-                        setKeyError(null);
                         setCopyState("idle");
                       }}
                     />
                     <p className="text-xs leading-5 text-[var(--portal-muted)]">
-                      This is the only key source for every template in the modal. New keys from the API are only shown once, so copy and store them safely.
+                      This is the only key source for every template in the modal. Paste an existing routed key from your account list and treat it as sensitive.
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
-                    <button type="button" className="btn-primary" onClick={() => void handleGenerateKey()} disabled={isGeneratingKey}>
-                      {isGeneratingKey ? "Creating key..." : "Create fresh key"}
-                    </button>
                     <button type="button" className="btn-ghost" onClick={() => setUserKey("")}>
                       Clear key
                     </button>
                   </div>
-
-                  {keyError ? <p className="notice">{keyError}</p> : null}
 
                   <div className="rounded-[1rem] border border-amber-400/40 bg-amber-50/80 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                     Sensitive-key warning: the rendered snippets below contain your real user key, not a placeholder. Avoid screenshots, shared terminals, and pasted logs.

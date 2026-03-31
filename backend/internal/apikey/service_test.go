@@ -57,7 +57,7 @@ func TestCreateKeyStoresHashAndReturnsPlaintext(t *testing.T) {
 	}
 
 	var storedHash string
-	err = database.QueryRowContext(ctx, `SELECT key_hash FROM api_keys WHERE id = ?;`, created.ID).Scan(&storedHash)
+	err = database.QueryRowContext(ctx, `SELECT key_hash FROM als_api_keys WHERE id = ?;`, created.ID).Scan(&storedHash)
 	if err != nil {
 		t.Fatalf("query stored hash error = %v", err)
 	}
@@ -114,13 +114,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 	ctx := context.Background()
 	dbFile := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(ctx, dbFile)
+	database, err := db.Open(ctx, "sqlite", dbFile)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 
-	if err := db.ApplyMigrations(ctx, database); err != nil {
+	if err := db.ApplyMigrations(ctx, database, "sqlite"); err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
 
@@ -130,7 +130,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 func createUser(t *testing.T, ctx context.Context, database *sql.DB, email, name, role string) int64 {
 	t.Helper()
 
-	result, err := database.ExecContext(ctx, `INSERT INTO users(email, name, role) VALUES (?, ?, ?);`, email, name, role)
+	result, err := database.ExecContext(ctx, `INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, email, name, role)
 	if err != nil {
 		t.Fatalf("createUser insert error = %v", err)
 	}

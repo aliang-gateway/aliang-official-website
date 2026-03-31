@@ -1,19 +1,19 @@
-ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE als_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1;
 
-CREATE TABLE IF NOT EXISTS email_verification_tokens (
+CREATE TABLE IF NOT EXISTS als_email_verification_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     code TEXT NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     used_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES als_users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_code ON email_verification_tokens(code);
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON als_email_verification_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_code ON als_email_verification_tokens(code);
 
-CREATE TABLE IF NOT EXISTS email_outbox (
+CREATE TABLE IF NOT EXISTS als_email_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     to_email TEXT NOT NULL,
     subject TEXT NOT NULL,
@@ -21,15 +21,15 @@ CREATE TABLE IF NOT EXISTS email_outbox (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS user_wallets (
+CREATE TABLE IF NOT EXISTS als_user_wallets (
     user_id INTEGER PRIMARY KEY,
     balance_micros INTEGER NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'CNY',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES als_users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS recharge_cards (
+CREATE TABLE IF NOT EXISTS als_recharge_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_code TEXT NOT NULL UNIQUE,
     amount_micros INTEGER NOT NULL,
@@ -38,12 +38,12 @@ CREATE TABLE IF NOT EXISTS recharge_cards (
     redeemed_by_user_id INTEGER,
     redeemed_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(redeemed_by_user_id) REFERENCES users(id)
+    FOREIGN KEY(redeemed_by_user_id) REFERENCES als_users(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_recharge_cards_redeemed_by_user ON recharge_cards(redeemed_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_recharge_cards_redeemed_by_user ON als_recharge_cards(redeemed_by_user_id);
 
-CREATE TABLE IF NOT EXISTS wallet_transactions (
+CREATE TABLE IF NOT EXISTS als_wallet_transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     tx_type TEXT NOT NULL,
@@ -54,12 +54,12 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     reference_id INTEGER,
     description TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES als_users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_id ON wallet_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_id ON als_wallet_transactions(user_id);
 
-CREATE TABLE IF NOT EXISTS user_profiles (
+CREATE TABLE IF NOT EXISTS als_user_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     profile_name TEXT NOT NULL,
@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, profile_name),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES als_users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user_type ON user_profiles(user_id, profile_type);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON als_user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user_type ON als_user_profiles(user_id, profile_type);

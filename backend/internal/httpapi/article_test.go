@@ -18,7 +18,7 @@ func TestPublicListArticlesReturnsPublishedOnly(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -38,7 +38,7 @@ func TestPublicListArticlesReturnsPublishedOnly(t *testing.T) {
 	}
 
 	if len(payload.Articles) != 5 {
-		t.Fatalf("expected 5 seeded articles, got %d", len(payload.Articles))
+		t.Fatalf("expected 5 seeded als_articles, got %d", len(payload.Articles))
 	}
 
 	for i, a := range payload.Articles {
@@ -59,7 +59,7 @@ func TestPublicListArticlesOmitsMdxBody(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -99,7 +99,7 @@ func TestPublicListArticlesSortedByPublishedAtDesc(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -121,7 +121,7 @@ func TestPublicListArticlesSortedByPublishedAtDesc(t *testing.T) {
 	for i := 1; i < len(payload.Articles); i++ {
 		if payload.Articles[i-1].PublishedAt < payload.Articles[i].PublishedAt {
 			t.Fatalf(
-				"articles not sorted by published_at desc: index %d has %q, index %d has %q",
+				"als_articles not sorted by published_at desc: index %d has %q, index %d has %q",
 				i-1, payload.Articles[i-1].PublishedAt,
 				i, payload.Articles[i].PublishedAt,
 			)
@@ -134,7 +134,7 @@ func TestPublicGetArticleReturnsDetailForPublished(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -172,7 +172,7 @@ func TestPublicGetArticleNonExistentSlugReturns404(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -220,7 +220,7 @@ func TestPublicListArticlesExcludesDraftArticles(t *testing.T) {
 
 	database := setupTestDB(t)
 	if err := article.SeedLegacyArticles(database); err != nil {
-		t.Fatalf("seed articles: %v", err)
+		t.Fatalf("seed als_articles: %v", err)
 	}
 
 	svc := article.NewService(database)
@@ -251,7 +251,7 @@ func TestPublicListArticlesExcludesDraftArticles(t *testing.T) {
 	}
 
 	if len(payload.Articles) != 5 {
-		t.Fatalf("expected 5 published articles (draft excluded), got %d", len(payload.Articles))
+		t.Fatalf("expected 5 published als_articles (draft excluded), got %d", len(payload.Articles))
 	}
 
 	for _, a := range payload.Articles {
@@ -432,11 +432,11 @@ func TestAdminUpdateArticleInvalidStatusTransitionReturns400(t *testing.T) {
 	ctx := context.Background()
 	createAdminArticleFixture(t, database, "status-transition-article", "draft")
 
-	if _, err := database.ExecContext(ctx, `DROP TABLE articles;`); err != nil {
-		t.Fatalf("drop articles table: %v", err)
+	if _, err := database.ExecContext(ctx, `DROP TABLE als_articles;`); err != nil {
+		t.Fatalf("drop als_articles table: %v", err)
 	}
 	if _, err := database.ExecContext(ctx, `
-		CREATE TABLE articles (
+		CREATE TABLE als_articles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			legacy_id INTEGER,
 			slug TEXT NOT NULL,
@@ -457,10 +457,10 @@ func TestAdminUpdateArticleInvalidStatusTransitionReturns400(t *testing.T) {
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
 	`); err != nil {
-		t.Fatalf("create permissive articles table: %v", err)
+		t.Fatalf("create permissive als_articles table: %v", err)
 	}
 	if _, err := database.ExecContext(ctx, `
-		INSERT INTO articles(slug, title, mdx_body, status, created_at, updated_at)
+		INSERT INTO als_articles(slug, title, mdx_body, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 	`, "status-transition-article", "Corrupted Article", "# Corrupted", "archived"); err != nil {
 		t.Fatalf("insert corrupted article: %v", err)

@@ -28,17 +28,17 @@ export const DocsMainContent: MDXComponents = {
     </p>
   ),
   ul: ({ children, ...props }) => (
-    <ul className="my-6 ml-6 list-disc [&>li]:mt-2 text-slate-700 dark:text-slate-300 marker:text-slate-400" {...props}>
+    <ul className="my-6 ml-6 list-disc [&>li]:mt-2 text-slate-700 dark:text-slate-300 marker:text-slate-400 dark:marker:text-slate-500" {...props}>
       {children}
     </ul>
   ),
   ol: ({ children, ...props }) => (
-    <ol className="my-6 ml-6 list-decimal [&>li]:mt-2 text-slate-700 dark:text-slate-300 marker:text-slate-400" {...props}>
+    <ol className="my-6 ml-6 list-decimal [&>li]:mt-2 text-slate-700 dark:text-slate-300 marker:text-slate-400 dark:marker:text-slate-500" {...props}>
       {children}
     </ol>
   ),
   li: ({ children, ...props }) => (
-    <li className="leading-7" {...props}>
+    <li className="leading-7 text-slate-700 dark:text-slate-300" {...props}>
       {children}
     </li>
   ),

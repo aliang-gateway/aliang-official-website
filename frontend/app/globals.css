@@ -1,6 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined");
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================
    STITCH DESIGN SYSTEM TOKENS (NEW)
    Primary: #21c45d (green)
