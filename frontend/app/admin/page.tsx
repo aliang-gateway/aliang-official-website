@@ -160,6 +160,10 @@ export default function AdminPage() {
             <MaterialIcon name="inventory_2" size={16} className="mr-1" />
             Packages
           </Link>
+          <Link href="/admin/payments" className="nav-pill">
+            <MaterialIcon name="receipt_long" size={16} className="mr-1" />
+            Payments
+          </Link>
           <Link href="/admin/articles" className="nav-pill">
             <MaterialIcon name="article" size={16} className="mr-1" />
             Articles

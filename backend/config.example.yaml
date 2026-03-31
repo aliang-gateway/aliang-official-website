@@ -33,8 +33,8 @@ stripe:
   publishable_key: ""
   webhook_secret: ""
   currency: "cny"
-  success_url: "http://localhost:3000/dashboard?checkout=success"
-  cancel_url: "http://localhost:3000/dashboard?checkout=cancelled"
+  success_url: "http://localhost:3000/checkout/status?checkout=success"
+  cancel_url: "http://localhost:3000/checkout/status?checkout=cancelled"
 
 sub2api_base_url: "https://sub2api.example.com"
 sub2api_admin_key: ""

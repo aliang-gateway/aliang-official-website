@@ -36,5 +36,5 @@ stripe:
   publishable_key: "pk_test_51Rq97bGiJiYsvsNOA4SYRQmK4P9D3Yflb5ZDkASkL3u3jyJb1Uu6nksM3Mes5SsRfINyw4J0X7ONIKZBX0uZfUgo00M6lZOxrF"
   webhook_secret: "whsec_hy1OzQ0gZ2ftEoJm6tYPGg7zr7YfJ9TN"
   currency: "cny"
-  success_url: "http://localhost:3001/dashboard?checkout=success"
-  cancel_url: "http://localhost:3001/dashboard?checkout=cancelled"
+  success_url: "http://localhost:3001/checkout/status?checkout=success"
+  cancel_url: "http://localhost:3001/checkout/status?checkout=cancelled"

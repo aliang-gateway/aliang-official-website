@@ -25,6 +25,8 @@ const (
 	EventTypeJobCreated = "job_created"
 )
 
+const defaultRetryableDelay = 5 * time.Second
+
 type Service struct {
 	db         *sql.DB
 	logger     *slog.Logger
@@ -437,7 +439,7 @@ func (s *Service) ApplyCreateAndRedeemResult(ctx context.Context, jobID int64, r
 			if apiErr.RetryAfter > 0 {
 				availableAt = now.Add(apiErr.RetryAfter)
 			} else {
-				availableAt = now.Add(time.Minute)
+				availableAt = now.Add(defaultRetryableDelay)
 			}
 		}
 	}
@@ -503,7 +505,7 @@ func (s *Service) applyProxyResult(ctx context.Context, jobID int64, resultErr e
 			if apiErr.RetryAfter > 0 {
 				availableAt = now.Add(apiErr.RetryAfter)
 			} else {
-				availableAt = now.Add(time.Minute)
+				availableAt = now.Add(defaultRetryableDelay)
 			}
 		}
 	}

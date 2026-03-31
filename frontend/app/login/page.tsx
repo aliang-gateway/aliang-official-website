@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
@@ -22,10 +22,13 @@ const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const nextPath = searchParams.get("next")?.trim() ?? "";
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,7 +67,8 @@ export default function LoginPage() {
       localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
 
       const role = data?.user?.role ?? asRecord(legacyPayload?.user)?.role;
-      router.replace(role === "admin" ? "/admin" : "/dashboard");
+      const safeNextPath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "";
+      router.replace(safeNextPath || (role === "admin" ? "/admin" : "/dashboard"));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Login failed");
     } finally {

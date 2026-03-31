@@ -6,8 +6,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -647,11 +647,11 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read upstream body: %v", err)
 		}
-		if !strings.Contains(string(body), `"type":"subscription"`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) {
+		if !strings.Contains(string(body), `"type":"subscription"`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) || !strings.Contains(string(body), `"value":30`) {
 			t.Fatalf("unexpected create-and-redeem payload: %s", string(body))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":1,"code":"ORDER-G77","type":"subscription","value":0,"status":"used","group_id":77,"validity_days":30}}}`))
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":1,"code":"ORDER-G77","type":"subscription","value":30,"status":"used","group_id":77,"validity_days":30}}}`))
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -718,10 +718,10 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 	}
 
 	var (
-		recordStatus      string
-		recordEventID     string
-		recordTierCode    string
-		recordFulfillID   sql.NullInt64
+		recordStatus    string
+		recordEventID   string
+		recordTierCode  string
+		recordFulfillID sql.NullInt64
 	)
 	if err := database.QueryRowContext(ctx, `SELECT status, payment_event_id, tier_code, fulfillment_job_id FROM als_payment_records WHERE checkout_session_id = ?;`, "cs_test_webhook").Scan(&recordStatus, &recordEventID, &recordTierCode, &recordFulfillID); err != nil {
 		t.Fatalf("query payment record after webhook: %v", err)
@@ -731,6 +731,106 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 	}
 	if !recordFulfillID.Valid || recordFulfillID.Int64 <= 0 {
 		t.Fatalf("expected fulfillment_job_id to be recorded, got %+v", recordFulfillID)
+	}
+}
+
+func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "daily", "3日体验")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 1000000, value_type = 'days', value_amount = 3, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 77)
+
+	callCount := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/admin/redeem-codes/create-and-redeem" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"internal error"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":2,"code":"AUTO-G77","type":"subscription","value":3,"status":"used","group_id":77,"validity_days":3}}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{
+		AdminBootstrapSecret: "test-admin-secret",
+		ProxyClient:          proxyClient,
+	})
+	userID, userSessionToken := createUserViaAPI(t, mux, "retry-status-user@example.com", "Retry Status User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "retry-status-admin@example.com", "Retry Status Admin", "admin", "test-admin-secret")
+
+	body := `{"payment_event_id":"evt_retry_status_1","provider":"stripe","user_id":` + strconv.FormatInt(userID, 10) + `,"tier_code":"daily","order_id":"cs_auto_retry"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
+	createReq.Header.Set("Idempotency-Key", "stripe:evt_retry_status_1")
+	setBearerAuth(createReq, adminSessionToken)
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusAccepted {
+		t.Fatalf("expected create status %d, got %d body=%s", http.StatusAccepted, createRec.Code, createRec.Body.String())
+	}
+
+	var createPayload struct {
+		Job struct {
+			ID     int64  `json:"id"`
+			Status string `json:"status"`
+		} `json:"job"`
+	}
+	if err := json.NewDecoder(createRec.Body).Decode(&createPayload); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if createPayload.Job.Status != fulfillment.StatusFailedRetryable {
+		t.Fatalf("expected initial retryable job, got %+v", createPayload.Job)
+	}
+
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_payment_records(provider, checkout_session_id, payment_event_id, user_id, tier_code, package_name, amount_minor, currency, status, fulfillment_job_id, payload_json)
+		VALUES ('stripe', 'cs_auto_retry', 'evt_retry_status_1', ?, 'daily', '3日体验', 1000, 'cny', 'payment_succeeded', ?, '{}')
+		ON CONFLICT (checkout_session_id) DO NOTHING;
+	`, userID, createPayload.Job.ID); err != nil {
+		t.Fatalf("insert payment record: %v", err)
+	}
+
+	if _, err := database.ExecContext(ctx, `UPDATE als_fulfillment_jobs SET available_at = CURRENT_TIMESTAMP WHERE id = ?;`, createPayload.Job.ID); err != nil {
+		t.Fatalf("update job available_at: %v", err)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/checkout/package/status?session_id=cs_auto_retry", nil)
+	setBearerAuth(statusReq, userSessionToken)
+	statusRec := httptest.NewRecorder()
+	mux.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("expected status endpoint %d, got %d body=%s", http.StatusOK, statusRec.Code, statusRec.Body.String())
+	}
+
+	var statusPayload struct {
+		Status         string `json:"status"`
+		FulfillmentJob struct {
+			Status string `json:"status"`
+		} `json:"fulfillment_job"`
+	}
+	if err := json.NewDecoder(statusRec.Body).Decode(&statusPayload); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if statusPayload.Status != "fulfilled" || statusPayload.FulfillmentJob.Status != fulfillment.StatusFulfilled {
+		t.Fatalf("expected auto-retried fulfilled status, got %+v", statusPayload)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected two upstream calls after auto retry, got %d", callCount)
 	}
 }
 
@@ -1604,17 +1704,26 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	database := setupTestDB(t)
 	tierID := insertTier(t, ctx, database, "starter", "Starter")
 	insertTierGroupBinding(t, ctx, database, tierID, 11)
+	type upstreamCall struct {
+		Path string
+		Auth string
+	}
+	var upstreamCalls []upstreamCall
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamCalls = append(upstreamCalls, upstreamCall{
+			Path: req.URL.Path,
+			Auth: req.Header.Get("Authorization"),
+		})
 		w.Header().Set("Content-Type", "application/json")
 		switch req.URL.Path {
 		case "/api/v1/groups/available":
 			_, _ = w.Write([]byte(`{"data":[{"id":11,"name":"Starter Group","code":"starter-group","platform":"openai","status":"active"},{"id":22,"name":"Pro Group","code":"pro-group","platform":"openai","status":"active"}]}`))
-		case "/api/v1/api-keys":
+		case "/api/v1/keys":
 			_, _ = w.Write([]byte(`{"data":{"data":[{"id":101,"name":"starter-key","key":"sk-starter","group_id":11,"group":{"id":11,"name":"Starter Group"},"status":"active","quota":0,"quota_used":0,"expires_at":"","created_at":"2026-01-01T00:00:00Z"},{"id":202,"name":"pro-key","key":"sk-pro","group_id":22,"group":{"id":22,"name":"Pro Group"},"status":"active","quota":0,"quota_used":0,"expires_at":"","created_at":"2026-01-01T00:00:00Z"}],"total":2,"page":1,"per_page":20}}`))
-		case "/api/v1/api-keys/101":
+		case "/api/v1/keys/101":
 			_, _ = w.Write([]byte(`{"data":{"id":101,"name":"starter-key","key":"sk-starter","group_id":11,"group":{"id":11,"name":"Starter Group"},"status":"active"}}`))
-		case "/api/v1/api-keys/202":
+		case "/api/v1/keys/202":
 			_, _ = w.Write([]byte(`{"data":{"id":202,"name":"pro-key","key":"sk-pro","group_id":22,"group":{"id":22,"name":"Pro Group"},"status":"active"}}`))
 		default:
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
@@ -1630,8 +1739,14 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 	userID, userSessionToken := createUserViaAPI(t, mux, "keys-user@example.com", "Keys User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "keys-admin@example.com", "Keys Admin", "admin", "test-admin-secret")
+	adminID, adminSessionToken := createUserViaAPI(t, mux, "keys-admin@example.com", "Keys Admin", "admin", "test-admin-secret")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, adminID, "upstream-admin-token", "upstream-admin-refresh-token"); err != nil {
+		t.Fatalf("seed admin sub2api auth token: %v", err)
+	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/api-keys?page=1", nil)
 	setBearerAuth(listReq, userSessionToken)
@@ -1659,6 +1774,15 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	if listPayload.Data.Total != 1 {
 		t.Fatalf("expected filtered total 1, got %d", listPayload.Data.Total)
 	}
+	if len(upstreamCalls) != 2 {
+		t.Fatalf("expected 2 upstream calls after list, got %d", len(upstreamCalls))
+	}
+	if upstreamCalls[0].Path != "/api/v1/groups/available" || upstreamCalls[0].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected list groups upstream call: %+v", upstreamCalls[0])
+	}
+	if upstreamCalls[1].Path != "/api/v1/keys" || upstreamCalls[1].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected list api keys upstream call: %+v", upstreamCalls[1])
+	}
 
 	allowedDetailReq := httptest.NewRequest(http.MethodGet, "/api-keys/101", nil)
 	setBearerAuth(allowedDetailReq, userSessionToken)
@@ -1666,6 +1790,15 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	mux.ServeHTTP(allowedDetailRec, allowedDetailReq)
 	if allowedDetailRec.Code != http.StatusOK {
 		t.Fatalf("expected allowed detail status %d, got %d body=%s", http.StatusOK, allowedDetailRec.Code, allowedDetailRec.Body.String())
+	}
+	if len(upstreamCalls) != 4 {
+		t.Fatalf("expected 4 upstream calls after allowed detail, got %d", len(upstreamCalls))
+	}
+	if upstreamCalls[2].Path != "/api/v1/groups/available" || upstreamCalls[2].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected allowed detail groups upstream call: %+v", upstreamCalls[2])
+	}
+	if upstreamCalls[3].Path != "/api/v1/keys/101" || upstreamCalls[3].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected allowed detail upstream call: %+v", upstreamCalls[3])
 	}
 
 	blockedDetailReq := httptest.NewRequest(http.MethodGet, "/api-keys/202", nil)
@@ -1675,6 +1808,15 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	if blockedDetailRec.Code != http.StatusForbidden {
 		t.Fatalf("expected blocked detail status %d, got %d body=%s", http.StatusForbidden, blockedDetailRec.Code, blockedDetailRec.Body.String())
 	}
+	if len(upstreamCalls) != 6 {
+		t.Fatalf("expected 6 upstream calls after blocked detail, got %d", len(upstreamCalls))
+	}
+	if upstreamCalls[4].Path != "/api/v1/groups/available" || upstreamCalls[4].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected blocked detail groups upstream call: %+v", upstreamCalls[4])
+	}
+	if upstreamCalls[5].Path != "/api/v1/keys/202" || upstreamCalls[5].Auth != "Bearer upstream-user-token" {
+		t.Fatalf("unexpected blocked detail upstream call: %+v", upstreamCalls[5])
+	}
 
 	adminDetailReq := httptest.NewRequest(http.MethodGet, "/api-keys/202", nil)
 	setBearerAuth(adminDetailReq, adminSessionToken)
@@ -1682,6 +1824,12 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	mux.ServeHTTP(adminDetailRec, adminDetailReq)
 	if adminDetailRec.Code != http.StatusOK {
 		t.Fatalf("expected admin detail status %d, got %d body=%s", http.StatusOK, adminDetailRec.Code, adminDetailRec.Body.String())
+	}
+	if len(upstreamCalls) != 7 {
+		t.Fatalf("expected 7 upstream calls after admin detail, got %d", len(upstreamCalls))
+	}
+	if upstreamCalls[6].Path != "/api/v1/keys/202" || upstreamCalls[6].Auth != "Bearer upstream-admin-token" {
+		t.Fatalf("unexpected admin detail upstream call: %+v", upstreamCalls[6])
 	}
 }
 
@@ -1849,15 +1997,15 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 	}
 
 	var created struct {
-		Code        string  `json:"code"`
-		Name        string  `json:"name"`
-		GroupIDs    []int64 `json:"group_ids"`
-		PriceMicros int64   `json:"price_micros"`
-		ValueType   string  `json:"value_type"`
-		ValueAmount int64   `json:"value_amount"`
-		Description string  `json:"description"`
+		Code        string   `json:"code"`
+		Name        string   `json:"name"`
+		GroupIDs    []int64  `json:"group_ids"`
+		PriceMicros int64    `json:"price_micros"`
+		ValueType   string   `json:"value_type"`
+		ValueAmount int64    `json:"value_amount"`
+		Description string   `json:"description"`
 		Features    []string `json:"features"`
-		IsEnabled   bool    `json:"is_enabled"`
+		IsEnabled   bool     `json:"is_enabled"`
 	}
 	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
 		t.Fatalf("decode create response: %v", err)

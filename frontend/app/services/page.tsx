@@ -119,7 +119,7 @@ export default function ServicesPage() {
     }
 
     if (!sessionToken) {
-      router.push("/login");
+      router.push(`/login?next=${encodeURIComponent(`/services?package=${pkg.code}`)}`);
       return;
     }
 

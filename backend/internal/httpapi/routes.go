@@ -3,7 +3,9 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,8 +117,40 @@ type createPackageCheckoutSessionRequest struct {
 }
 
 type createPackageCheckoutSessionResponse struct {
-	SessionID  string `json:"session_id"`
+	SessionID   string `json:"session_id"`
 	CheckoutURL string `json:"checkout_url"`
+}
+
+type checkoutPackageStatusResponse struct {
+	Status            string                  `json:"status"`
+	Provider          string                  `json:"provider"`
+	CheckoutSessionID string                  `json:"checkout_session_id"`
+	PaymentEventID    *string                 `json:"payment_event_id,omitempty"`
+	TierCode          string                  `json:"tier_code"`
+	PackageName       string                  `json:"package_name"`
+	AmountMinor       int64                   `json:"amount_minor"`
+	Currency          string                  `json:"currency"`
+	FulfillmentJob    *fulfillmentJobResponse `json:"fulfillment_job,omitempty"`
+}
+
+type adminPaymentRecordResponse struct {
+	ID                int64                   `json:"id"`
+	Provider          string                  `json:"provider"`
+	CheckoutSessionID string                  `json:"checkout_session_id"`
+	PaymentEventID    *string                 `json:"payment_event_id,omitempty"`
+	UserID            int64                   `json:"user_id"`
+	TierCode          string                  `json:"tier_code"`
+	PackageName       string                  `json:"package_name"`
+	AmountMinor       int64                   `json:"amount_minor"`
+	Currency          string                  `json:"currency"`
+	Status            string                  `json:"status"`
+	OrderStatus       string                  `json:"order_status"`
+	Replayable        bool                    `json:"replayable"`
+	FulfillmentJob    *fulfillmentJobResponse `json:"fulfillment_job,omitempty"`
+}
+
+type listAdminPaymentRecordsResponse struct {
+	Records []adminPaymentRecordResponse `json:"records"`
 }
 
 type fulfillmentJobResponse struct {
@@ -147,29 +181,29 @@ type adminAvailableGroupsResponse struct {
 }
 
 type adminPackageRequest struct {
-	Code          string  `json:"code,omitempty"`
-	Name          string  `json:"name"`
-	GroupIDs      []int64 `json:"group_ids"`
-	PriceMicros   int64   `json:"price_micros"`
-	ValueType     string   `json:"value_type"`
-	ValueAmount   int64    `json:"value_amount"`
-	Description   string   `json:"description"`
-	FeaturesJSON  string   `json:"features_json"`
-	IsEnabled     *bool    `json:"is_enabled,omitempty"`
+	Code         string  `json:"code,omitempty"`
+	Name         string  `json:"name"`
+	GroupIDs     []int64 `json:"group_ids"`
+	PriceMicros  int64   `json:"price_micros"`
+	ValueType    string  `json:"value_type"`
+	ValueAmount  int64   `json:"value_amount"`
+	Description  string  `json:"description"`
+	FeaturesJSON string  `json:"features_json"`
+	IsEnabled    *bool   `json:"is_enabled,omitempty"`
 }
 
 type adminPackageResponse struct {
-	Code          string   `json:"code"`
-	Name          string   `json:"name"`
-	GroupIDs      []int64  `json:"group_ids"`
-	PriceMicros   int64    `json:"price_micros"`
-	ValueType     string   `json:"value_type"`
-	ValueAmount   int64    `json:"value_amount"`
-	Description   string   `json:"description"`
-	Features      []string `json:"features"`
-	IsEnabled     bool     `json:"is_enabled"`
-	CreatedAt     string   `json:"created_at"`
-	UpdatedAt     string   `json:"updated_at"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	GroupIDs    []int64  `json:"group_ids"`
+	PriceMicros int64    `json:"price_micros"`
+	ValueType   string   `json:"value_type"`
+	ValueAmount int64    `json:"value_amount"`
+	Description string   `json:"description"`
+	Features    []string `json:"features"`
+	IsEnabled   bool     `json:"is_enabled"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
 }
 
 type listAdminPackagesResponse struct {
@@ -177,19 +211,18 @@ type listAdminPackagesResponse struct {
 }
 
 type publicPackageResponse struct {
-	Code          string   `json:"code"`
-	Name          string   `json:"name"`
-	PriceMicros   int64    `json:"price_micros"`
-	ValueType     string   `json:"value_type"`
-	ValueAmount   int64    `json:"value_amount"`
-	Description   string   `json:"description"`
-	Features      []string `json:"features"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	PriceMicros int64    `json:"price_micros"`
+	ValueType   string   `json:"value_type"`
+	ValueAmount int64    `json:"value_amount"`
+	Description string   `json:"description"`
+	Features    []string `json:"features"`
 }
 
 type listPublicPackagesResponse struct {
 	Packages []publicPackageResponse `json:"packages"`
 }
-
 
 type profileConfigRequest struct {
 	ProfileName   string `json:"profile_name"`
@@ -518,6 +551,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("GET /wallet", authenticated(http.HandlerFunc(r.handleGetWallet)))
 	mux.Handle("GET /wallet/transactions", authenticated(http.HandlerFunc(r.handleListWalletTransactions)))
 	mux.Handle("POST /wallet/redeem", authenticated(http.HandlerFunc(r.handleRedeemCard)))
+	mux.Handle("GET /checkout/package/status", authenticated(http.HandlerFunc(r.handleGetPackageCheckoutStatus)))
 	mux.Handle("GET /fulfillment/jobs/{id}", authenticated(http.HandlerFunc(r.handleGetFulfillmentJob)))
 	mux.Handle("POST /profiles", authenticated(http.HandlerFunc(r.handleCreateProfileConfig)))
 	mux.Handle("GET /profiles", authenticated(http.HandlerFunc(r.handleListProfileConfigs)))
@@ -544,6 +578,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("POST /admin/packages", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreatePackage))))
 	mux.Handle("GET /admin/packages/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetPackage))))
 	mux.Handle("PUT /admin/packages/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdatePackage))))
+	mux.Handle("GET /admin/payments", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListPaymentRecords))))
 	mux.Handle("GET /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListArticles))))
 	mux.Handle("POST /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateArticle))))
 	mux.Handle("GET /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetArticle))))
@@ -774,7 +809,7 @@ func (r *routes) handleAPIKeysListPassthrough(w http.ResponseWriter, req *http.R
 }
 
 func (r *routes) handleAPIKeysCreatePassthrough(w http.ResponseWriter, req *http.Request) {
-	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
+	r.handleDashboardPassthrough(w, req, "/api/v1/keys")
 }
 
 func (r *routes) handleAPIKeyDetailPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -844,7 +879,7 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 	if user.Role == "admin" {
-		r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
+		r.handleDashboardPassthrough(w, req, "/api/v1/keys")
 		return
 	}
 
@@ -860,6 +895,10 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 
 	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+			return
+		}
 		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
 		return
 	}
@@ -868,7 +907,7 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 
-	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/api-keys", func(payload any) (any, error) {
+	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/keys", func(payload any) (any, error) {
 		return filterAPIKeyListPayload(payload, authorizedGroupIDs)
 	})
 	if err != nil {
@@ -893,7 +932,7 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 	if user.Role == "admin" {
-		r.handleDashboardPassthrough(w, req, "/api/v1/api-keys/"+req.PathValue("id"))
+		r.handleDashboardPassthrough(w, req, "/api/v1/keys/"+req.PathValue("id"))
 		return
 	}
 
@@ -908,6 +947,10 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 	}
 	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+			return
+		}
 		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
 		return
 	}
@@ -916,7 +959,7 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 
-	upstreamPath := "/api/v1/api-keys/" + req.PathValue("id")
+	upstreamPath := "/api/v1/keys/" + req.PathValue("id")
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, upstreamPath, func(payload any) (any, error) {
 		allowed, filterErr := isAPIKeyPayloadAuthorized(payload, authorizedGroupIDs)
 		if filterErr != nil {
@@ -983,6 +1026,15 @@ func (r *routes) handleAdminListPackages(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, listAdminPackagesResponse{Packages: packages})
+}
+
+func (r *routes) handleAdminListPaymentRecords(w http.ResponseWriter, req *http.Request) {
+	records, err := r.listAdminPaymentRecords(req.Context(), parseQueryLimit(req.URL.Query().Get("limit"), 50))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list payment records")
+		return
+	}
+	writeJSON(w, http.StatusOK, listAdminPaymentRecordsResponse{Records: records})
 }
 
 func (r *routes) handleAdminGetPackage(w http.ResponseWriter, req *http.Request) {
@@ -2689,13 +2741,13 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 			return
 		}
 		packages = append(packages, publicPackageResponse{
-			Code:         code,
-			Name:         name,
-			PriceMicros:  priceMicros,
-			ValueType:    valueType,
-			ValueAmount:  valueAmount,
-			Description:  description,
-			Features:     parseFeaturesJSON(featuresJSON),
+			Code:        code,
+			Name:        name,
+			PriceMicros: priceMicros,
+			ValueType:   valueType,
+			ValueAmount: valueAmount,
+			Description: description,
+			Features:    parseFeaturesJSON(featuresJSON),
 		})
 	}
 
@@ -3209,12 +3261,12 @@ func (r *routes) handleStripeWebhook(w http.ResponseWriter, req *http.Request) {
 	}
 
 	payloadBytes, _ := json.Marshal(map[string]any{
-		"stripe_event_type":     event.Type,
-		"stripe_checkout_id":    session.ID,
-		"payment_status":        session.PaymentStatus,
-		"currency":              session.Currency,
-		"amount_total":          session.AmountTotal,
-		"customer_email":        session.CustomerEmail,
+		"stripe_event_type":  event.Type,
+		"stripe_checkout_id": session.ID,
+		"payment_status":     session.PaymentStatus,
+		"currency":           session.Currency,
+		"amount_total":       session.AmountTotal,
+		"customer_email":     session.CustomerEmail,
 	})
 
 	job, err := r.ingestAndMaybeExecutePaymentSuccess(req.Context(), adminPaymentSuccessRequest{
@@ -3235,6 +3287,57 @@ func (r *routes) handleStripeWebhook(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, adminPaymentSuccessResponse{Job: toFulfillmentJobResponse(job)})
+}
+
+func (r *routes) handleGetPackageCheckoutStatus(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	sessionID := strings.TrimSpace(req.URL.Query().Get("session_id"))
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "session_id is required")
+		return
+	}
+
+	record, fulfillmentJob, err := r.loadCheckoutStatus(req.Context(), authUser.ID, sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "checkout session not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load checkout session status")
+		return
+	}
+	if fulfillmentJob != nil && fulfillmentJob.Status == fulfillment.StatusFailedRetryable && !fulfillmentJob.AvailableAt.After(time.Now().UTC()) {
+		replayedJob, replayErr := r.retryPaymentFulfillmentJob(req.Context(), fulfillmentJob, "checkout_status_auto_retry")
+		if replayErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to retry checkout fulfillment")
+			return
+		}
+		fulfillmentJob = replayedJob
+	}
+
+	response := checkoutPackageStatusResponse{
+		Status:            deriveCheckoutStatus(record.Status, fulfillmentJob),
+		Provider:          record.Provider,
+		CheckoutSessionID: record.CheckoutSessionID,
+		TierCode:          record.TierCode,
+		PackageName:       record.PackageName,
+		AmountMinor:       record.AmountMinor,
+		Currency:          record.Currency,
+	}
+	if record.PaymentEventID != nil && strings.TrimSpace(*record.PaymentEventID) != "" {
+		response.PaymentEventID = record.PaymentEventID
+	}
+	if fulfillmentJob != nil {
+		payload := toFulfillmentJobResponse(fulfillmentJob)
+		response.FulfillmentJob = &payload
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Request) {
@@ -3330,6 +3433,20 @@ func shouldExecutePaymentSuccessFulfillment(payload adminPaymentSuccessRequest) 
 	return payload.BalanceRecharge != nil || payload.APIKey != nil || payload.TierCode != ""
 }
 
+type paymentRecord struct {
+	ID                int64
+	Provider          string
+	CheckoutSessionID string
+	PaymentEventID    *string
+	UserID            int64
+	TierCode          string
+	PackageName       string
+	AmountMinor       int64
+	Currency          string
+	Status            string
+	FulfillmentJobID  *int64
+}
+
 func (r *routes) recordCheckoutSession(ctx context.Context, provider, checkoutSessionID string, userID int64, pkg adminPackageResponse, customerEmail string, amountMinor int64, currency string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	payloadJSON, _ := json.Marshal(map[string]any{
@@ -3405,6 +3522,200 @@ func (r *routes) markCheckoutSessionCompleted(ctx context.Context, provider, che
 	return err
 }
 
+func (r *routes) loadCheckoutStatus(ctx context.Context, userID int64, checkoutSessionID string) (*paymentRecord, *fulfillment.Job, error) {
+	var (
+		record           paymentRecord
+		paymentEventID   sql.NullString
+		fulfillmentJobID sql.NullInt64
+	)
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			id,
+			provider,
+			checkout_session_id,
+			payment_event_id,
+			user_id,
+			tier_code,
+			package_name,
+			amount_minor,
+			currency,
+			status,
+			fulfillment_job_id
+		FROM als_payment_records
+		WHERE user_id = ? AND checkout_session_id = ?
+		LIMIT 1;
+	`), userID, checkoutSessionID).Scan(
+		&record.ID,
+		&record.Provider,
+		&record.CheckoutSessionID,
+		&paymentEventID,
+		&record.UserID,
+		&record.TierCode,
+		&record.PackageName,
+		&record.AmountMinor,
+		&record.Currency,
+		&record.Status,
+		&fulfillmentJobID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	if paymentEventID.Valid {
+		value := paymentEventID.String
+		record.PaymentEventID = &value
+	}
+	if fulfillmentJobID.Valid {
+		value := fulfillmentJobID.Int64
+		record.FulfillmentJobID = &value
+	}
+
+	var job *fulfillment.Job
+	if record.FulfillmentJobID != nil && r.fulfillmentSvc != nil {
+		job, err = r.fulfillmentSvc.GetJobByID(ctx, *record.FulfillmentJobID)
+		if err != nil && !errors.Is(err, fulfillment.ErrJobNotFound) {
+			return nil, nil, err
+		}
+	}
+
+	return &record, job, nil
+}
+
+func deriveCheckoutStatus(paymentStatus string, job *fulfillment.Job) string {
+	paymentStatus = strings.TrimSpace(paymentStatus)
+	switch {
+	case job == nil:
+		if paymentStatus == "payment_succeeded" {
+			return "processing"
+		}
+		return "pending"
+	case job.Status == fulfillment.StatusFulfilled:
+		return "fulfilled"
+	case job.Status == fulfillment.StatusFailedTerminal:
+		return "failed"
+	case job.Status == fulfillment.StatusFailedRetryable:
+		return "retrying"
+	default:
+		return "processing"
+	}
+}
+
+func (r *routes) retryPaymentFulfillmentJob(ctx context.Context, job *fulfillment.Job, eventType string) (*fulfillment.Job, error) {
+	if job == nil {
+		return nil, errors.New("fulfillment job is required")
+	}
+	if job.Status != fulfillment.StatusFailedRetryable {
+		return job, nil
+	}
+	if job.IdempotencyKey == nil || strings.TrimSpace(*job.IdempotencyKey) == "" {
+		return nil, errors.New("fulfillment job is missing idempotency key")
+	}
+
+	var payload adminPaymentSuccessRequest
+	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
+		return nil, fmt.Errorf("decode fulfillment payload: %w", err)
+	}
+	if payload.UserID <= 0 && job.UserID != nil {
+		payload.UserID = *job.UserID
+	}
+	if payload.SubscriptionID == nil && job.SubscriptionID != nil {
+		subscriptionID := *job.SubscriptionID
+		payload.SubscriptionID = &subscriptionID
+	}
+	if payload.UserID <= 0 {
+		return nil, errors.New("fulfillment payload is missing user_id")
+	}
+	if !shouldExecutePaymentSuccessFulfillment(payload) {
+		return nil, errors.New("fulfillment job has no replayable side effects")
+	}
+
+	retryCount := job.RetryCount
+	resetPayload := fmt.Sprintf(`{"outcome":%q}`, eventType)
+	replayedJob, err := r.fulfillmentSvc.TransitionJob(ctx, job.ID, &fulfillment.TransitionInput{
+		Status:       fulfillment.StatusPaidUnfulfilled,
+		ErrorMessage: nil,
+		EventType:    eventType,
+		RetryCount:   &retryCount,
+		EventPayload: &resetPayload,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r.executePaymentSuccessFulfillment(ctx, replayedJob, payload, strings.TrimSpace(*replayedJob.IdempotencyKey))
+}
+
+func (r *routes) listAdminPaymentRecords(ctx context.Context, limit int) ([]adminPaymentRecordResponse, error) {
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			id,
+			provider,
+			checkout_session_id,
+			payment_event_id,
+			user_id,
+			tier_code,
+			package_name,
+			amount_minor,
+			currency,
+			status,
+			fulfillment_job_id
+		FROM als_payment_records
+		ORDER BY id DESC
+		LIMIT ?;
+	`), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]adminPaymentRecordResponse, 0)
+	for rows.Next() {
+		var (
+			record         adminPaymentRecordResponse
+			paymentEventID sql.NullString
+			fulfillmentID  sql.NullInt64
+		)
+		if err := rows.Scan(
+			&record.ID,
+			&record.Provider,
+			&record.CheckoutSessionID,
+			&paymentEventID,
+			&record.UserID,
+			&record.TierCode,
+			&record.PackageName,
+			&record.AmountMinor,
+			&record.Currency,
+			&record.Status,
+			&fulfillmentID,
+		); err != nil {
+			return nil, err
+		}
+		if paymentEventID.Valid && strings.TrimSpace(paymentEventID.String) != "" {
+			value := paymentEventID.String
+			record.PaymentEventID = &value
+		}
+		if fulfillmentID.Valid && r.fulfillmentSvc != nil {
+			job, err := r.fulfillmentSvc.GetJobByID(ctx, fulfillmentID.Int64)
+			if err != nil && !errors.Is(err, fulfillment.ErrJobNotFound) {
+				return nil, err
+			}
+			if job != nil {
+				payload := toFulfillmentJobResponse(job)
+				record.FulfillmentJob = &payload
+				record.OrderStatus = deriveCheckoutStatus(record.Status, job)
+				record.Replayable = job.Status == fulfillment.StatusFailedRetryable
+			}
+		}
+		if record.OrderStatus == "" {
+			record.OrderStatus = deriveCheckoutStatus(record.Status, nil)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) (*fulfillment.Job, error) {
 	if job == nil {
 		return nil, errors.New("fulfillment job is required")
@@ -3423,7 +3734,11 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 
 	if payload.BalanceRecharge != nil {
 		balanceErr := r.executeBalanceRecharge(ctx, job, payload, parentIdempotencyKey)
-		job, _ = r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		refreshedJob, refreshErr := r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		job = refreshedJob
 		if balanceErr != nil {
 			if job != nil {
 				return job, nil
@@ -3434,7 +3749,11 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 
 	if payload.APIKey != nil {
 		apiKeyErr := r.executeDelegatedAPIKeyCreation(ctx, job, payload, parentIdempotencyKey)
-		job, _ = r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		refreshedJob, refreshErr := r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		job = refreshedJob
 		if apiKeyErr != nil {
 			if job != nil {
 				return job, nil
@@ -3445,7 +3764,11 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 
 	if strings.TrimSpace(payload.TierCode) != "" {
 		packageErr := r.executePackagePurchaseFulfillment(ctx, job, payload, parentIdempotencyKey)
-		job, _ = r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		refreshedJob, refreshErr := r.fulfillmentSvc.GetJobByID(ctx, job.ID)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		job = refreshedJob
 		if packageErr != nil {
 			if job != nil {
 				return job, nil
@@ -3454,6 +3777,9 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 		}
 	}
 
+	if job == nil {
+		return nil, errors.New("fulfillment job became nil after execution")
+	}
 	refreshed, err := r.fulfillmentSvc.GetJobByID(ctx, job.ID)
 	if err != nil {
 		return nil, err
@@ -3560,7 +3886,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
 				Code:         buildRedeemCode(payload.OrderID, payload.PaymentEventID, groupID),
 				Type:         proxy.RedeemTypeSubscription,
-				Value:        0,
+				Value:        float64(validityDays),
 				UserID:       payload.UserID,
 				GroupID:      &groupIDCopy,
 				ValidityDays: &validityDays,
@@ -3640,51 +3966,7 @@ func (r *routes) handleAdminReplayFulfillmentJob(w http.ResponseWriter, req *htt
 		writeError(w, http.StatusBadRequest, "only retryable fulfillment jobs can be replayed")
 		return
 	}
-	if job.IdempotencyKey == nil || strings.TrimSpace(*job.IdempotencyKey) == "" {
-		writeError(w, http.StatusBadRequest, "fulfillment job is missing idempotency key")
-		return
-	}
-
-	var payload adminPaymentSuccessRequest
-	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to decode fulfillment payload")
-		return
-	}
-	if payload.UserID <= 0 && job.UserID != nil {
-		payload.UserID = *job.UserID
-	}
-	if payload.SubscriptionID == nil && job.SubscriptionID != nil {
-		subscriptionID := *job.SubscriptionID
-		payload.SubscriptionID = &subscriptionID
-	}
-	if payload.UserID <= 0 {
-		writeError(w, http.StatusBadRequest, "fulfillment payload is missing user_id")
-		return
-	}
-	if !shouldExecutePaymentSuccessFulfillment(payload) {
-		writeError(w, http.StatusBadRequest, "fulfillment job has no replayable side effects")
-		return
-	}
-
-	retryCount := job.RetryCount
-	resetPayload := `{"outcome":"admin_replay_requested"}`
-	job, err = r.fulfillmentSvc.TransitionJob(req.Context(), job.ID, &fulfillment.TransitionInput{
-		Status:       fulfillment.StatusPaidUnfulfilled,
-		ErrorMessage: nil,
-		EventType:    "admin_replay_requested",
-		RetryCount:   &retryCount,
-		EventPayload: &resetPayload,
-	})
-	if err != nil {
-		if errors.Is(err, fulfillment.ErrInvalidTransition) {
-			writeError(w, http.StatusBadRequest, "fulfillment job cannot be replayed from its current state")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "failed to reset fulfillment job for replay")
-		return
-	}
-
-	job, err = r.executePaymentSuccessFulfillment(req.Context(), job, payload, strings.TrimSpace(*job.IdempotencyKey))
+	job, err = r.retryPaymentFulfillmentJob(req.Context(), job, "admin_replay_requested")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to replay fulfillment job")
 		return
@@ -4203,17 +4485,17 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			idx = len(packages)
 			packageIndex[tierID] = idx
 			packages = append(packages, adminPackageResponse{
-				Code:         pkgCode,
-				Name:         pkgName,
-				PriceMicros:  priceMicros,
-				ValueType:    valueType,
-				ValueAmount:  valueAmount,
-				Description:  description,
-				Features:     parseFeaturesJSON(featuresJSON),
-				IsEnabled:    isEnabled,
-				GroupIDs:     []int64{},
-				CreatedAt:    createdAt,
-				UpdatedAt:    updatedAt,
+				Code:        pkgCode,
+				Name:        pkgName,
+				PriceMicros: priceMicros,
+				ValueType:   valueType,
+				ValueAmount: valueAmount,
+				Description: description,
+				Features:    parseFeaturesJSON(featuresJSON),
+				IsEnabled:   isEnabled,
+				GroupIDs:    []int64{},
+				CreatedAt:   createdAt,
+				UpdatedAt:   updatedAt,
 			})
 		}
 
@@ -4297,7 +4579,14 @@ func (r *routes) loadAuthorizedVisibleGroupIDs(req *http.Request, authorizedGrou
 }
 
 func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string) (any, error) {
-	resp, err := r.proxyClient.Do(req.Context(), req, upstreamPath)
+	forwarded := req.Clone(req.Context())
+	forwarded.Header = cloneHeaders(req.Header)
+	forwarded.Header.Del("X-User-Id")
+	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+		return nil, err
+	}
+
+	resp, err := r.proxyClient.Do(req.Context(), forwarded, upstreamPath)
 	if err != nil {
 		return nil, err
 	}
@@ -4318,7 +4607,18 @@ func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string)
 }
 
 func (r *routes) filteredProxyJSONResponse(w http.ResponseWriter, req *http.Request, upstreamPath string, filterFn func(any) (any, error)) (any, int, http.Header, bool, error) {
-	resp, err := r.proxyClient.Do(req.Context(), req, upstreamPath)
+	forwarded := req.Clone(req.Context())
+	forwarded.Header = cloneHeaders(req.Header)
+	forwarded.Header.Del("X-User-Id")
+	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+			return nil, 0, nil, false, nil
+		}
+		return nil, 0, nil, false, err
+	}
+
+	resp, err := r.proxyClient.Do(req.Context(), forwarded, upstreamPath)
 	if err != nil {
 		return nil, 0, nil, false, err
 	}
@@ -4392,6 +4692,18 @@ func filterAPIKeyListPayload(payload any, authorizedGroupIDs map[int64]struct{})
 				clonedData["data"] = filtered
 				clonedData["total"] = len(filtered)
 				clonedRoot["data"] = clonedData
+				return clonedRoot, nil
+			}
+			if items, ok := dataMap["items"].([]any); ok {
+				filtered := filterAPIKeyItems(items, authorizedGroupIDs)
+				clonedData["items"] = filtered
+				clonedData["total"] = len(filtered)
+				clonedRoot["data"] = clonedData
+				if pagination, ok := root["pagination"].(map[string]any); ok {
+					clonedPagination := cloneMap(pagination)
+					clonedPagination["total"] = len(filtered)
+					clonedRoot["pagination"] = clonedPagination
+				}
 				return clonedRoot, nil
 			}
 		}
@@ -4645,27 +4957,11 @@ func buildRedeemCode(orderID, fallback string, groupID int64) string {
 	if base == "" {
 		base = strings.TrimSpace(fallback)
 	}
-	base = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(base, " ", "-"), "/", "-"))
-	base = strings.Map(func(r rune) rune {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			return r
-		}
-		return '-'
-	}, base)
-	for strings.Contains(base, "--") {
-		base = strings.ReplaceAll(base, "--", "-")
-	}
-	base = strings.Trim(base, "-")
 	if base == "" {
-		base = "ALS-PAYMENT"
+		base = "als-payment"
 	}
-	if groupID > 0 {
-		base = fmt.Sprintf("%s-G%d", base, groupID)
-	}
-	if len(base) > 120 {
-		base = base[:120]
-	}
-	return base
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d", base, groupID)))
+	return hex.EncodeToString(sum[:16])
 }
 
 func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool) (adminPackageRequest, error) {

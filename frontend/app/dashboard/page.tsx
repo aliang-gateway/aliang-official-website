@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { asRecord, asString, extractApiError } from "@/lib/api-response";
 import { parseDashboardModelsEnvelope, parseDashboardSimpleTrendPoints, parseDashboardTrendEnvelope } from "@/lib/dashboard-analytics-adapter";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -16,13 +16,6 @@ type TrendGranularity = "day" | "week" | "month";
 
 type ClientTemplateId = "claude-code" | "codex" | "openai" | "gemini";
 type TemplateFormat = "json" | "yaml" | "shell";
-
-type CreateApiKeyResponse = {
-  id: number;
-  label: string;
-  api_key: string;
-  created_at: string;
-};
 
 type TrendPoint = {
   bucket_start: string;
@@ -774,8 +767,6 @@ function DashboardPageContent() {
   const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplateId>("claude-code");
   const [selectedFormat, setSelectedFormat] = useState<TemplateFormat>("shell");
   const [userKey, setUserKey] = useState("");
-  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
-  const [keyError, setKeyError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [selectedPackageTierCode, setSelectedPackageTierCode] = useState("");
   const [selectedPackageSummaryId, setSelectedPackageSummaryId] = useState<number | null>(null);
@@ -1128,47 +1119,6 @@ function DashboardPageContent() {
     };
   }, [closeConfigModal, isConfigModalOpen]);
 
-  const handleGenerateKey = useCallback(async () => {
-    setKeyError(null);
-    setCopyState("idle");
-
-    if (!sessionToken) {
-      setKeyError("Your session token is missing. Sign in again before creating a new user key.");
-      return;
-    }
-
-    setIsGeneratingKey(true);
-
-    try {
-      const response = await fetch("/api/api-keys", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({ label: "dashboard-config-modal" }),
-      });
-
-      const payload = (await response.json()) as unknown;
-      if (!response.ok) {
-        throw new Error(extractApiError(payload, "Failed to create a user key"));
-      }
-
-      const createdPayload = unwrapData<CreateApiKeyResponse>(payload) ?? (asRecord(payload) as CreateApiKeyResponse | null);
-      const createdKey = asString(createdPayload?.api_key);
-      if (!createdKey) {
-        throw new Error(extractApiError(payload, "User key creation succeeded but no API key was returned"));
-      }
-
-      setUserKey(createdKey);
-    } catch (createError) {
-      setKeyError(createError instanceof Error ? createError.message : "Failed to create a user key");
-    } finally {
-      setIsGeneratingKey(false);
-    }
-  }, [sessionToken]);
-
   const handleCopyConfig = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(renderedConfig);
@@ -1182,7 +1132,7 @@ function DashboardPageContent() {
     setPurchaseMessage(null);
 
     if (!sessionToken) {
-      setPurchaseMessage({ tone: "error", text: "Your session token is missing. Sign in again before starting a package entry." });
+      router.push(`/login?next=${encodeURIComponent("/dashboard")}`);
       return;
     }
 
@@ -1232,7 +1182,7 @@ function DashboardPageContent() {
     } finally {
       setPackageActionLoading(false);
     }
-  }, [dashboard, selectedPackageTierCode, sessionToken]);
+  }, [dashboard, router, selectedPackageTierCode, sessionToken]);
 
   const handlePrepaidTopUp = useCallback(async () => {
     setPurchaseMessage(null);
@@ -1915,29 +1865,23 @@ function DashboardPageContent() {
                     <textarea
                       id="dashboard-user-key"
                       className="field min-h-[112px] resize-y font-mono text-sm"
-                      placeholder="Paste a routed user key or mint a fresh one below"
+                      placeholder="Paste an existing routed user key"
                       value={userKey}
                       onChange={(event) => {
                         setUserKey(event.target.value);
-                        setKeyError(null);
                         setCopyState("idle");
                       }}
                     />
                     <p className="text-xs leading-5 text-[var(--portal-muted)]">
-                      This is the only key source for every template in the modal. New keys from the API are only shown once, so copy and store them safely.
+                      This is the only key source for every template in the modal. Paste an existing routed key from your account list and treat it as sensitive.
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
-                    <button type="button" className="btn-primary" onClick={() => void handleGenerateKey()} disabled={isGeneratingKey}>
-                      {isGeneratingKey ? "Creating key..." : "Create fresh key"}
-                    </button>
                     <button type="button" className="btn-ghost" onClick={() => setUserKey("")}>
                       Clear key
                     </button>
                   </div>
-
-                  {keyError ? <p className="notice">{keyError}</p> : null}
 
                   <div className="rounded-[1rem] border border-amber-400/40 bg-amber-50/80 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                     Sensitive-key warning: the rendered snippets below contain your real user key, not a placeholder. Avoid screenshots, shared terminals, and pasted logs.
