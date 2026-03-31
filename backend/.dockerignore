@@ -1,0 +1,10 @@
+data.db
+config.yaml
+config.f3.yaml
+tmp/
+docs/
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
