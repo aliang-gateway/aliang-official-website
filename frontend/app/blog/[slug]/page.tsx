@@ -5,6 +5,7 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { useMDXComponents as getMDXComponents } from "@/mdx-components";
+import { getApiBaseUrl } from "@/lib/server/api-base-url";
 
 type PublicArticleDetail = {
   slug: string;
@@ -44,13 +45,8 @@ function normalizeOptionalAsset(value?: string | null) {
 }
 
 async function getArticleBySlug(slug: string) {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (!apiBaseUrl) {
-    throw new Error("NEXT_PUBLIC_API_BASE_URL is not set");
-  }
-
   const response = await fetch(
-    `${apiBaseUrl.replace(/\/$/, "")}/public/articles/${encodeURIComponent(slug)}`,
+    `${getApiBaseUrl()}/public/articles/${encodeURIComponent(slug)}`,
     {
       method: "GET",
       headers: { "content-type": "application/json", accept: "application/json" },

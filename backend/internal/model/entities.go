@@ -94,6 +94,60 @@ type UsageRecord struct {
 	CreatedAt     time.Time
 }
 
+type SoftwareConfig struct {
+	ID           int64
+	SoftwareCode string
+	SoftwareName string
+	GroupID      int64
+	Description  string
+	IsEnabled    bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type SoftwareTag struct {
+	ID               int64
+	SoftwareConfigID int64
+	Tag              string
+	CreatedAt        time.Time
+}
+
+type ConfigTemplate struct {
+	ID               int64
+	SoftwareConfigID int64
+	Name             string
+	Format           string
+	Content          string
+	IsDefault        bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type GlobalTemplateVar struct {
+	ID          int64
+	VarKey      string
+	VarValue    string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type UserSyncedConfig struct {
+	ID        int64
+	UserID    int64
+	UUID      string
+	Software  string
+	Name      string
+	FilePath  string
+	Version   string
+	InUse     bool
+	Selected  bool
+	Format    string
+	Content   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Article struct {
 	ID              int64
 	LegacyID        *int64

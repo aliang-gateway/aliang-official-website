@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from "@/lib/server/api-base-url";
+
 type UnknownRecord = Record<string, unknown>;
 
 type UpstreamJsonResult = {
@@ -189,14 +191,6 @@ function normalizePurchaseOptions(data: unknown, currencyHint: string): Purchase
       currency_hint: currencyHint,
     },
   };
-}
-
-function getApiBaseUrl() {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_API_BASE_URL is not set");
-  }
-  return baseUrl.replace(/\/$/, "");
 }
 
 async function fetchUpstreamJson(params: {

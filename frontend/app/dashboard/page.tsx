@@ -312,6 +312,11 @@ function buildTemplateContent(templateId: ClientTemplateId, format: TemplateForm
   ].join("\n");
 }
 
+type RuntimeConfigResponse = {
+  apiBaseUrl?: string;
+  error?: string;
+};
+
 function formatShortDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -782,6 +787,7 @@ function DashboardPageContent() {
   const [tokenTrend, setTokenTrend] = useState<TokenTrendResponse | null>(null);
   const [modelShare, setModelShare] = useState<{ start_date: string; end_date: string; items: ModelShareDatum[] } | null>(null);
   const [metricSummary, setMetricSummary] = useState<DashboardMetricSummary | null>(null);
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState("");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const configTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -797,8 +803,6 @@ function DashboardPageContent() {
     return requestedGranularity && isTrendGranularity(requestedGranularity) ? requestedGranularity : "day";
   }, [searchParams]);
 
-  const gatewayBaseUrl = useMemo(() => trimTrailingSlash(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "http://localhost:8080"), []);
-
   const selectedTemplateDefinition = useMemo(
     () => TEMPLATE_DEFINITIONS.find((template) => template.id === selectedTemplate) ?? TEMPLATE_DEFINITIONS[0],
     [selectedTemplate],
@@ -812,6 +816,35 @@ function DashboardPageContent() {
     () => normalizeTrendGranularity(selectedTrendRange, selectedTrendGranularity),
     [selectedTrendGranularity, selectedTrendRange],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRuntimeConfig() {
+      try {
+        const response = await fetch("/api/runtime-config", {
+          method: "GET",
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+
+        const payload = (await response.json()) as RuntimeConfigResponse;
+        if (!cancelled && response.ok && payload.apiBaseUrl) {
+          setGatewayBaseUrl(trimTrailingSlash(payload.apiBaseUrl));
+        }
+      } catch {
+        if (!cancelled) {
+          setGatewayBaseUrl("");
+        }
+      }
+    }
+
+    void loadRuntimeConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateTrendSearchParams = useCallback(
     (range: TrendRange, granularity: TrendGranularity, historyMode: "push" | "replace") => {

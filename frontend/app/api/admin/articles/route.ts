@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
 
-function getApiBaseUrl() {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_API_BASE_URL is not set");
-  }
-  return baseUrl.replace(/\/$/, "");
-}
+import { getApiBaseUrl } from "@/lib/server/api-base-url";
 
 export async function GET(request: Request) {
   let apiBaseUrl: string;
