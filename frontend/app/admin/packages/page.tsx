@@ -285,7 +285,7 @@ export default function AdminPackagesPage() {
           return { ...prev, [key]: Math.max(0, parseInt(String(value), 10) || 0) };
         }
         if (key === "features") {
-          return { ...prev, features: Array.isArray(value) ? value : prev.features };
+          return { ...prev, features: Array.isArray(value) ? (value as string[]) : prev.features };
         }
         return { ...prev, [key]: String(value) };
       });

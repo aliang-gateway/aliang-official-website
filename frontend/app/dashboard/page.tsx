@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { asRecord, asString, extractApiError } from "@/lib/api-response";
+import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
 import { parseDashboardModelsEnvelope, parseDashboardSimpleTrendPoints, parseDashboardTrendEnvelope } from "@/lib/dashboard-analytics-adapter";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -1620,7 +1620,7 @@ function DashboardPageContent() {
                 ref={configTriggerRef}
                 onClick={() => {
                   setIsConfigModalOpen(true);
-                  setKeyError(null);
+                  setError(null);
                   setCopyState("idle");
                 }}
               >

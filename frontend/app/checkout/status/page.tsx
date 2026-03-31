@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -30,7 +30,7 @@ function formatAmount(amountMinor?: number, currency?: string) {
   return `${(amountMinor / 100).toFixed(2)} ${(currency ?? "cny").toUpperCase()}`;
 }
 
-export default function CheckoutStatusPage() {
+function CheckoutStatusContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sessionToken, setSessionToken] = useState("");
@@ -276,5 +276,13 @@ export default function CheckoutStatusPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function CheckoutStatusPage() {
+  return (
+    <Suspense>
+      <CheckoutStatusContent />
+    </Suspense>
   );
 }
