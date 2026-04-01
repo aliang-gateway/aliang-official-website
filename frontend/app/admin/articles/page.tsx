@@ -113,6 +113,7 @@ export default function AdminArticlesPage() {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [rowLoadingSlug, setRowLoadingSlug] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
 
   const [authBlocked, setAuthBlocked] = useState<string | null>(null);
 
@@ -275,6 +276,7 @@ export default function AdminArticlesPage() {
 
       setGlobalSuccess(targetSlug ? "Article updated." : "Draft article created.");
       resetForm();
+      setShowDialog(false);
       await loadArticles();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to save article");
@@ -463,12 +465,23 @@ export default function AdminArticlesPage() {
         ) : null}
       </div>
 
+      {/* Article List */}
       <div className="block-card space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">Article List</h2>
-          <span className="text-xs text-[var(--portal-muted)]">
-            {isLoadingList ? "Loading..." : `${articles.length} item(s)`}
-          </span>
+          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">Articles</h2>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--portal-muted)]">
+              {isLoadingList ? "Loading..." : `${articles.length} article(s)`}
+            </span>
+            <button
+              type="button"
+              className="btn-primary px-3 py-1.5 text-xs"
+              disabled={isBlocked || isSubmittingForm}
+              onClick={() => { resetForm(); setShowDialog(true); }}
+            >
+              + New Article
+            </button>
+          </div>
         </div>
 
         {isLoadingList ? (
@@ -515,7 +528,7 @@ export default function AdminArticlesPage() {
                             type="button"
                             className="btn-ghost cursor-pointer px-3 py-1.5 text-xs"
                             disabled={isBlocked || isRowBusy}
-                            onClick={() => void handleEdit(article.slug)}
+                            onClick={() => { void handleEdit(article.slug).then(() => setShowDialog(true)); }}
                           >
                             Edit
                           </button>
@@ -549,173 +562,179 @@ export default function AdminArticlesPage() {
         )}
       </div>
 
-      <div className="block-card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">
-            {mode === "create" ? "Create Article" : `Edit Article (${editingSlug})`}
-          </h2>
-          {mode === "edit" ? (
-            <button className="btn-ghost" type="button" onClick={resetForm}>
-              Switch to create
-            </button>
-          ) : null}
+      {/* Article Dialog */}
+      {showDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] p-6 shadow-2xl">
+            {/* Dialog header */}
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-lg font-semibold text-[var(--portal-ink)]">
+                {mode === "create" ? "Create Article" : `Edit Article (${editingSlug})`}
+              </h2>
+              <button
+                type="button"
+                className="cursor-pointer text-xl leading-none text-[var(--portal-muted)] hover:text-[var(--portal-ink)]"
+                onClick={() => setShowDialog(false)}
+              >
+                &times;
+              </button>
+            </div>
+
+            {formError ? (
+              <div className="mb-4 rounded-xl border border-amber-400/45 dark:border-amber-400/60 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300" role="alert">
+                {formError}
+              </div>
+            ) : null}
+
+            {isLoadingDetail ? (
+              <p className="mb-4 text-sm text-[var(--portal-muted)]">Loading article detail...</p>
+            ) : (
+              <form className="grid gap-3" onSubmit={handleCreateOrUpdate}>
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Title</span>
+                  <input
+                    className="field"
+                    type="text"
+                    value={formState.title}
+                    onChange={(event) => handleFormChange("title", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Slug</span>
+                  <input
+                    className="field"
+                    type="text"
+                    value={formState.slug}
+                    onChange={(event) => handleFormChange("slug", slugifyTitle(event.target.value))}
+                    disabled={isBlocked || isSubmittingForm}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Excerpt</span>
+                  <textarea
+                    className="field min-h-20 resize-y"
+                    value={formState.excerpt}
+                    onChange={(event) => handleFormChange("excerpt", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  />
+                </label>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>Tag</span>
+                    <input
+                      className="field"
+                      type="text"
+                      value={formState.tag}
+                      onChange={(event) => handleFormChange("tag", event.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>Read time</span>
+                    <input
+                      className="field"
+                      type="text"
+                      value={formState.read_time}
+                      onChange={(event) => handleFormChange("read_time", event.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                  </label>
+                </div>
+
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Cover image URL</span>
+                  <input
+                    className="field"
+                    type="url"
+                    value={formState.cover_image_url}
+                    onChange={(event) => handleFormChange("cover_image_url", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  />
+                </label>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>Author name</span>
+                    <input
+                      className="field"
+                      type="text"
+                      value={formState.author_name}
+                      onChange={(event) => handleFormChange("author_name", event.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>Author avatar URL</span>
+                    <input
+                      className="field"
+                      type="url"
+                      value={formState.author_avatar_url}
+                      onChange={(event) => handleFormChange("author_avatar_url", event.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>Author icon</span>
+                    <input
+                      className="field"
+                      type="text"
+                      value={formState.author_icon}
+                      onChange={(event) => handleFormChange("author_icon", event.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                  </label>
+                </div>
+
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Status</span>
+                  <select
+                    className="field"
+                    value={formState.status}
+                    onChange={(event) => handleFormChange("status", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  >
+                    <option value="draft">draft</option>
+                    <option value="published">published</option>
+                  </select>
+                </label>
+
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>MDX body</span>
+                  <textarea
+                    className="field min-h-72 resize-y font-mono"
+                    value={formState.mdx_body}
+                    onChange={(event) => handleFormChange("mdx_body", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                    required
+                  />
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button className="btn-primary" type="submit" disabled={isBlocked || isSubmittingForm}>
+                    {isSubmittingForm
+                      ? "Saving..."
+                      : mode === "create"
+                        ? "Create draft"
+                        : "Save changes"}
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    disabled={isSubmittingForm}
+                    onClick={() => { resetForm(); setShowDialog(false); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
-
-        {isLoadingDetail ? (
-          <p className="text-sm text-[var(--portal-muted)]">Loading article detail...</p>
-        ) : null}
-        {formError ? (
-          <div
-            className="rounded-xl border border-amber-400/45 dark:border-amber-400/60 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300"
-            role="alert"
-          >
-            {formError}
-          </div>
-        ) : null}
-
-        <form className="grid gap-3" onSubmit={handleCreateOrUpdate}>
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>Title</span>
-            <input
-              className="field"
-              type="text"
-              value={formState.title}
-              onChange={(event) => handleFormChange("title", event.target.value)}
-              disabled={isBlocked || isSubmittingForm}
-              required
-            />
-          </label>
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>Slug</span>
-            <input
-              className="field"
-              type="text"
-              value={formState.slug}
-              onChange={(event) => handleFormChange("slug", slugifyTitle(event.target.value))}
-              disabled={isBlocked || isSubmittingForm}
-              required
-            />
-          </label>
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>Excerpt</span>
-            <textarea
-              className="field min-h-20 resize-y"
-              value={formState.excerpt}
-              onChange={(event) => handleFormChange("excerpt", event.target.value)}
-              disabled={isBlocked || isSubmittingForm}
-            />
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Tag</span>
-              <input
-                className="field"
-                type="text"
-                value={formState.tag}
-                onChange={(event) => handleFormChange("tag", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Read time</span>
-              <input
-                className="field"
-                type="text"
-                value={formState.read_time}
-                onChange={(event) => handleFormChange("read_time", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-          </div>
-
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>Cover image URL</span>
-            <input
-              className="field"
-              type="url"
-              value={formState.cover_image_url}
-              onChange={(event) => handleFormChange("cover_image_url", event.target.value)}
-              disabled={isBlocked || isSubmittingForm}
-            />
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Author name</span>
-              <input
-                className="field"
-                type="text"
-                value={formState.author_name}
-                onChange={(event) => handleFormChange("author_name", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Author avatar URL</span>
-              <input
-                className="field"
-                type="url"
-                value={formState.author_avatar_url}
-                onChange={(event) => handleFormChange("author_avatar_url", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Author icon</span>
-              <input
-                className="field"
-                type="text"
-                value={formState.author_icon}
-                onChange={(event) => handleFormChange("author_icon", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-          </div>
-
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>Status</span>
-            <select
-              className="field"
-              value={formState.status}
-              onChange={(event) => handleFormChange("status", event.target.value)}
-              disabled={isBlocked || isSubmittingForm}
-            >
-              <option value="draft">draft</option>
-              <option value="published">published</option>
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-            <span>MDX body</span>
-            <textarea
-              className="field min-h-72 resize-y font-mono"
-              value={formState.mdx_body}
-              onChange={(event) => handleFormChange("mdx_body", event.target.value)}
-              disabled={isBlocked || isSubmittingForm}
-              required
-            />
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button className="btn-primary" type="submit" disabled={isBlocked || isSubmittingForm}>
-              {isSubmittingForm
-                ? "Saving..."
-                : mode === "create"
-                  ? "Create draft"
-                  : "Save changes"}
-            </button>
-            <button
-              className="btn-ghost"
-              type="button"
-              disabled={isSubmittingForm}
-              onClick={resetForm}
-            >
-              Reset
-            </button>
-          </div>
-        </form>
-      </div>
+      ) : null}
     </section>
   );
 }

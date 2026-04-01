@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -138,7 +137,7 @@ export default function AdminPaymentsPage() {
   };
 
   return (
-    <section className="portal-shell space-y-6 py-8">
+    <section className="space-y-6">
       <div className="clay-panel space-y-3 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">
@@ -149,14 +148,9 @@ export default function AdminPaymentsPage() {
               Review Stripe checkout sessions and their fulfillment status.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/admin" className="nav-pill">Unit Prices</Link>
-            <Link href="/admin/packages" className="nav-pill">Packages</Link>
-            <Link href="/admin/articles" className="nav-pill">Articles</Link>
-            <button type="button" className="btn-ghost" onClick={() => void loadRecords(true)} disabled={isRefreshing}>
-              {isRefreshing ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
+          <button type="button" className="btn-ghost" onClick={() => void loadRecords(true)} disabled={isRefreshing}>
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </button>
         </div>
       </div>
 

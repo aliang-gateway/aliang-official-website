@@ -1,9 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { asRecord, extractApiError, unwrapData } from "@/lib/api-response";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -153,6 +150,7 @@ export default function AdminPackagesPage() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [rowLoadingCode, setRowLoadingCode] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
 
   useEffect(() => {
     setIsHydrated(true);
@@ -448,6 +446,7 @@ export default function AdminPackagesPage() {
 
       setGlobalSuccess(editingCode ? "Package updated." : "Package created.");
       resetForm();
+      setShowDialog(false);
       await loadPackages();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to save package");
@@ -459,27 +458,15 @@ export default function AdminPackagesPage() {
   const isBlocked = Boolean(authBlocked);
 
   return (
-    <section className="portal-shell space-y-6 py-8">
+    <section className="space-y-6">
       <div className="clay-panel space-y-3 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-2">
-            <h1 className="section-title">
-              <span className="gradient-text">Admin Packages</span>
-            </h1>
-            <p className="section-subtitle">
-              Manage tier-as-package entries and replace their bound admin groups from one workflow.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/admin" className="nav-pill">
-              <MaterialIcon name="tune" size={16} className="mr-1" />
-              Unit Prices
-            </Link>
-            <Link href="/admin/articles" className="nav-pill">
-              <MaterialIcon name="article" size={16} className="mr-1" />
-              Articles
-            </Link>
-          </div>
+        <div className="space-y-2">
+          <h1 className="section-title">
+            <span className="gradient-text">Admin Packages</span>
+          </h1>
+          <p className="section-subtitle">
+            Manage tier-as-package entries and replace their bound admin groups from one workflow.
+          </p>
         </div>
       </div>
 
@@ -526,346 +513,367 @@ export default function AdminPackagesPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <div className="block-card space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-[var(--portal-ink)]">Package List</h2>
+      {/* Package List */}
+      <div className="block-card space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">Packages</h2>
+          <div className="flex items-center gap-3">
             <span className="text-xs text-[var(--portal-muted)]">
               {isLoadingPackages ? "Loading..." : `${packages.length} package(s)`}
             </span>
+            <button
+              type="button"
+              className="btn-primary px-3 py-1.5 text-xs"
+              disabled={isBlocked || isSubmittingForm}
+              onClick={() => { resetForm(); setShowDialog(true); }}
+            >
+              + New Package
+            </button>
           </div>
-
-          {isLoadingPackages ? (
-            <p className="text-sm text-[var(--portal-muted)]">Loading packages...</p>
-          ) : packages.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
-              No packages found yet. Create the first package to bind one or more groups.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-y-2 text-sm">
-                <thead>
-                  <tr className="text-left text-[var(--portal-muted)]">
-                    <th className="px-2 py-1">Code</th>
-                    <th className="px-2 py-1">Name</th>
-                    <th className="px-2 py-1">Price</th>
-                    <th className="px-2 py-1">Value</th>
-                    <th className="px-2 py-1">Enabled</th>
-                    <th className="px-2 py-1">Bound groups</th>
-                    <th className="px-2 py-1">Updated</th>
-                    <th className="px-2 py-1">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {packages.map((pkg: AdminPackage) => {
-                    const isRowBusy = rowLoadingCode === pkg.code;
-                    return (
-                      <tr key={pkg.code} className="rounded-lg bg-[var(--portal-clay)] align-top">
-                        <td className="px-2 py-2 font-mono text-xs text-[var(--portal-muted)]">{pkg.code}</td>
-                        <td className="px-2 py-2 font-medium text-[var(--portal-ink)]">{pkg.name}</td>
-                        <td className="px-2 py-2 text-sm text-[var(--portal-ink)]">
-                          {pkg.price_micros > 0 ? `¥${(pkg.price_micros / 1000000).toFixed(2)}` : "Free"}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-[var(--portal-muted)]">
-                          {pkg.value_type
-                            ? `${pkg.value_type === "days" ? pkg.value_amount + "d" : "¥" + (pkg.value_amount / 1000000).toFixed(2)}`
-                            : "-"}
-                        </td>
-                        <td className="px-2 py-2">
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${pkg.is_enabled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-slate-500/10 text-slate-500 dark:text-slate-400"}`}>
-                            {pkg.is_enabled ? "On" : "Off"}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            {pkg.group_ids.length === 0 ? (
-                              <span className="text-xs text-[var(--portal-muted)]">No groups bound</span>
-                            ) : (
-                              pkg.group_ids.map((groupID: number) => {
-                                const group = availableGroupByID.get(groupID);
-                                const label = group?.name ?? `Group #${groupID}`;
-                                return (
-                                <span
-                                  key={`${pkg.code}-${groupID}`}
-                                  className="inline-flex rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] px-2 py-1 text-xs text-[var(--portal-ink)]"
-                                >
-                                  {label}
-                                </span>
-                                );
-                              })
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-xs text-[var(--portal-muted)]">
-                          {formatDateTime(pkg.updated_at)}
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="btn-ghost cursor-pointer px-3 py-1.5 text-xs"
-                              disabled={isBlocked || isRowBusy || isSubmittingForm}
-                              onClick={() => void handleEdit(pkg.code)}
-                            >
-                              Edit
-                            </button>
-                            {isRowBusy ? (
-                              <span className="text-xs text-[var(--portal-muted)]">Loading...</span>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
 
-        <div className="block-card space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-[var(--portal-ink)]">
-              {mode === "create" ? "Create Package" : `Edit Package (${editingCode})`}
-            </h2>
-            {mode === "edit" ? (
-              <button className="btn-ghost" type="button" onClick={resetForm} disabled={isSubmittingForm}>
-                Switch to create
-              </button>
-            ) : null}
+        {isLoadingPackages ? (
+          <p className="text-sm text-[var(--portal-muted)]">Loading packages...</p>
+        ) : packages.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
+            No packages found yet. Create the first package to bind one or more groups.
           </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+              <thead>
+                <tr className="text-left text-[var(--portal-muted)]">
+                  <th className="px-2 py-1">Code</th>
+                  <th className="px-2 py-1">Name</th>
+                  <th className="px-2 py-1">Price</th>
+                  <th className="px-2 py-1">Value</th>
+                  <th className="px-2 py-1">Enabled</th>
+                  <th className="px-2 py-1">Bound groups</th>
+                  <th className="px-2 py-1">Updated</th>
+                  <th className="px-2 py-1">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {packages.map((pkg: AdminPackage) => {
+                  const isRowBusy = rowLoadingCode === pkg.code;
+                  return (
+                    <tr key={pkg.code} className="rounded-lg bg-[var(--portal-clay)] align-top">
+                      <td className="px-2 py-2 font-mono text-xs text-[var(--portal-muted)]">{pkg.code}</td>
+                      <td className="px-2 py-2 font-medium text-[var(--portal-ink)]">{pkg.name}</td>
+                      <td className="px-2 py-2 text-sm text-[var(--portal-ink)]">
+                        {pkg.price_micros > 0 ? `¥${(pkg.price_micros / 1000000).toFixed(2)}` : "Free"}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-[var(--portal-muted)]">
+                        {pkg.value_type
+                          ? `${pkg.value_type === "days" ? pkg.value_amount + "d" : "¥" + (pkg.value_amount / 1000000).toFixed(2)}`
+                          : "-"}
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${pkg.is_enabled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-slate-500/10 text-slate-500 dark:text-slate-400"}`}>
+                          {pkg.is_enabled ? "On" : "Off"}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {pkg.group_ids.length === 0 ? (
+                            <span className="text-xs text-[var(--portal-muted)]">No groups bound</span>
+                          ) : (
+                            pkg.group_ids.map((groupID: number) => {
+                              const group = availableGroupByID.get(groupID);
+                              const label = group?.name ?? `Group #${groupID}`;
+                              return (
+                              <span
+                                key={`${pkg.code}-${groupID}`}
+                                className="inline-flex rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] px-2 py-1 text-xs text-[var(--portal-ink)]"
+                              >
+                                {label}
+                              </span>
+                              );
+                            })
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-xs text-[var(--portal-muted)]">
+                        {formatDateTime(pkg.updated_at)}
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn-ghost cursor-pointer px-3 py-1.5 text-xs"
+                            disabled={isBlocked || isRowBusy || isSubmittingForm}
+                            onClick={() => { void handleEdit(pkg.code).then(() => setShowDialog(true)); }}
+                          >
+                            Edit
+                          </button>
+                          {isRowBusy ? (
+                            <span className="text-xs text-[var(--portal-muted)]">Working...</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-          {isLoadingDetail ? (
-            <p className="text-sm text-[var(--portal-muted)]">Loading package detail...</p>
-          ) : null}
-          {formError ? (
-            <div
-              className="rounded-xl border border-amber-400/45 bg-amber-500/10 p-3 text-sm text-amber-700 dark:border-amber-400/60 dark:bg-amber-500/20 dark:text-amber-300"
-              role="alert"
-            >
-              {formError}
-            </div>
-          ) : null}
-
-          <form className="grid gap-4" onSubmit={handleCreateOrUpdate}>
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Package code</span>
-              <input
-                className="field font-mono"
-                type="text"
-                value={formState.code}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => handleFormChange("code", event.target.value)}
-                disabled={mode === "edit" || isBlocked || isSubmittingForm}
-                required={mode === "create"}
-                aria-describedby="package-code-help"
-              />
-            </label>
-            <p id="package-code-help" className="-mt-2 text-xs text-[var(--portal-muted)]">
-              Stable package identifier used by the backend tier record. It cannot be changed after creation.
-            </p>
-
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Package name</span>
-              <input
-                className="field"
-                type="text"
-                value={formState.name}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => handleFormChange("name", event.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-                required
-              />
-            </label>
-
-            {/* Value Type */}
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Value Type</span>
-              <select
-                className="field"
-                value={formState.valueType}
-                onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange("valueType", e.target.value)}
-                disabled={isBlocked || isSubmittingForm}
+      {/* Package Dialog */}
+      {showDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] p-6 shadow-2xl">
+            {/* Dialog header */}
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-lg font-semibold text-[var(--portal-ink)]">
+                {mode === "create" ? "Create Package" : `Edit Package (${editingCode})`}
+              </h2>
+              <button
+                type="button"
+                className="cursor-pointer text-xl leading-none text-[var(--portal-muted)] hover:text-[var(--portal-ink)]"
+                onClick={() => setShowDialog(false)}
               >
-                <option value="">None (group-only)</option>
-                <option value="days">Subscription (days)</option>
-                <option value="balance">Balance credit</option>
-              </select>
-            </label>
+                &times;
+              </button>
+            </div>
 
-            {/* Value Amount */}
-            {formState.valueType ? (
-              <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-                <span>{formState.valueType === "days" ? "Days" : "Amount (micros)"}</span>
-                <input
-                  className="field"
-                  type="number"
-                  min="1"
-                  value={formState.valueAmount || ""}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("valueAmount", e.target.value)}
-                  disabled={isBlocked || isSubmittingForm}
-                  required
-                />
-              </label>
+            {formError ? (
+              <div className="mb-4 rounded-xl border border-amber-400/45 bg-amber-500/10 p-3 text-sm text-amber-700 dark:border-amber-400/60 dark:bg-amber-500/20 dark:text-amber-300" role="alert">
+                {formError}
+              </div>
             ) : null}
 
-            {/* Price */}
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Price (CNY, yuan)</span>
-              <input
-                className="field"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formState.priceMicros ? (formState.priceMicros / 1000000).toString() : ""}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                  const yuan = parseFloat(e.target.value) || 0;
-                  handleFormChange("priceMicros", String(Math.round(yuan * 1000000)));
-                }}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-
-            {/* Description */}
-            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-              <span>Description</span>
-              <textarea
-                className="field min-h-[80px] resize-y"
-                rows={3}
-                value={formState.description}
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleFormChange("description", e.target.value)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-            </label>
-
-            {/* Features */}
-            <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
-              <legend className="px-1 text-sm font-semibold text-[var(--portal-ink)]">Features</legend>
-              {formState.features.map((feature: string, index: number) => (
-                <div key={index} className="flex gap-2">
+            {isLoadingDetail ? (
+              <p className="mb-4 text-sm text-[var(--portal-muted)]">Loading package detail...</p>
+            ) : (
+              <form className="grid gap-4" onSubmit={handleCreateOrUpdate}>
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Package code</span>
                   <input
-                    className="field flex-1"
+                    className="field font-mono"
                     type="text"
-                    placeholder={`Feature ${index + 1}`}
-                    value={feature}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      setFormState((prev: PackageFormState) => ({
-                        ...prev,
-                        features: updateFeature(prev.features, index, e.target.value),
-                      }))
-                    }
+                    value={formState.code}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => handleFormChange("code", event.target.value)}
+                    disabled={mode === "edit" || isBlocked || isSubmittingForm}
+                    required={mode === "create"}
+                    aria-describedby="package-code-help"
+                  />
+                </label>
+                <p id="package-code-help" className="-mt-2 text-xs text-[var(--portal-muted)]">
+                  Stable package identifier used by the backend tier record. It cannot be changed after creation.
+                </p>
+
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Package name</span>
+                  <input
+                    className="field"
+                    type="text"
+                    value={formState.name}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => handleFormChange("name", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                    required
+                  />
+                </label>
+
+                {/* Value Type */}
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Value Type</span>
+                  <select
+                    className="field"
+                    value={formState.valueType}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => handleFormChange("valueType", e.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  >
+                    <option value="">None (group-only)</option>
+                    <option value="days">Subscription (days)</option>
+                    <option value="balance">Balance credit</option>
+                  </select>
+                </label>
+
+                {/* Value Amount */}
+                {formState.valueType ? (
+                  <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                    <span>{formState.valueType === "days" ? "Days" : "Amount (micros)"}</span>
+                    <input
+                      className="field"
+                      type="number"
+                      min="1"
+                      value={formState.valueAmount || ""}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("valueAmount", e.target.value)}
+                      disabled={isBlocked || isSubmittingForm}
+                      required
+                    />
+                  </label>
+                ) : null}
+
+                {/* Price */}
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Price (CNY, yuan)</span>
+                  <input
+                    className="field"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formState.priceMicros ? (formState.priceMicros / 1000000).toString() : ""}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                      const yuan = parseFloat(e.target.value) || 0;
+                      handleFormChange("priceMicros", String(Math.round(yuan * 1000000)));
+                    }}
                     disabled={isBlocked || isSubmittingForm}
                   />
+                </label>
+
+                {/* Description */}
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Description</span>
+                  <textarea
+                    className="field min-h-[80px] resize-y"
+                    rows={3}
+                    value={formState.description}
+                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleFormChange("description", e.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  />
+                </label>
+
+                {/* Features */}
+                <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
+                  <legend className="px-1 text-sm font-semibold text-[var(--portal-ink)]">Features</legend>
+                  {formState.features.map((feature: string, index: number) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        className="field flex-1"
+                        type="text"
+                        placeholder={`Feature ${index + 1}`}
+                        value={feature}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                          setFormState((prev: PackageFormState) => ({
+                            ...prev,
+                            features: updateFeature(prev.features, index, e.target.value),
+                          }))
+                        }
+                        disabled={isBlocked || isSubmittingForm}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost px-2 text-xs text-red-500 hover:text-red-700"
+                        onClick={() =>
+                          setFormState((prev: PackageFormState) => ({
+                            ...prev,
+                            features: removeFeature(prev.features, index),
+                          }))
+                        }
+                        disabled={isBlocked || isSubmittingForm}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
                   <button
                     type="button"
-                    className="btn-ghost px-2 text-xs text-red-500 hover:text-red-700"
+                    className="btn-ghost text-xs"
                     onClick={() =>
                       setFormState((prev: PackageFormState) => ({
                         ...prev,
-                        features: removeFeature(prev.features, index),
+                        features: addFeature(prev.features),
                       }))
                     }
                     disabled={isBlocked || isSubmittingForm}
                   >
-                    Remove
+                    + Add Feature
+                  </button>
+                </fieldset>
+
+                {/* Is Enabled */}
+                <label className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
+                  <input
+                    className="size-4 accent-emerald-500"
+                    type="checkbox"
+                    checked={formState.isEnabled}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("isEnabled", e.target.checked)}
+                    disabled={isBlocked || isSubmittingForm}
+                  />
+                  <span>Visible to users (enabled)</span>
+                </label>
+
+                {/* Bound groups */}
+                <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
+                  <legend className="px-1 text-sm font-semibold text-[var(--portal-ink)]">Bound groups</legend>
+                  <p className="text-xs text-[var(--portal-muted)]">
+                    Select the groups that should be bound to this package. Saving replaces the full group binding set.
+                  </p>
+
+                  {selectedGroups.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedGroups.map((group: AdminGroup) => (
+                        <span
+                          key={`selected-${group.id}`}
+                          className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/60 dark:bg-emerald-500/20 dark:text-emerald-300"
+                        >
+                          {group.name}
+                          <span className="ml-1 font-mono text-[10px] opacity-75">#{group.id}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--portal-muted)]">No groups selected yet.</p>
+                  )}
+
+                  {isLoadingGroups ? (
+                    <p className="text-sm text-[var(--portal-muted)]">Loading available groups...</p>
+                  ) : availableGroups.length === 0 ? (
+                    <p className="text-sm text-[var(--portal-muted)]">No available groups returned by backend.</p>
+                  ) : (
+                    <div className="grid gap-2">
+                      {availableGroups.map((group: AdminGroup) => {
+                        const isChecked = formState.groupIds.includes(group.id);
+                        const meta = [group.platform, group.subscription_type || group.type].filter(Boolean).join(" · ");
+                        return (
+                          <label
+                            key={group.id}
+                            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                              isChecked
+                                ? "border-emerald-400/45 bg-emerald-500/10 dark:border-emerald-400/60 dark:bg-emerald-500/20"
+                                : "border-[var(--portal-line)] bg-[var(--portal-clay-strong)] hover:bg-[var(--portal-clay)]"
+                            }`}
+                          >
+                            <input
+                              className="mt-1 size-4 accent-emerald-500"
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleGroupID(group.id)}
+                              disabled={isBlocked || isSubmittingForm}
+                            />
+                            <span className="grid gap-1">
+                              <span className="text-sm font-semibold text-[var(--portal-ink)]">{group.name}</span>
+                              <span className="font-mono text-xs text-[var(--portal-muted)]">#{group.id}</span>
+                              {meta ? <span className="text-xs text-[var(--portal-muted)]">{meta}</span> : null}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </fieldset>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button className="btn-primary" type="submit" disabled={isBlocked || isSubmittingForm || isLoadingGroups}>
+                    {isSubmittingForm ? "Saving..." : mode === "create" ? "Create package" : "Save changes"}
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    disabled={isSubmittingForm}
+                    onClick={() => { resetForm(); setShowDialog(false); }}
+                  >
+                    Cancel
                   </button>
                 </div>
-              ))}
-              <button
-                type="button"
-                className="btn-ghost text-xs"
-                onClick={() =>
-                  setFormState((prev: PackageFormState) => ({
-                    ...prev,
-                    features: addFeature(prev.features),
-                  }))
-                }
-                disabled={isBlocked || isSubmittingForm}
-              >
-                + Add Feature
-              </button>
-            </fieldset>
-
-            {/* Is Enabled */}
-            <label className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
-              <input
-                className="size-4 accent-emerald-500"
-                type="checkbox"
-                checked={formState.isEnabled}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("isEnabled", e.target.checked)}
-                disabled={isBlocked || isSubmittingForm}
-              />
-              <span>Visible to users (enabled)</span>
-            </label>
-
-            <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
-              <legend className="px-1 text-sm font-semibold text-[var(--portal-ink)]">Bound groups</legend>
-              <p className="text-xs text-[var(--portal-muted)]">
-                Select the groups that should be bound to this package. Saving replaces the full group binding set.
-              </p>
-
-              {selectedGroups.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {selectedGroups.map((group: AdminGroup) => (
-                    <span
-                      key={`selected-${group.id}`}
-                      className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/60 dark:bg-emerald-500/20 dark:text-emerald-300"
-                    >
-                      {group.name}
-                      <span className="ml-1 font-mono text-[10px] opacity-75">#{group.id}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--portal-muted)]">No groups selected yet.</p>
-              )}
-
-              {isLoadingGroups ? (
-                <p className="text-sm text-[var(--portal-muted)]">Loading available groups...</p>
-              ) : availableGroups.length === 0 ? (
-                <p className="text-sm text-[var(--portal-muted)]">No available groups returned by backend.</p>
-              ) : (
-                <div className="grid gap-2">
-                  {availableGroups.map((group: AdminGroup) => {
-                    const isChecked = formState.groupIds.includes(group.id);
-                    const meta = [group.platform, group.subscription_type || group.type].filter(Boolean).join(" · ");
-                    return (
-                      <label
-                        key={group.id}
-                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
-                          isChecked
-                            ? "border-emerald-400/45 bg-emerald-500/10 dark:border-emerald-400/60 dark:bg-emerald-500/20"
-                            : "border-[var(--portal-line)] bg-[var(--portal-clay-strong)] hover:bg-[var(--portal-clay)]"
-                        }`}
-                      >
-                        <input
-                          className="mt-1 size-4 accent-emerald-500"
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleGroupID(group.id)}
-                          disabled={isBlocked || isSubmittingForm}
-                        />
-                        <span className="grid gap-1">
-                          <span className="text-sm font-semibold text-[var(--portal-ink)]">{group.name}</span>
-                          <span className="font-mono text-xs text-[var(--portal-muted)]">#{group.id}</span>
-                          {meta ? <span className="text-xs text-[var(--portal-muted)]">{meta}</span> : null}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </fieldset>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-primary" type="submit" disabled={isBlocked || isSubmittingForm || isLoadingGroups}>
-                {isSubmittingForm ? "Saving..." : mode === "create" ? "Create package" : "Save changes"}
-              </button>
-              <button className="btn-ghost" type="button" disabled={isSubmittingForm} onClick={resetForm}>
-                Reset
-              </button>
-            </div>
-          </form>
+              </form>
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

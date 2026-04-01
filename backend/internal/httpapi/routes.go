@@ -21,6 +21,7 @@ import (
 	"ai-api-portal/backend/internal/apikey"
 	"ai-api-portal/backend/internal/article"
 	"ai-api-portal/backend/internal/auth"
+	"ai-api-portal/backend/internal/configcenter"
 	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/model"
@@ -35,6 +36,7 @@ type routes struct {
 	sqlDialect           string
 	apiKey               *apikey.Service
 	articleSvc           *article.Service
+	configCenterSvc      *configcenter.Service
 	fulfillmentSvc       *fulfillment.Service
 	userSvc              *user.Service
 	sub2apiAuth          *sub2apiauth.Service
@@ -493,6 +495,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		sqlDialect:           strings.TrimSpace(opts.SQLDialect),
 		apiKey:               apikey.NewService(database),
 		articleSvc:           article.NewService(database),
+		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		userSvc:              userSvc,
 		sub2apiAuth:          sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
@@ -586,6 +589,31 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("DELETE /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteArticle))))
 	mux.Handle("POST /admin/articles/{slug}/publish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPublishArticle))))
 	mux.Handle("POST /admin/articles/{slug}/unpublish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUnpublishArticle))))
+	// Admin: Config Center - Software Configs
+	mux.Handle("GET /admin/config-center/software", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListSoftwareConfigs))))
+	mux.Handle("POST /admin/config-center/software", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateSoftwareConfig))))
+	mux.Handle("GET /admin/config-center/software/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetSoftwareConfig))))
+	mux.Handle("PUT /admin/config-center/software/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateSoftwareConfig))))
+	mux.Handle("DELETE /admin/config-center/software/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteSoftwareConfig))))
+	mux.Handle("POST /admin/config-center/software/{code}/tags", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminAddTag))))
+	mux.Handle("DELETE /admin/config-center/software/{code}/tags/{tag}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminRemoveTag))))
+	mux.Handle("GET /admin/config-center/software/{code}/templates", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListTemplates))))
+	mux.Handle("POST /admin/config-center/software/{code}/templates", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateTemplate))))
+	mux.Handle("PUT /admin/config-center/templates/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateTemplate))))
+	mux.Handle("DELETE /admin/config-center/templates/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteTemplate))))
+	mux.Handle("GET /admin/config-center/global-vars", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListGlobalVars))))
+	mux.Handle("POST /admin/config-center/global-vars", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetGlobalVar))))
+	mux.Handle("DELETE /admin/config-center/global-vars/{key}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteGlobalVar))))
+
+	// User: Config Center - Default config by tag
+	mux.Handle("GET /api/v1/configs/default", authenticated(http.HandlerFunc(r.handleGetDefaultConfig)))
+	mux.Handle("POST /api/v1/configs/sync", authenticated(http.HandlerFunc(r.handleSyncConfigs)))
+	mux.Handle("GET /api/v1/configs/sync", authenticated(http.HandlerFunc(r.handlePullConfigs)))
+	mux.Handle("POST /api/v1/configs/compare", authenticated(http.HandlerFunc(r.handleCompareConfigs)))
+	mux.Handle("DELETE /api/v1/configs/sync/{uuid}", authenticated(http.HandlerFunc(r.handleDeleteSyncedConfig)))
+	mux.Handle("GET /api/v1/configs/software-list", authenticated(http.HandlerFunc(r.handleListSoftware)))
+	mux.Handle("GET /api/v1/configs/sync/status", authenticated(http.HandlerFunc(r.handleGetSyncStatus)))
+
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 }
 
