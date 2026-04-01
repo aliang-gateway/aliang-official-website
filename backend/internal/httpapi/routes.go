@@ -23,6 +23,7 @@ import (
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/configcenter"
 	"ai-api-portal/backend/internal/db"
+	"ai-api-portal/backend/internal/download"
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
@@ -37,6 +38,7 @@ type routes struct {
 	apiKey               *apikey.Service
 	articleSvc           *article.Service
 	configCenterSvc      *configcenter.Service
+	downloadSvc          *download.Service
 	fulfillmentSvc       *fulfillment.Service
 	userSvc              *user.Service
 	sub2apiAuth          *sub2apiauth.Service
@@ -496,6 +498,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		apiKey:               apikey.NewService(database),
 		articleSvc:           article.NewService(database),
 		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		userSvc:              userSvc,
 		sub2apiAuth:          sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
@@ -613,6 +616,18 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("DELETE /api/v1/configs/sync/{uuid}", authenticated(http.HandlerFunc(r.handleDeleteSyncedConfig)))
 	mux.Handle("GET /api/v1/configs/software-list", authenticated(http.HandlerFunc(r.handleListSoftware)))
 	mux.Handle("GET /api/v1/configs/sync/status", authenticated(http.HandlerFunc(r.handleGetSyncStatus)))
+
+	// Download Center: admin CRUD
+	mux.Handle("GET /admin/download-center", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListDownloads))))
+	mux.Handle("POST /admin/download-center", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateDownload))))
+	mux.Handle("GET /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetDownload))))
+	mux.Handle("PUT /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateDownload))))
+	mux.Handle("DELETE /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteDownload))))
+
+	// Download Center: public version check (no auth required)
+	mux.HandleFunc("GET /public/downloads/check", r.handlePublicVersionCheck)
+
+
 
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 }

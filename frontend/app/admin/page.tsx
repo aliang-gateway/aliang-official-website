@@ -22,6 +22,7 @@ const quickLinks = [
   { href: "/admin/payments", icon: "receipt_long", label: "Payments", desc: "View payment records & transactions" },
   { href: "/admin/articles", icon: "article", label: "Articles", desc: "Create & publish MDX articles" },
   { href: "/admin/config-center", icon: "settings", label: "Config Center", desc: "Software configs, templates & global vars" },
+  { href: "/admin/download-center", icon: "cloud_download", label: "Downloads", desc: "Manage software downloads & version control" },
 ];
 
 export default function AdminPage() {

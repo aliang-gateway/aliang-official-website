@@ -10,6 +10,7 @@ const adminNavItems = [
   { href: "/admin/payments", label: "Payments", icon: "receipt_long" },
   { href: "/admin/articles", label: "Articles", icon: "article" },
   { href: "/admin/config-center", label: "Config Center", icon: "settings" },
+  { href: "/admin/download-center", label: "Downloads", icon: "cloud_download" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

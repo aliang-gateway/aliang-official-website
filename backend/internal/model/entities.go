@@ -148,6 +148,19 @@ type UserSyncedConfig struct {
 	UpdatedAt time.Time
 }
 
+type Download struct {
+	ID           int64
+	SoftwareName string
+	Platform     string
+	FileType     string
+	DownloadURL  string
+	Version      string
+	ForceUpdate  bool
+	Changelog    string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type Article struct {
 	ID              int64
 	LegacyID        *int64
