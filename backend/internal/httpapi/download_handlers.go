@@ -12,7 +12,6 @@ import (
 	"ai-api-portal/backend/internal/model"
 )
 
-// downloadResponse is the response DTO for download CRUD handlers.
 type downloadResponse struct {
 	ID           int64     `json:"id"`
 	SoftwareName string    `json:"software_name"`
@@ -21,9 +20,26 @@ type downloadResponse struct {
 	DownloadURL  string    `json:"download_url"`
 	Version      string    `json:"version"`
 	ForceUpdate  bool      `json:"force_update"`
-	Changelog    string    `json:"changelog"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Changelog   string    `json:"changelog"`
+	IsDefault    bool      `json:"is_default"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func downloadToResponse(d *model.Download) downloadResponse {
+	return downloadResponse{
+		ID:           d.ID,
+		SoftwareName: d.SoftwareName,
+		Platform:     d.Platform,
+		FileType:     d.FileType,
+		DownloadURL:  d.DownloadURL,
+		Version:      d.Version,
+		ForceUpdate:  d.ForceUpdate,
+		Changelog:    d.Changelog,
+		IsDefault:    d.IsDefault,
+		CreatedAt:    d.CreatedAt,
+		UpdatedAt:    d.UpdatedAt,
+	}
 }
 
 func (r *routes) handleAdminListDownloads(w http.ResponseWriter, req *http.Request) {
@@ -34,19 +50,8 @@ func (r *routes) handleAdminListDownloads(w http.ResponseWriter, req *http.Reque
 	}
 
 	result := make([]downloadResponse, 0, len(downloads))
-	for _, d := range downloads {
-		result = append(result, downloadResponse{
-			ID:           d.ID,
-			SoftwareName: d.SoftwareName,
-			Platform:     d.Platform,
-			FileType:     d.FileType,
-			DownloadURL:  d.DownloadURL,
-			Version:      d.Version,
-			ForceUpdate:  d.ForceUpdate,
-			Changelog:    d.Changelog,
-			CreatedAt:    d.CreatedAt,
-			UpdatedAt:    d.UpdatedAt,
-		})
+	for i := range downloads {
+		result = append(result, downloadToResponse(&downloads[i]))
 	}
 	if result == nil {
 		result = []downloadResponse{}
@@ -62,6 +67,7 @@ type createDownloadRequest struct {
 	Version      string `json:"version"`
 	ForceUpdate  bool   `json:"force_update"`
 	Changelog    string `json:"changelog"`
+	IsDefault    bool   `json:"is_default"`
 }
 
 func (r *routes) handleAdminCreateDownload(w http.ResponseWriter, req *http.Request) {
@@ -79,6 +85,7 @@ func (r *routes) handleAdminCreateDownload(w http.ResponseWriter, req *http.Requ
 		Version:      payload.Version,
 		ForceUpdate:  payload.ForceUpdate,
 		Changelog:    payload.Changelog,
+		IsDefault:    payload.IsDefault,
 	}
 
 	if err := r.downloadSvc.CreateDownload(req.Context(), d); err != nil {
@@ -90,18 +97,7 @@ func (r *routes) handleAdminCreateDownload(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, downloadResponse{
-		ID:           d.ID,
-		SoftwareName: d.SoftwareName,
-		Platform:     d.Platform,
-		FileType:     d.FileType,
-		DownloadURL:  d.DownloadURL,
-		Version:      d.Version,
-		ForceUpdate:  d.ForceUpdate,
-		Changelog:    d.Changelog,
-		CreatedAt:    d.CreatedAt,
-		UpdatedAt:    d.UpdatedAt,
-	})
+	writeJSON(w, http.StatusCreated, downloadToResponse(d))
 }
 
 func (r *routes) handleAdminGetDownload(w http.ResponseWriter, req *http.Request) {
@@ -122,18 +118,7 @@ func (r *routes) handleAdminGetDownload(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	writeJSON(w, http.StatusOK, downloadResponse{
-		ID:           d.ID,
-		SoftwareName: d.SoftwareName,
-		Platform:     d.Platform,
-		FileType:     d.FileType,
-		DownloadURL:  d.DownloadURL,
-		Version:      d.Version,
-		ForceUpdate:  d.ForceUpdate,
-		Changelog:    d.Changelog,
-		CreatedAt:    d.CreatedAt,
-		UpdatedAt:    d.UpdatedAt,
-	})
+	writeJSON(w, http.StatusOK, downloadToResponse(d))
 }
 
 type updateDownloadRequest struct {
@@ -144,6 +129,7 @@ type updateDownloadRequest struct {
 	Version      string `json:"version"`
 	ForceUpdate  bool   `json:"force_update"`
 	Changelog    string `json:"changelog"`
+	IsDefault    bool   `json:"is_default"`
 }
 
 func (r *routes) handleAdminUpdateDownload(w http.ResponseWriter, req *http.Request) {
@@ -168,6 +154,7 @@ func (r *routes) handleAdminUpdateDownload(w http.ResponseWriter, req *http.Requ
 		Version:      payload.Version,
 		ForceUpdate:  payload.ForceUpdate,
 		Changelog:    payload.Changelog,
+		IsDefault:    payload.IsDefault,
 	}
 
 	if err := r.downloadSvc.UpdateDownload(req.Context(), id, d); err != nil {
@@ -184,17 +171,7 @@ func (r *routes) handleAdminUpdateDownload(w http.ResponseWriter, req *http.Requ
 	}
 
 	d.ID = id
-	writeJSON(w, http.StatusOK, downloadResponse{
-		ID:           d.ID,
-		SoftwareName: d.SoftwareName,
-		Platform:     d.Platform,
-		FileType:     d.FileType,
-		DownloadURL:  d.DownloadURL,
-		Version:      d.Version,
-		ForceUpdate:  d.ForceUpdate,
-		Changelog:    d.Changelog,
-		UpdatedAt:    d.UpdatedAt,
-	})
+	writeJSON(w, http.StatusOK, downloadToResponse(d))
 }
 
 func (r *routes) handleAdminDeleteDownload(w http.ResponseWriter, req *http.Request) {
@@ -237,4 +214,23 @@ func (r *routes) handlePublicVersionCheck(w http.ResponseWriter, req *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (r *routes) handlePublicListDownloads(w http.ResponseWriter, req *http.Request) {
+	platform := strings.TrimSpace(req.URL.Query().Get("platform"))
+
+	downloads, err := r.downloadSvc.ListPublicDownloads(req.Context(), platform)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list downloads")
+		return
+	}
+
+	result := make([]downloadResponse, 0, len(downloads))
+	for i := range downloads {
+		result = append(result, downloadToResponse(&downloads[i]))
+	}
+	if result == nil {
+		result = []downloadResponse{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"downloads": result})
 }

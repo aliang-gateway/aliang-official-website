@@ -157,6 +157,7 @@ type Download struct {
 	Version      string
 	ForceUpdate  bool
 	Changelog    string
+	IsDefault    bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

@@ -626,6 +626,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 
 	// Download Center: public version check (no auth required)
 	mux.HandleFunc("GET /public/downloads/check", r.handlePublicVersionCheck)
+	mux.HandleFunc("GET /public/downloads", r.handlePublicListDownloads)
 
 
 

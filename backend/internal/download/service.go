@@ -25,7 +25,7 @@ func NewService(database *sql.DB, sqlDialect string) *Service {
 }
 
 var (
-	ErrNotFound      = errors.New("not found")
+	ErrNotFound       = errors.New("not found")
 	ErrInvalidVersion = errors.New("invalid version format, expected vMAJOR.MINOR.PATCH with single digits")
 )
 
@@ -33,6 +33,12 @@ var versionPattern = regexp.MustCompile(`^v(\d)\.(\d)\.(\d)$`)
 
 func (s *Service) rebind(q string) string {
 	return db.Rebind(s.sqlDialect, q)
+}
+
+const downloadColumns = `id, software_name, platform, file_type, download_url, version, force_update, changelog, is_default, created_at, updated_at`
+
+func scanDownload(scanner interface{ Scan(...any) error }, d *model.Download) error {
+	return scanner.Scan(&d.ID, &d.SoftwareName, &d.Platform, &d.FileType, &d.DownloadURL, &d.Version, &d.ForceUpdate, &d.Changelog, &d.IsDefault, &d.CreatedAt, &d.UpdatedAt)
 }
 
 // --------------- Download CRUD ---------------
@@ -51,12 +57,18 @@ func (s *Service) CreateDownload(ctx context.Context, d *model.Download) error {
 		return ErrInvalidVersion
 	}
 
+	if d.IsDefault {
+		if err := s.clearDefaultForSiblings(ctx, d.SoftwareName, d.Platform, 0); err != nil {
+			return fmt.Errorf("clear sibling defaults: %w", err)
+		}
+	}
+
 	now := time.Now().UTC()
 	id, err := db.InsertID(ctx, s.sqlDialect, s.db, `
-		INSERT INTO als_downloads (software_name, platform, file_type, download_url, version, force_update, changelog, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO als_downloads (software_name, platform, file_type, download_url, version, force_update, changelog, is_default, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"id",
-		d.SoftwareName, d.Platform, d.FileType, d.DownloadURL, d.Version, d.ForceUpdate, d.Changelog, now, now,
+		d.SoftwareName, d.Platform, d.FileType, d.DownloadURL, d.Version, d.ForceUpdate, d.Changelog, d.IsDefault, now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("insert download: %w", err)
@@ -69,10 +81,10 @@ func (s *Service) CreateDownload(ctx context.Context, d *model.Download) error {
 
 func (s *Service) GetDownload(ctx context.Context, id int64) (*model.Download, error) {
 	var d model.Download
-	err := s.db.QueryRowContext(ctx, s.rebind(`
-		SELECT id, software_name, platform, file_type, download_url, version, force_update, changelog, created_at, updated_at
-		FROM als_downloads WHERE id = ?`), id,
-	).Scan(&d.ID, &d.SoftwareName, &d.Platform, &d.FileType, &d.DownloadURL, &d.Version, &d.ForceUpdate, &d.Changelog, &d.CreatedAt, &d.UpdatedAt)
+	err := scanDownload(s.db.QueryRowContext(ctx, s.rebind(
+		`SELECT `+downloadColumns+` FROM als_downloads WHERE id = ?`), id),
+		&d,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -93,12 +105,18 @@ func (s *Service) UpdateDownload(ctx context.Context, id int64, d *model.Downloa
 		return ErrInvalidVersion
 	}
 
+	if d.IsDefault {
+		if err := s.clearDefaultForSiblings(ctx, d.SoftwareName, d.Platform, id); err != nil {
+			return fmt.Errorf("clear sibling defaults: %w", err)
+		}
+	}
+
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, s.rebind(`
 		UPDATE als_downloads
-		SET software_name = ?, platform = ?, file_type = ?, download_url = ?, version = ?, force_update = ?, changelog = ?, updated_at = ?
+		SET software_name = ?, platform = ?, file_type = ?, download_url = ?, version = ?, force_update = ?, changelog = ?, is_default = ?, updated_at = ?
 		WHERE id = ?`),
-		d.SoftwareName, d.Platform, d.FileType, d.DownloadURL, d.Version, d.ForceUpdate, d.Changelog, now, id,
+		d.SoftwareName, d.Platform, d.FileType, d.DownloadURL, d.Version, d.ForceUpdate, d.Changelog, d.IsDefault, now, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update download: %w", err)
@@ -124,9 +142,8 @@ func (s *Service) DeleteDownload(ctx context.Context, id int64) error {
 }
 
 func (s *Service) ListDownloads(ctx context.Context) ([]model.Download, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, software_name, platform, file_type, download_url, version, force_update, changelog, created_at, updated_at
-		FROM als_downloads ORDER BY created_at DESC`)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+downloadColumns+` FROM als_downloads ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("query downloads: %w", err)
 	}
@@ -135,7 +152,7 @@ func (s *Service) ListDownloads(ctx context.Context) ([]model.Download, error) {
 	var downloads []model.Download
 	for rows.Next() {
 		var d model.Download
-		if err := rows.Scan(&d.ID, &d.SoftwareName, &d.Platform, &d.FileType, &d.DownloadURL, &d.Version, &d.ForceUpdate, &d.Changelog, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := scanDownload(rows, &d); err != nil {
 			return nil, fmt.Errorf("scan download: %w", err)
 		}
 		downloads = append(downloads, d)
@@ -143,9 +160,59 @@ func (s *Service) ListDownloads(ctx context.Context) ([]model.Download, error) {
 	return downloads, rows.Err()
 }
 
+// ListPublicDownloads returns downloads filtered by platform. If platform is empty, returns all.
+func (s *Service) ListPublicDownloads(ctx context.Context, platform string) ([]model.Download, error) {
+	platform = strings.TrimSpace(platform)
+
+	var rows *sql.Rows
+	var err error
+
+	if platform != "" {
+		rows, err = s.db.QueryContext(ctx, s.rebind(
+			`SELECT `+downloadColumns+` FROM als_downloads WHERE platform = ? ORDER BY is_default DESC, created_at DESC`),
+			platform,
+		)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT `+downloadColumns+` FROM als_downloads ORDER BY platform, is_default DESC, created_at DESC`)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query public downloads: %w", err)
+	}
+	defer rows.Close()
+
+	var downloads []model.Download
+	for rows.Next() {
+		var d model.Download
+		if err := scanDownload(rows, &d); err != nil {
+			return nil, fmt.Errorf("scan download: %w", err)
+		}
+		downloads = append(downloads, d)
+	}
+	return downloads, rows.Err()
+}
+
+// clearDefaultForSiblings sets is_default=false for all downloads matching the same
+// software_name and platform, excluding the given excludeID (0 means exclude none).
+func (s *Service) clearDefaultForSiblings(ctx context.Context, softwareName, platform string, excludeID int64) error {
+	if excludeID > 0 {
+		_, err := s.db.ExecContext(ctx, s.rebind(`
+			UPDATE als_downloads SET is_default = false, updated_at = ?
+			WHERE software_name = ? AND platform = ? AND id != ? AND is_default = true`),
+			time.Now().UTC(), softwareName, platform, excludeID,
+		)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, s.rebind(`
+		UPDATE als_downloads SET is_default = false, updated_at = ?
+		WHERE software_name = ? AND platform = ? AND is_default = true`),
+		time.Now().UTC(), softwareName, platform,
+	)
+	return err
+}
+
 // --------------- Version Check ---------------
 
-// parseVersion parses "vMAJOR.MINOR.PATCH" into three integers.
 func parseVersion(v string) (major, minor, patch int, ok bool) {
 	m := versionPattern.FindStringSubmatch(v)
 	if m == nil {
@@ -157,7 +224,6 @@ func parseVersion(v string) (major, minor, patch int, ok bool) {
 	return major, minor, patch, true
 }
 
-// compareVersions returns -1 if a < b, 0 if equal, 1 if a > b.
 func compareVersions(aMajor, aMinor, aPatch, bMajor, bMinor, bPatch int) int {
 	if aMajor != bMajor {
 		if aMajor < bMajor {
@@ -192,8 +258,6 @@ type CheckResult struct {
 	Changelog    string `json:"changelog,omitempty"`
 }
 
-// CheckVersion finds the latest download for the given platform and software,
-// compares versions, and returns whether the user needs to update.
 func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, userVersion string) (*CheckResult, error) {
 	platform = strings.TrimSpace(platform)
 	softwareName = strings.TrimSpace(softwareName)
@@ -208,10 +272,7 @@ func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, user
 		return nil, ErrInvalidVersion
 	}
 
-	// Query all downloads for this platform (and optionally software_name)
-	query := `
-		SELECT id, software_name, platform, file_type, download_url, version, force_update, changelog, created_at, updated_at
-		FROM als_downloads WHERE platform = ?`
+	query := `SELECT ` + downloadColumns + ` FROM als_downloads WHERE platform = ?`
 	args := []any{platform}
 
 	if softwareName != "" {
@@ -228,7 +289,7 @@ func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, user
 	var candidates []model.Download
 	for rows.Next() {
 		var d model.Download
-		if err := rows.Scan(&d.ID, &d.SoftwareName, &d.Platform, &d.FileType, &d.DownloadURL, &d.Version, &d.ForceUpdate, &d.Changelog, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := scanDownload(rows, &d); err != nil {
 			return nil, fmt.Errorf("scan download: %w", err)
 		}
 		candidates = append(candidates, d)
@@ -241,7 +302,6 @@ func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, user
 		return nil, ErrNotFound
 	}
 
-	// Sort by version descending to find the latest
 	sort.Slice(candidates, func(i, j int) bool {
 		iMaj, iMin, iPat, _ := parseVersion(candidates[i].Version)
 		jMaj, jMin, jPat, _ := parseVersion(candidates[j].Version)
@@ -268,7 +328,6 @@ func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, user
 	}, nil
 }
 
-// ListPlatforms returns all distinct platforms that have downloads.
 func (s *Service) ListPlatforms(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT platform FROM als_downloads ORDER BY platform`)
 	if err != nil {
@@ -287,7 +346,6 @@ func (s *Service) ListPlatforms(ctx context.Context) ([]string, error) {
 	return platforms, rows.Err()
 }
 
-// ListSoftwareNames returns all distinct software names that have downloads.
 func (s *Service) ListSoftwareNames(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT software_name FROM als_downloads ORDER BY software_name`)
 	if err != nil {

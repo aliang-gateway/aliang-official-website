@@ -6,29 +6,39 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
-const platforms = [
-  {
+type DownloadItem = {
+  id: number;
+  software_name: string;
+  platform: string;
+  file_type: string;
+  download_url: string;
+  version: string;
+  force_update: boolean;
+  changelog: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const platformMeta: Record<string, { name: string; icon: string; description: string }> = {
+  darwin: {
     name: "macOS",
     icon: "laptop_mac",
     description: "Compatible with Apple Silicon (M1/M2/M3) and Intel processors.",
-    downloadExt: ".dmg",
-    version: "v2.4.0",
   },
-  {
+  windows: {
     name: "Windows",
     icon: "window",
     description: "Support for Windows 10 & 11. Available in EXE and MSI installers.",
-    downloadExt: ".exe",
-    version: "v2.4.0",
   },
-  {
+  linux: {
     name: "Linux",
     icon: "terminal",
     description: "Universal support via DEB, RPM, and portable AppImage formats.",
-    downloadExt: ".deb",
-    version: "v2.4.0",
   },
-];
+};
+
+const platformOrder = ["darwin", "windows", "linux"];
 
 function PlatformIcon({ name }: { name: string }) {
   if (name === "laptop_mac") {
@@ -78,6 +88,85 @@ function formatPrice(priceMicros: number): string {
   return (priceMicros / 1000000).toFixed(priceMicros % 1000000 === 0 ? 0 : 2);
 }
 
+function DownloadButton({ items }: { items: DownloadItem[] }) {
+  const [open, setOpen] = useState(false);
+
+  if (items.length === 0) return null;
+
+  const primary = items.find((d) => d.is_default) ?? items[0];
+  const rest = items.filter((d) => d.id !== primary.id);
+
+  const handleDownload = (url: string) => {
+    window.open(url, "_blank", "noopener");
+    setOpen(false);
+  };
+
+  if (rest.length === 0) {
+    return (
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => handleDownload(primary.download_url)}
+          className="w-full rounded-lg bg-[var(--stitch-text)] py-2 font-medium text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80"
+        >
+          Download .{primary.file_type}
+        </button>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
+          Latest: {primary.version}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-0.5">
+        <button
+          type="button"
+          onClick={() => handleDownload(primary.download_url)}
+          className="flex-1 rounded-l-lg bg-[var(--stitch-text)] py-2 font-medium text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80"
+        >
+          .{primary.file_type} &middot; {primary.version}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="rounded-r-lg border-l border-[var(--stitch-bg)]/30 bg-[var(--stitch-text)] px-3 py-2 text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80"
+          aria-expanded={open}
+          aria-haspopup="true"
+        >
+          <MaterialIcon name="arrow_drop_down" size={18} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] shadow-lg">
+          {rest.map((dl) => (
+            <button
+              key={dl.id}
+              type="button"
+              onClick={() => handleDownload(dl.download_url)}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--stitch-bg)] last:rounded-b-lg first:rounded-t-lg"
+            >
+              <span className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase" style={{ backgroundColor: "var(--stitch-primary)", color: "white" }}>
+                  {dl.file_type}
+                </span>
+                <span className="font-mono text-xs text-[var(--stitch-text-muted)]">{dl.version}</span>
+              </span>
+              <MaterialIcon name="download" size={14} className="text-[var(--stitch-text-muted)]" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
+        Latest: {primary.version}
+      </p>
+    </div>
+  );
+}
+
 export default function ServicesPage() {
   const router = useRouter();
   const [packages, setPackages] = useState<DynamicPackage[]>([]);
@@ -85,6 +174,9 @@ export default function ServicesPage() {
   const [sessionToken, setSessionToken] = useState("");
   const [checkoutPendingCode, setCheckoutPendingCode] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [downloadsLoading, setDownloadsLoading] = useState(true);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem("session_token") ?? "");
@@ -101,12 +193,32 @@ export default function ServicesPage() {
           setPackages(data.packages);
         }
       } catch {
-        // silent — falls back to empty state
+        // silent
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     }
     void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDownloads() {
+      try {
+        const res = await fetch("/api/public/downloads");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.downloads)) {
+          setDownloads(data.downloads);
+        }
+      } catch {
+        // silent
+      } finally {
+        if (!cancelled) setDownloadsLoading(false);
+      }
+    }
+    void loadDownloads();
     return () => { cancelled = true; };
   }, []);
 
@@ -119,7 +231,7 @@ export default function ServicesPage() {
     }
 
     if (!sessionToken) {
-      router.push(`/login?next=${encodeURIComponent(`/services?package=${pkg.code}`)}`);
+      router.push("/login?next=" + encodeURIComponent("/services?package=" + pkg.code));
       return;
     }
 
@@ -131,7 +243,7 @@ export default function ServicesPage() {
         headers: {
           "content-type": "application/json",
           accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: "Bearer " + sessionToken,
         },
         body: JSON.stringify({ tier_code: pkg.code }),
       });
@@ -153,18 +265,34 @@ export default function ServicesPage() {
     }
   };
 
+  // Group downloads by platform
+  const grouped = new Map<string, DownloadItem[]>();
+  for (const dl of downloads) {
+    const existing = grouped.get(dl.platform) ?? [];
+    existing.push(dl);
+    grouped.set(dl.platform, existing);
+  }
+
+  // Use platformOrder to render in consistent order
+  const platformsToShow = platformOrder.filter((p) => grouped.has(p));
+
+  // Find latest version across all downloads for hero badge
+  const latestVersion = downloads.length > 0 ? downloads[0].version : null;
+
   return (
     <>
       <section className="relative overflow-hidden py-20 px-6">
         <div className="mx-auto max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--stitch-primary)]/20 bg-[var(--stitch-primary)]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--stitch-primary)]">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--stitch-primary)] opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--stitch-primary)]"></span>
-              </span>
-              Now v2.4.0 Available
-            </div>
+            {latestVersion && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--stitch-primary)]/20 bg-[var(--stitch-primary)]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--stitch-primary)]">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--stitch-primary)] opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--stitch-primary)]"></span>
+                </span>
+                Now {latestVersion} Available
+              </div>
+            )}
             <h1 className="text-5xl font-black leading-[1.1] tracking-tight text-[var(--stitch-text)] md:text-6xl">
               Powering Your <span className="text-[var(--stitch-primary)]">AI Workflow</span> Everywhere
             </h1>
@@ -217,32 +345,40 @@ export default function ServicesPage() {
             <h2 className="mb-4 text-3xl font-black text-[var(--stitch-text)]">Choose Your Platform</h2>
             <p className="text-[var(--stitch-text-muted)]">Download the native client for your operating system</p>
           </div>
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-            {platforms.map((platform) => (
-              <div
-                key={platform.name}
-                className="group rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 text-center transition-all hover:border-[var(--stitch-primary)]"
-              >
-                <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-[var(--stitch-bg-elevated)] shadow-sm transition-all group-hover:bg-[var(--stitch-primary)] group-hover:text-white">
-                  <PlatformIcon name={platform.icon} />
-                </div>
-                <h3 className="mb-2 text-xl font-bold text-[var(--stitch-text)]">{platform.name}</h3>
-                <p className="mb-6 text-sm text-[var(--stitch-text-muted)]">{platform.description}</p>
-                <div className="space-y-2">
-                  <button type="button" className="w-full rounded-lg bg-[var(--stitch-text)] py-2 font-medium text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80">
-                    Download {platform.downloadExt}
-                  </button>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
-                    Latest: {platform.version}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+
+          {downloadsLoading ? (
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className="h-64 animate-pulse rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8" />
+              ))}
+            </div>
+          ) : platformsToShow.length === 0 ? (
+            <p className="text-center text-[var(--stitch-text-muted)]">No downloads available at this time.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+              {platformsToShow.map((platformKey) => {
+                const meta = platformMeta[platformKey];
+                const items = grouped.get(platformKey) ?? [];
+                return (
+                  <div
+                    key={platformKey}
+                    className="group rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 text-center transition-all hover:border-[var(--stitch-primary)]"
+                  >
+                    <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-[var(--stitch-bg-elevated)] shadow-sm transition-all group-hover:bg-[var(--stitch-primary)] group-hover:text-white">
+                      <PlatformIcon name={meta.icon} />
+                    </div>
+                    <h3 className="mb-2 text-xl font-bold text-[var(--stitch-text)]">{meta.name}</h3>
+                    <p className="mb-6 text-sm text-[var(--stitch-text-muted)]">{meta.description}</p>
+                    <DownloadButton items={items} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Pricing Plans — Dynamic */}
+      {/* Pricing Plans */}
       <section className="bg-[var(--stitch-bg)] py-24 px-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
@@ -270,7 +406,7 @@ export default function ServicesPage() {
                       {pkg.name}
                     </h3>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
+                      <span className="text-4xl font-black text-[var(--stitch-text)]">{"\u00A5"}{formatPrice(pkg.price_micros)}</span>
                       {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
                     </div>
                     {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}

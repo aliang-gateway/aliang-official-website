@@ -13,6 +13,7 @@ type Download = {
   version: string;
   force_update: boolean;
   changelog: string;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -45,6 +46,7 @@ export default function DownloadCenterPage() {
   const [downloadUrl, setDownloadUrl] = useState("");
   const [version, setVersion] = useState("v1.0.0");
   const [forceUpdate, setForceUpdate] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
   const [changelog, setChangelog] = useState("");
 
   const [globalSuccess, setGlobalSuccess] = useState("");
@@ -56,6 +58,7 @@ export default function DownloadCenterPage() {
     setDownloadUrl("");
     setVersion("v1.0.0");
     setForceUpdate(false);
+    setIsDefault(false);
     setChangelog("");
     setEditingId(null);
     setFormError(null);
@@ -72,7 +75,7 @@ export default function DownloadCenterPage() {
         headers: {
           "content-type": "application/json",
           accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: "Bearer " + sessionToken,
         },
         cache: "no-store",
       });
@@ -102,12 +105,12 @@ export default function DownloadCenterPage() {
 
     const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "";
     try {
-      const response = await fetch(`/api/admin/download-center/${id}`, {
+      const response = await fetch("/api/admin/download-center/" + id, {
         method: "GET",
         headers: {
           "content-type": "application/json",
           accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: "Bearer " + sessionToken,
         },
         cache: "no-store",
       });
@@ -125,6 +128,7 @@ export default function DownloadCenterPage() {
       setDownloadUrl(d.download_url);
       setVersion(d.version);
       setForceUpdate(d.force_update);
+      setIsDefault(d.is_default);
       setChangelog(d.changelog ?? "");
       setShowDialog(true);
     } catch (error) {
@@ -155,11 +159,12 @@ export default function DownloadCenterPage() {
       download_url: downloadUrl.trim(),
       version: trimmedVersion,
       force_update: forceUpdate,
+      is_default: isDefault,
       changelog: changelog.trim(),
     });
 
     try {
-      const url = editingId ? `/api/admin/download-center/${editingId}` : "/api/admin/download-center";
+      const url = editingId ? "/api/admin/download-center/" + editingId : "/api/admin/download-center";
       const method = editingId ? "PUT" : "POST";
 
       const response = await fetch(url, {
@@ -167,7 +172,7 @@ export default function DownloadCenterPage() {
         headers: {
           "content-type": "application/json",
           accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: "Bearer " + sessionToken,
         },
         body,
         cache: "no-store",
@@ -190,12 +195,12 @@ export default function DownloadCenterPage() {
   const handleDelete = async (id: number) => {
     const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "";
     try {
-      const response = await fetch(`/api/admin/download-center/${id}`, {
+      const response = await fetch("/api/admin/download-center/" + id, {
         method: "DELETE",
         headers: {
           "content-type": "application/json",
           accept: "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: "Bearer " + sessionToken,
         },
         cache: "no-store",
       });
@@ -277,6 +282,7 @@ export default function DownloadCenterPage() {
                 <th className="px-4 py-3">Platform</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Version</th>
+                <th className="px-4 py-3 text-center">Default</th>
                 <th className="px-4 py-3 text-center">Force</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -292,6 +298,13 @@ export default function DownloadCenterPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-[var(--portal-ink)]">{dl.version}</td>
+                  <td className="px-4 py-3 text-center">
+                    {dl.is_default ? (
+                      <MaterialIcon name="star" size={18} className="text-amber-500" />
+                    ) : (
+                      <span className="text-[var(--portal-muted)]">&mdash;</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     {dl.force_update ? (
                       <span className="inline-flex items-center rounded bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-700">Force</span>
@@ -396,8 +409,8 @@ export default function DownloadCenterPage() {
                     </div>
                   </div>
 
-                  {/* Version + Force Update */}
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Version + Force Update + Default */}
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-[var(--portal-muted)]">Version (vX.X.X)</label>
                       <input
@@ -416,13 +429,26 @@ export default function DownloadCenterPage() {
                           role="switch"
                           aria-checked={forceUpdate}
                           onClick={() => setForceUpdate(!forceUpdate)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${forceUpdate ? "bg-[var(--portal-accent)]" : "bg-[var(--portal-line)]"}`}
+                          className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (forceUpdate ? "bg-[var(--portal-accent)]" : "bg-[var(--portal-line)]")}
                         >
-                          <span
-                            className={`inline-block size-4 rounded-full bg-white transition-transform ${forceUpdate ? "translate-x-6" : "translate-x-1"}`}
-                          />
+                          <span className={"inline-block size-4 rounded-full bg-white transition-transform " + (forceUpdate ? "translate-x-6" : "translate-x-1")} />
                         </button>
                         <span className="text-sm text-[var(--portal-muted)]">{forceUpdate ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[var(--portal-muted)]">Default</label>
+                      <div className="flex items-center gap-3 pt-2">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isDefault}
+                          onClick={() => setIsDefault(!isDefault)}
+                          className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (isDefault ? "bg-amber-500" : "bg-[var(--portal-line)]")}
+                        >
+                          <span className={"inline-block size-4 rounded-full bg-white transition-transform " + (isDefault ? "translate-x-6" : "translate-x-1")} />
+                        </button>
+                        <span className="text-sm text-[var(--portal-muted)]">{isDefault ? "Yes" : "No"}</span>
                       </div>
                     </div>
                   </div>

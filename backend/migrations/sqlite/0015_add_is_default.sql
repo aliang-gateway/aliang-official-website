@@ -1,0 +1,1 @@
+ALTER TABLE als_downloads ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
