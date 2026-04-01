@@ -216,23 +216,23 @@ export default function BlogPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden bg-slate-900 py-16 px-6 text-slate-100 md:px-20">
+      <section className="relative overflow-hidden bg-slate-100 py-16 px-6 text-slate-900 md:px-20 dark:bg-slate-900 dark:text-slate-100">
         <div
-          className="pointer-events-none absolute inset-0 opacity-20"
+          className="pointer-events-none absolute inset-0 opacity-10 dark:opacity-20"
           style={{ backgroundImage: "radial-gradient(circle at 2px 2px, #21c45d 1px, transparent 0)", backgroundSize: "40px 40px" }}
         />
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 relative z-10">
           <div className="flex flex-col gap-6 lg:w-1/2 text-left">
             <div
               className="inline-flex w-max items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
-              style={{ backgroundColor: "rgba(33, 196, 93, 0.2)", color: "#21c45d" }}
+              style={{ backgroundColor: "rgba(33, 196, 93, 0.15)", color: "#21c45d" }}
             >
               Edition 2024.Q3
             </div>
-            <h1 className="text-4xl font-black leading-tight tracking-tighter text-white md:text-6xl">
+            <h1 className="text-4xl font-black leading-tight tracking-tighter text-slate-900 md:text-6xl dark:text-white">
               The ALiang <br /><span className="text-[var(--stitch-primary)]">Tech Radar</span>
             </h1>
-            <p className="max-w-xl text-lg font-normal leading-relaxed text-slate-400 md:text-xl">
+            <p className="max-w-xl text-lg font-normal leading-relaxed text-slate-600 md:text-xl dark:text-slate-400">
               A data-driven visualization of our strategic technology landscape: from high-performance TUN/HTTP proxies to advanced LLM Routing strategies.
             </p>
             <div className="flex flex-wrap gap-4 pt-4">
@@ -245,33 +245,33 @@ export default function BlogPage() {
               </button>
               <button
                 type="button"
-                className="flex h-12 items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-8 font-bold text-white backdrop-blur-sm transition-all hover:bg-white/20"
+                className="flex h-12 items-center gap-2 rounded-lg border border-slate-900/10 bg-white/50 px-8 font-bold text-slate-900 backdrop-blur-sm transition-all hover:bg-white/80 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
               >
                 <span>Methodology</span>
               </button>
             </div>
           </div>
-          
+
           <div className="lg:w-1/2 relative flex justify-center items-center">
             <div className="relative size-[320px] md:size-[500px] border rounded-full flex items-center justify-center" style={{ borderColor: "rgba(33, 196, 93, 0.3)" }}>
               <div className="absolute inset-0 border rounded-full scale-75" style={{ borderColor: "rgba(33, 196, 93, 0.2)" }} />
               <div className="absolute inset-0 border rounded-full scale-50" style={{ borderColor: "rgba(33, 196, 93, 0.1)" }} />
               <div className="absolute inset-0 border rounded-full scale-[0.25]" style={{ borderColor: "rgba(33, 196, 93, 0.05)" }} />
-              
+
               <div className="absolute inset-0 w-full h-full flex items-center justify-center pointer-events-auto z-10">
-                <TechRadar3D 
-                  blips={techBlips} 
+                <TechRadar3D
+                  blips={techBlips}
                   onBlipClick={(blip, buttonEl) => {
                     lastTriggerRef.current = buttonEl;
                     setSelectedBlip(blip);
-                  }} 
+                  }}
                 />
               </div>
 
               <div className="absolute h-px w-full top-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
               <div className="absolute w-px h-full left-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
-              
-              <div className="absolute bottom-0 right-0 z-10 rounded-lg border border-[var(--stitch-primary)]/50 bg-slate-900 p-4 font-mono text-sm uppercase tracking-widest text-[var(--stitch-primary)]">
+
+              <div className="absolute bottom-0 right-0 z-10 rounded-lg border border-[var(--stitch-primary)]/50 bg-white p-4 font-mono text-sm uppercase tracking-widest text-[var(--stitch-primary)] dark:bg-slate-900">
                 Active Matrix
               </div>
             </div>
