@@ -70,3 +70,15 @@ curl http://localhost:8080/healthz
 - API key endpoints:
   - `POST /api-keys` issues a new key for the authenticated user and returns plaintext key once.
   - `DELETE /api-keys/{id}` revokes a key owned by the user (admins can revoke any key).
+
+
+
+## build command
+
+```bash 
+docker build --build-arg CDN_URL="https://aliang-1305838434.cos.ap-nanjing.myqcloud.com"  -t register.liang.home/library/aliang-website-frontend:v1.0.6 --platform=linux/amd64 --push .
+
+
+docker exec -e COS_SECRET_ID="xxx" -e COS_SECRET_KEY="xxx" aliang-frontend bash /app/scripts/upload-to-cdn.sh
+
+```

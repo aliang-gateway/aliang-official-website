@@ -9,6 +9,9 @@ RUN npm ci
 FROM node:25-alpine3.22 AS builder
 WORKDIR /app
 
+ARG CDN_URL=""
+ENV NEXT_PUBLIC_CDN_URL=$CDN_URL
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -29,9 +32,14 @@ ENV NEXT_PUBLIC_API_BASE_URL=$API_BASE_URL
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
+# 安装 coscli 用于上传静态资源到腾讯云 COS
+RUN wget -O /usr/local/bin/coscli https://cosbrowser.cloud.tencent.com/software/coscli/coscli-linux-amd64 \
+    && chmod +x /usr/local/bin/coscli
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY scripts/upload-to-cdn.sh /app/scripts/upload-to-cdn.sh
 
 USER nextjs
 
