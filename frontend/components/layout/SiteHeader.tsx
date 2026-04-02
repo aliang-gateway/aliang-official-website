@@ -66,14 +66,25 @@ export function SiteHeader() {
       },
       cache: "no-store",
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          localStorage.removeItem(SESSION_TOKEN_KEY);
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
+        if (!data) return;
         const profile = data?.data ?? data;
         if (profile?.email) {
           setUser({ email: profile.email, name: profile.name ?? "", role: profile.role ?? "user" });
+        } else {
+          localStorage.removeItem(SESSION_TOKEN_KEY);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+      });
   }, [pathname]);
 
   useEffect(() => {

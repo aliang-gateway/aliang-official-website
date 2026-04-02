@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/model"
 )
 
@@ -17,7 +18,8 @@ const (
 )
 
 type Service struct {
-	db *sql.DB
+	db         *sql.DB
+	sqlDialect string
 }
 
 type ListArticlesFilters struct {
@@ -29,7 +31,16 @@ type rowScanner interface {
 }
 
 func NewService(database *sql.DB) *Service {
-	return &Service{db: database}
+	return &Service{db: database, sqlDialect: "sqlite"}
+}
+
+func NewServiceWithDialect(database *sql.DB, sqlDialect string) *Service {
+	return &Service{db: database, sqlDialect: sqlDialect}
+}
+
+// rebind converts ? placeholders to dialect-specific ($1, $2, etc. for postgres).
+func (s *Service) rebind(q string) string {
+	return db.Rebind(s.sqlDialect, q)
 }
 
 func (s *Service) CreateArticle(ctx context.Context, article *model.Article) error {
@@ -46,7 +57,7 @@ func (s *Service) CreateArticle(ctx context.Context, article *model.Article) err
 	}
 
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, s.rebind(`
 		INSERT INTO als_articles(
 			legacy_id,
 			slug,
@@ -67,7 +78,7 @@ func (s *Service) CreateArticle(ctx context.Context, article *model.Article) err
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-	`,
+	`),
 		article.LegacyID,
 		article.Slug,
 		article.Title,
@@ -123,7 +134,7 @@ func (s *Service) UpdateArticle(ctx context.Context, slug string, article *model
 	}
 
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, s.rebind(`
 		UPDATE als_articles
 		SET
 			legacy_id = ?,
@@ -142,7 +153,7 @@ func (s *Service) UpdateArticle(ctx context.Context, slug string, article *model
 			updated_by_user_id = ?,
 			updated_at = ?
 		WHERE id = ?;
-	`,
+	`),
 		article.LegacyID,
 		article.Slug,
 		article.Title,
@@ -184,7 +195,7 @@ func (s *Service) UpdateArticle(ctx context.Context, slug string, article *model
 func (s *Service) GetArticleBySlug(ctx context.Context, slug string) (*model.Article, error) {
 	var article model.Article
 	err := scanArticle(
-		s.db.QueryRowContext(ctx, `
+		s.db.QueryRowContext(ctx, s.rebind(`
 			SELECT
 				id,
 				legacy_id,
@@ -207,7 +218,7 @@ func (s *Service) GetArticleBySlug(ctx context.Context, slug string) (*model.Art
 			FROM als_articles
 			WHERE slug = ? AND status = ?
 			LIMIT 1;
-		`, strings.TrimSpace(slug), statusPublished),
+		`), strings.TrimSpace(slug), statusPublished),
 		&article,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -222,7 +233,7 @@ func (s *Service) GetArticleBySlug(ctx context.Context, slug string) (*model.Art
 func (s *Service) GetArticleByID(ctx context.Context, id int64) (*model.Article, error) {
 	var article model.Article
 	err := scanArticle(
-		s.db.QueryRowContext(ctx, `
+		s.db.QueryRowContext(ctx, s.rebind(`
 			SELECT
 				id,
 				legacy_id,
@@ -245,7 +256,7 @@ func (s *Service) GetArticleByID(ctx context.Context, id int64) (*model.Article,
 			FROM als_articles
 			WHERE id = ?
 			LIMIT 1;
-		`, id),
+		`), id),
 		&article,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -293,7 +304,7 @@ func (s *Service) ListArticles(ctx context.Context, filters ListArticlesFilters)
 
 	query += " ORDER BY created_at DESC, id DESC;"
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, s.rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query als_articles: %w", err)
 	}
@@ -321,11 +332,11 @@ func (s *Service) ListPublishedArticles(ctx context.Context) ([]model.Article, e
 
 func (s *Service) PublishArticle(ctx context.Context, slug string) error {
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, s.rebind(`
 		UPDATE als_articles
 		SET status = ?, published_at = ?, updated_at = ?
 		WHERE slug = ?;
-	`, statusPublished, now, now, strings.TrimSpace(slug))
+	`), statusPublished, now, now, strings.TrimSpace(slug))
 	if err != nil {
 		return fmt.Errorf("publish article: %w", err)
 	}
@@ -343,11 +354,11 @@ func (s *Service) PublishArticle(ctx context.Context, slug string) error {
 
 func (s *Service) UnpublishArticle(ctx context.Context, slug string) error {
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, s.rebind(`
 		UPDATE als_articles
 		SET status = ?, published_at = NULL, updated_at = ?
 		WHERE slug = ?;
-	`, statusDraft, now, strings.TrimSpace(slug))
+	`), statusDraft, now, strings.TrimSpace(slug))
 	if err != nil {
 		return fmt.Errorf("unpublish article: %w", err)
 	}
@@ -364,7 +375,7 @@ func (s *Service) UnpublishArticle(ctx context.Context, slug string) error {
 }
 
 func (s *Service) DeleteArticle(ctx context.Context, slug string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM als_articles WHERE slug = ?;`, strings.TrimSpace(slug))
+	result, err := s.db.ExecContext(ctx, s.rebind(`DELETE FROM als_articles WHERE slug = ?;`), strings.TrimSpace(slug))
 	if err != nil {
 		return fmt.Errorf("delete article: %w", err)
 	}
@@ -383,7 +394,7 @@ func (s *Service) DeleteArticle(ctx context.Context, slug string) error {
 func (s *Service) getArticleBySlugAnyStatus(ctx context.Context, slug string) (*model.Article, error) {
 	var article model.Article
 	err := scanArticle(
-		s.db.QueryRowContext(ctx, `
+		s.db.QueryRowContext(ctx, s.rebind(`
 			SELECT
 				id,
 				legacy_id,
@@ -406,7 +417,7 @@ func (s *Service) getArticleBySlugAnyStatus(ctx context.Context, slug string) (*
 			FROM als_articles
 			WHERE slug = ?
 			LIMIT 1;
-		`, slug),
+		`), slug),
 		&article,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -428,7 +439,7 @@ func (s *Service) ensureSlugUnique(ctx context.Context, slug string, exceptID *i
 	query += ` LIMIT 1;`
 
 	var existingID int64
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&existingID)
+	err := s.db.QueryRowContext(ctx, s.rebind(query), args...).Scan(&existingID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

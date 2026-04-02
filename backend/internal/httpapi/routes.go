@@ -496,7 +496,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		db:                   database,
 		sqlDialect:           strings.TrimSpace(opts.SQLDialect),
 		apiKey:               apikey.NewService(database),
-		articleSvc:           article.NewService(database),
+		articleSvc:           article.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
@@ -2808,6 +2808,7 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
 	als_articles, err := r.articleSvc.ListPublishedArticles(req.Context())
 	if err != nil {
+		log.Printf("[ERROR] handlePublicListArticles: list published articles: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
@@ -2861,6 +2862,7 @@ func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handlePublicGetArticle: get article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to get article")
 		return
 	}
@@ -2889,6 +2891,7 @@ func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request
 func (r *routes) handleAdminListArticles(w http.ResponseWriter, req *http.Request) {
 	als_articles, err := r.articleSvc.ListArticles(req.Context(), article.ListArticlesFilters{})
 	if err != nil {
+		log.Printf("[ERROR] handleAdminListArticles: list articles: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
@@ -2959,6 +2962,7 @@ func (r *routes) handleAdminCreateArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		log.Printf("[ERROR] handleAdminCreateArticle: create article %q: %v", payload.Slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to create article")
 		return
 	}
@@ -2979,6 +2983,7 @@ func (r *routes) handleAdminGetArticle(w http.ResponseWriter, req *http.Request)
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handleAdminGetArticle: find article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to get article")
 		return
 	}
@@ -3005,6 +3010,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handleAdminUpdateArticle: find article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3089,6 +3095,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		log.Printf("[ERROR] handleAdminUpdateArticle: update article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3099,6 +3106,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handleAdminUpdateArticle: get article %d after update: %v", updatedArticle.ID, err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3118,6 +3126,7 @@ func (r *routes) handleAdminDeleteArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
+		log.Printf("[ERROR] handleAdminDeleteArticle: delete article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to delete article")
 		return
 	}
@@ -3137,6 +3146,7 @@ func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Requ
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
+		log.Printf("[ERROR] handleAdminPublishArticle: publish article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to publish article")
 		return
 	}
@@ -3147,6 +3157,7 @@ func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handleAdminPublishArticle: find article %q after publish: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return
 	}
@@ -3166,6 +3177,7 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
+		log.Printf("[ERROR] handleAdminUnpublishArticle: unpublish article %q: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to unpublish article")
 		return
 	}
@@ -3176,6 +3188,7 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 		return
 	}
 	if err != nil {
+		log.Printf("[ERROR] handleAdminUnpublishArticle: find article %q after unpublish: %v", slug, err)
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return
 	}
@@ -5258,6 +5271,9 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
+	if status >= 500 {
+		log.Printf("[ERROR] HTTP %d: %s", status, message)
+	}
 	writeJSON(w, status, errorResponse{Error: message})
 }
 
