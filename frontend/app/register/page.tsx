@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
 
@@ -22,6 +23,7 @@ type VerifyEmailResponse = {
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 export default function RegisterPage() {
+  const t = useTranslations("register");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -148,14 +150,14 @@ export default function RegisterPage() {
     <section className="portal-shell py-12">
       <div className="mx-auto w-full max-w-[480px] rounded-xl border border-[var(--stitch-primary)]/10 bg-[var(--stitch-bg-elevated)] p-8 shadow-sm">
         <div className="mb-8 flex flex-col gap-2 text-center sm:text-left">
-          <h1 className="text-3xl font-black leading-tight text-[var(--stitch-text)]">Create Account</h1>
-          <p className="text-base text-[var(--stitch-text-muted)]">Join ALiang Gateway to get started</p>
+          <h1 className="text-3xl font-black leading-tight text-[var(--stitch-text)]">{t("title")}</h1>
+          <p className="text-base text-[var(--stitch-text-muted)]">{t("subtitle")}</p>
         </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-username">
-              Username
+              {t("username")}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
@@ -164,7 +166,7 @@ export default function RegisterPage() {
               <input
                 id="register-username"
                 className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
-                placeholder="Enter your username"
+                placeholder={t("usernamePlaceholder")}
                 type="text"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
@@ -175,7 +177,7 @@ export default function RegisterPage() {
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-email">
-              Email Address
+              {t("emailAddress")}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
@@ -184,7 +186,7 @@ export default function RegisterPage() {
               <input
                 id="register-email"
                 className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
-                placeholder="name@example.com"
+                placeholder={t("emailPlaceholder")}
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -195,7 +197,7 @@ export default function RegisterPage() {
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-password">
-              Password
+              {t("password")}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
@@ -204,7 +206,7 @@ export default function RegisterPage() {
               <input
                 id="register-password"
                 className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
-                placeholder="Create a password"
+                placeholder={t("passwordPlaceholder")}
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -215,7 +217,7 @@ export default function RegisterPage() {
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-[var(--stitch-text)]" htmlFor="register-confirm-password">
-              Confirm Password
+              {t("confirmPassword")}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--stitch-text-muted)]">
@@ -224,7 +226,7 @@ export default function RegisterPage() {
               <input
                 id="register-confirm-password"
                 className="h-12 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-10 pr-4 text-base text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
-                placeholder="Confirm your password"
+                placeholder={t("confirmPasswordPlaceholder")}
                 type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
@@ -242,13 +244,13 @@ export default function RegisterPage() {
               onChange={(event) => setAgreeTerms(event.target.checked)}
             />
             <label className="text-sm text-[var(--stitch-text-muted)]" htmlFor="register-terms">
-              I agree to the
+              {t("agreeTerms")}
               <a className="mx-1 text-[var(--stitch-primary)] hover:underline" href="/docs">
-                Terms and Conditions
+                {t("termsAndConditions")}
               </a>
-              and
+              {t("and")}
               <a className="ml-1 text-[var(--stitch-primary)] hover:underline" href="/docs">
-                Privacy Policy
+                {t("privacyPolicy")}
               </a>
             </label>
           </div>
@@ -261,23 +263,23 @@ export default function RegisterPage() {
             type="submit"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Creating account..." : "Create Account"}
+            {isSubmitting ? t("creatingAccount") : t("createAccountButton")}
           </button>
         </form>
 
         <p className="mt-8 text-center text-sm text-[var(--stitch-text-muted)]">
-          Already have an account?
+          {t("hasAccount")}
           <Link className="ml-1 font-bold text-[var(--stitch-primary)] hover:underline" href="/login">
-            Log in
+            {t("logIn")}
           </Link>
         </p>
 
         {requireEmailVerification !== false && pendingVerifyEmail.trim() ? (
           <form className="mt-6 flex flex-col gap-3 border-t border-[var(--stitch-border)] pt-5" onSubmit={handleVerifyEmail}>
-            <p className="text-sm font-semibold text-[var(--stitch-text)]">Email Verification</p>
+            <p className="text-sm font-semibold text-[var(--stitch-text)]">{t("emailVerification")}</p>
             <input
               className="h-11 w-full rounded border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-3 text-sm text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:outline-0 focus:ring-2 focus:ring-[var(--stitch-primary)]/50"
-              placeholder="Enter verification code"
+              placeholder={t("verificationCodePlaceholder")}
               value={verificationCode}
               onChange={(event) => setVerificationCode(event.target.value)}
             />
@@ -286,7 +288,7 @@ export default function RegisterPage() {
               type="submit"
               disabled={isVerifying}
             >
-              {isVerifying ? "Verifying..." : "Verify Email"}
+              {isVerifying ? t("verifying") : t("verifyEmail")}
             </button>
           </form>
         ) : null}

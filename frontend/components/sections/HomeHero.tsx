@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 type HomeVariant = "full" | "compact";
 
@@ -9,6 +12,7 @@ interface HomeHeroProps {
 
 export function HomeHero({ variant = "full" }: HomeHeroProps) {
   const isCompact = variant === "compact";
+  const t = useTranslations("homeHero");
 
   return (
     <section className={`mx-auto max-w-7xl px-6 md:px-20 ${isCompact ? "py-10 md:py-16" : "py-16 md:py-24"}`}>
@@ -19,18 +23,16 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--stitch-primary)] opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--stitch-primary)]"></span>
             </span>
-            99.9% Uptime Guaranteed
+            {t("badge")}
           </div>
 
           <div className={`flex flex-col ${isCompact ? "gap-3" : "gap-4"}`}>
             <h1 className={`${isCompact ? "text-4xl md:text-5xl" : "text-5xl md:text-6xl"} font-black leading-tight tracking-tight text-[var(--stitch-text)]`}>
-              Next-Gen AI Gateway for{" "}
-              <span className="text-[var(--stitch-primary)]">Unmatched Stability</span>
+              {t("title")}
+              <span className="text-[var(--stitch-primary)]">{t("titleHighlight")}</span>
             </h1>
             <p className={`max-w-xl leading-relaxed text-[var(--stitch-text-muted)] ${isCompact ? "text-base md:text-lg" : "text-lg md:text-xl"}`}>
-              {isCompact
-                ? "Experience official API support with high-performance routing. Your all-in-one bridge to leading AI models, engineered for scale."
-                : "Experience the power of official API support with high-performance routing. Your all-in-one bridge to the world&apos;s leading AI models, engineered for enterprise-scale workloads."}
+              {isCompact ? t("descriptionCompact") : t("descriptionFull")}
             </p>
           </div>
 
@@ -39,19 +41,19 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
               href="/register"
               className={`flex cursor-pointer items-center justify-center rounded-lg bg-[var(--stitch-primary)] font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-transform hover:scale-[1.02] ${isCompact ? "h-12 min-w-[140px] px-5 text-sm" : "h-14 min-w-[160px] px-6 text-base"}`}
             >
-              Get Started Free
+              {t("getStarted")}
             </Link>
             <Link
               href="/docs"
               className={`flex cursor-pointer items-center justify-center rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] font-bold text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)] ${isCompact ? "h-12 min-w-[140px] px-5 text-sm" : "h-14 min-w-[160px] px-6 text-base"}`}
             >
-              {isCompact ? "Documentation" : "View Documentation"}
+              {isCompact ? t("documentation") : t("viewDocumentation")}
             </Link>
           </div>
 
           <div className={`flex items-center ${isCompact ? "gap-4 pt-2" : "gap-6 pt-4"}`}>
-          <div className="flex -space-x-3">
-              <Image 
+            <div className="flex -space-x-3">
+              <Image
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuvpyv70_JvmcOYPve3_zTuCQQ7hOFr8xcOVUteql0Uuo4mGXQhNxuJUtQItOaK7ojcekgjXV-W2fXkLRrqGl-6dkUQDQNgT1ji8KOHdiAnSgc_exYA_LtPy4qFXpvVws642CP5F9ddOsdomb1oa149NjsMmCN3F1hIJJTK9urLkUEYns57sK81JR3dd04GuYs6hkDbH2M2h64kKKUT0P1w9MS5TwkHuRe-_7mqJhtwHpZ4k_zQ38ZqZ0J8spvxi5_8TSYaTwBqZE"
                 alt=""
                 width={isCompact ? 32 : 40}
@@ -59,7 +61,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-[var(--stitch-border)]`}
                 unoptimized
               />
-              <Image 
+              <Image
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuBf5PKY_gGJuKfBH4H76cKrzVAmx_y49u0VqMYB0RpsQDbT49cRd1bvc_6s-9dKg-j2yKOJOG8TXcfTecCVbbxXN6wsKQ3J2VwmSfaoTc9I-m_DHjaApJk-XryoG3Dr6NMi-NwWNk0Le8YZs6JwevrPf_CrfzQSSf0d7mjUixhcMbBkkk7nShtO1l0_CrWFdSy5mOwrfaWXQhEzvKPNVpoxJIE_HiOvlDTNSTi-NVxaAIZF2cKqUrXXkPi75IrszT7y6chc84GLTws"
                 alt=""
                 width={isCompact ? 32 : 40}
@@ -67,7 +69,7 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 className={`${isCompact ? "h-8 w-8" : "h-10 w-10"} rounded-full border-2 border-[var(--stitch-border)]`}
                 unoptimized
               />
-              <Image 
+              <Image
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCy7q4jWjPyyT-yOMgPnkOmunOC7S7XNdo13P58ZFCYW3g-RU5o_XuPF1jhyRsMefOqHab4hbQy9tGE6nvXxfMW1q1pcgpBIPMITjmmC6RiG_26rfh8hxUpkmj2vAijoEDYwwmY5xA_rfLall8F7C5D5TqXt1RGrRMBpg9nCEY0FpdnEXr0_Os6Aib7Eqe__x6uqyj4ZqLn9abEbvLwKI_ZmsXISrXEtPJAcvA6fn6zqrX7lhhi1pXU84OeKtomSmPmHtwKeycZhN4"
                 alt=""
                 width={isCompact ? 32 : 40}
@@ -76,8 +78,8 @@ export function HomeHero({ variant = "full" }: HomeHeroProps) {
                 unoptimized
               />
             </div>
-             <p className={`${isCompact ? "text-xs" : "text-sm"} font-medium text-[var(--stitch-text-muted)]`}>
-               {isCompact ? "Trusted by 500+ teams" : "Trusted by 500+ engineering teams"}
+            <p className={`${isCompact ? "text-xs" : "text-sm"} font-medium text-[var(--stitch-text-muted)]`}>
+              {isCompact ? t("trustedCompact") : t("trustedFull")}
             </p>
           </div>
         </div>

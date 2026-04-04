@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 type HomeVariant = "full" | "compact";
@@ -7,60 +10,41 @@ interface HomeFeaturesProps {
 }
 
 const features = [
-  {
-    icon: "verified_user",
-    title: "Official API Support",
-    description: "Direct access to Claude, OpenAI, and more with official credentials. No middleman proxies, just pure performance.",
-  },
-  {
-    icon: "shield_with_heart",
-    title: "Enterprise Stability",
-    description: "Built-in redundancy and multi-region load balancing for zero-downtime performance when your users need it most.",
-  },
-  {
-    icon: "analytics",
-    title: "Rich Feature Set",
-    description: "Advanced prompt management, real-time rate limiting, and granular cost tracking out of the box.",
-  },
-];
+  { icon: "verified_user", titleKey: "feature1Title", descriptionKey: "feature1Description" },
+  { icon: "shield_with_heart", titleKey: "feature2Title", descriptionKey: "feature2Description" },
+  { icon: "analytics", titleKey: "feature3Title", descriptionKey: "feature3Description" },
+] as const;
 
 export function HomeFeatures({ variant = "full" }: HomeFeaturesProps) {
   const isCompact = variant === "compact";
+  const t = useTranslations("homeFeatures");
 
   return (
     <section id="features" className={`bg-[var(--stitch-bg-elevated)] ${isCompact ? "py-12" : "py-20"}`}>
       <div className="mx-auto max-w-7xl px-6 md:px-20">
-        <div className={`mx-auto max-w-3xl text-center ${isCompact ? "mb-10 space-y-2" : "mb-16 space-y-4"}`}>
+        <div className={`mb-12 text-center ${isCompact ? "space-y-2" : "space-y-4"}`}>
           <h2 className={`${isCompact ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"} font-bold tracking-tight text-[var(--stitch-text)]`}>
-            Engineered for Excellence
+            {t("title")}
           </h2>
-          <p className={`${isCompact ? "text-base" : "text-lg"} text-[var(--stitch-text-muted)]`}>
-            {isCompact
-              ? "Military-grade security and official API integrations."
-              : "Built to handle enterprise-level workloads with military-grade security and official API integrations."}
+          <p className={`mx-auto max-w-2xl text-[var(--stitch-text-muted)] ${isCompact ? "text-sm" : "text-lg"}`}>
+            {isCompact ? t("subtitleCompact") : t("subtitleFull")}
           </p>
         </div>
-        <div className={`grid grid-cols-1 md:grid-cols-3 ${isCompact ? "gap-6" : "gap-8"}`}>
+
+        <div className={`grid grid-cols-1 gap-8 md:grid-cols-3 ${isCompact ? "md:gap-6" : "md:gap-8"}`}>
           {features.map((feature) => (
             <div
-              key={feature.title}
-              className={`group rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] shadow-sm transition-all hover:border-[var(--stitch-primary)]/50 ${isCompact ? "p-6" : "p-8 hover:shadow-md"}`}
+              key={feature.titleKey}
+              className={`flex flex-col rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] transition-transform hover:-translate-y-1 ${isCompact ? "gap-3 p-6" : "gap-4 p-8"}`}
             >
-              <div className={`flex items-center justify-center rounded-lg bg-[var(--stitch-primary)]/10 text-[var(--stitch-primary)] transition-transform group-hover:scale-110 ${isCompact ? "mb-4 size-10" : "mb-6 size-12"}`}>
-                <MaterialIcon name={feature.icon} size={isCompact ? 20 : 24} />
+              <div className={`flex items-center justify-center rounded-lg bg-[var(--stitch-primary)]/10 ${isCompact ? "size-10" : "size-12"}`}>
+                <MaterialIcon name={feature.icon} size={isCompact ? 20 : 24} className="text-[var(--stitch-primary)]" />
               </div>
-              <h3 className={`${isCompact ? "mb-2 text-lg" : "mb-3 text-xl"} font-bold text-[var(--stitch-text)]`}>
-                {feature.title}
+              <h3 className={`${isCompact ? "text-base" : "text-lg"} font-bold text-[var(--stitch-text)]`}>
+                {t(feature.titleKey)}
               </h3>
-              <p className={`${isCompact ? "text-sm" : ""} leading-relaxed text-[var(--stitch-text-muted)]`}>
-                 {isCompact
-                   ? feature.description
-                       .replace(" No middleman proxies, just pure performance.", "")
-                       .replace(" performance when your users need it most.", ".")
-                       .replace(" real-time ", " ")
-                       .replace(" granular ", " ")
-                       .replace(" out of the box", "")
-                   : feature.description}
+              <p className={`leading-relaxed text-[var(--stitch-text-muted)] ${isCompact ? "text-sm" : "text-base"}`}>
+                {t(feature.descriptionKey)}
               </p>
             </div>
           ))}

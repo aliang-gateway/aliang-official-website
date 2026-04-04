@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { useTranslations } from "next-intl";
 
 type DownloadItem = {
   id: number;
@@ -88,7 +89,7 @@ function formatPrice(priceMicros: number): string {
   return (priceMicros / 1000000).toFixed(priceMicros % 1000000 === 0 ? 0 : 2);
 }
 
-function DownloadButton({ items }: { items: DownloadItem[] }) {
+function DownloadButton({ items, t }: { items: DownloadItem[]; t: ReturnType<typeof useTranslations> }) {
   const [open, setOpen] = useState(false);
 
   if (items.length === 0) return null;
@@ -112,7 +113,7 @@ function DownloadButton({ items }: { items: DownloadItem[] }) {
           Download .{primary.file_type}
         </button>
         <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
-          Latest: {primary.version}
+          {t("latest", { version: primary.version })}
         </p>
       </div>
     );
@@ -161,7 +162,7 @@ function DownloadButton({ items }: { items: DownloadItem[] }) {
       )}
 
       <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--stitch-text-muted)]">
-        Latest: {primary.version}
+        {t("latest", { version: primary.version })}
       </p>
     </div>
   );
@@ -169,6 +170,7 @@ function DownloadButton({ items }: { items: DownloadItem[] }) {
 
 export default function ServicesPage() {
   const router = useRouter();
+  const t = useTranslations("services");
   const [packages, setPackages] = useState<DynamicPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionToken, setSessionToken] = useState("");
@@ -290,27 +292,27 @@ export default function ServicesPage() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--stitch-primary)] opacity-75"></span>
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--stitch-primary)]"></span>
                 </span>
-                Now {latestVersion} Available
+                {t("nowAvailable", { version: latestVersion })}
               </div>
             )}
             <h1 className="text-5xl font-black leading-[1.1] tracking-tight text-[var(--stitch-text)] md:text-6xl">
               Powering Your <span className="text-[var(--stitch-primary)]">AI Workflow</span> Everywhere
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-[var(--stitch-text-muted)]">
-              Experience seamless multi-platform availability with ALiang Gateway. High-performance connectivity for your AI models, wherever you are. Unified, secure, and blazingly fast.
+              {t("description")}
             </p>
             <div className="flex flex-wrap gap-4">
               <Link
                 href="/register"
                 className="rounded-xl bg-[var(--stitch-primary)] px-8 py-4 text-lg font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-all hover:-translate-y-0.5"
               >
-                Get Started Free
+                {t("getStartedFree")}
               </Link>
               <Link
                 href="/docs"
                 className="rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-8 py-4 text-lg font-bold text-[var(--stitch-text)] transition-all hover:bg-[var(--stitch-bg)]/80"
               >
-                View Documentation
+                {t("viewDocumentation")}
               </Link>
             </div>
           </div>
@@ -330,7 +332,7 @@ export default function ServicesPage() {
                   <MaterialIcon name="speed" size={24} />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase text-[var(--stitch-text-muted)]">Average Latency</p>
+                  <p className="text-xs font-bold uppercase text-[var(--stitch-text-muted)]">{t("averageLatency")}</p>
                   <p className="text-2xl font-black text-[var(--stitch-text)]">&lt; 15ms</p>
                 </div>
               </div>
@@ -342,8 +344,8 @@ export default function ServicesPage() {
       <section className="bg-[var(--stitch-bg-elevated)] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <div className="mb-16 text-center">
-            <h2 className="mb-4 text-3xl font-black text-[var(--stitch-text)]">Choose Your Platform</h2>
-            <p className="text-[var(--stitch-text-muted)]">Download the native client for your operating system</p>
+            <h2 className="mb-4 text-3xl font-black text-[var(--stitch-text)]">{t("choosePlatform")}</h2>
+            <p className="text-[var(--stitch-text-muted)]">{t("choosePlatformSubtitle")}</p>
           </div>
 
           {downloadsLoading ? (
@@ -353,7 +355,7 @@ export default function ServicesPage() {
               ))}
             </div>
           ) : platformsToShow.length === 0 ? (
-            <p className="text-center text-[var(--stitch-text-muted)]">No downloads available at this time.</p>
+            <p className="text-center text-[var(--stitch-text-muted)]">{t("noDownloads")}</p>
           ) : (
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
               {platformsToShow.map((platformKey) => {
@@ -369,7 +371,7 @@ export default function ServicesPage() {
                     </div>
                     <h3 className="mb-2 text-xl font-bold text-[var(--stitch-text)]">{meta.name}</h3>
                     <p className="mb-6 text-sm text-[var(--stitch-text-muted)]">{meta.description}</p>
-                    <DownloadButton items={items} />
+                    <DownloadButton items={items} t={t} />
                   </div>
                 );
               })}
@@ -382,8 +384,8 @@ export default function ServicesPage() {
       <section className="bg-[var(--stitch-bg)] py-24 px-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
-            <h2 className="mb-4 text-4xl font-black text-[var(--stitch-text)]">Flexible Service Plans</h2>
-            <p className="text-[var(--stitch-text-muted)]">Scalable solutions for developers, researchers, and enterprises</p>
+            <h2 className="mb-4 text-4xl font-black text-[var(--stitch-text)]">{t("flexiblePlans")}</h2>
+            <p className="text-[var(--stitch-text-muted)]">{t("flexiblePlansSubtitle")}</p>
             {checkoutError ? (
               <p className="mx-auto mt-4 max-w-2xl rounded-xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:border-red-400/45 dark:text-red-300">
                 {checkoutError}
@@ -391,9 +393,9 @@ export default function ServicesPage() {
             ) : null}
           </div>
           {isLoading ? (
-            <p className="text-center text-[var(--stitch-text-muted)]">Loading plans...</p>
+            <p className="text-center text-[var(--stitch-text-muted)]">{t("loadingPlans")}</p>
           ) : packages.length === 0 ? (
-            <p className="text-center text-[var(--stitch-text-muted)]">No plans available at this time.</p>
+            <p className="text-center text-[var(--stitch-text-muted)]">{t("noPlans")}</p>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
               {packages.map((pkg) => (
@@ -426,10 +428,10 @@ export default function ServicesPage() {
                     disabled={checkoutPendingCode === pkg.code}
                   >
                     {checkoutPendingCode === pkg.code
-                      ? "Redirecting..."
+                      ? t("redirecting")
                       : pkg.price_micros > 0
-                        ? "Buy with Stripe"
-                        : "Open Dashboard"}
+                        ? t("buyWithStripe")
+                        : t("openDashboard")}
                   </button>
                 </div>
               ))}

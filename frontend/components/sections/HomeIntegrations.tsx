@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 type HomeVariant = "full" | "compact";
@@ -7,15 +10,23 @@ interface HomeIntegrationsProps {
   variant?: HomeVariant;
 }
 
-const integrations = [
-  { icon: "terminal", name: "Cursor", subtitle: "Instant IDE setup" },
-  { icon: "chat", name: "Claude", subtitle: "Official model hub" },
-  { icon: "neurology", name: "OpenAI", subtitle: "Global gateway" },
-  { icon: "code_blocks", name: "GitHub Copilot", subtitle: "AI-powered coding" },
-];
+interface Integration {
+  icon: string;
+  name: string;
+  compactName: string;
+  subtitle: string;
+}
 
 export function HomeIntegrations({ variant = "full" }: HomeIntegrationsProps) {
   const isCompact = variant === "compact";
+  const t = useTranslations("homeIntegrations");
+
+  const integrations: Integration[] = [
+    { icon: "terminal", name: t("cursor"), compactName: t("cursor"), subtitle: t("cursorSubtitle") },
+    { icon: "chat", name: t("claude"), compactName: t("claude"), subtitle: t("claudeSubtitle") },
+    { icon: "neurology", name: t("openai"), compactName: t("openai"), subtitle: t("openaiSubtitle") },
+    { icon: "code_blocks", name: t("copilot"), compactName: t("copilotShort"), subtitle: t("copilotSubtitle") },
+  ];
 
   return (
     <section id="integrations" className={`bg-[var(--stitch-bg)] ${isCompact ? "py-12" : "py-20"}`}>
@@ -23,19 +34,19 @@ export function HomeIntegrations({ variant = "full" }: HomeIntegrationsProps) {
         <div className={`flex flex-col gap-4 md:flex-row md:items-end md:justify-between ${isCompact ? "mb-8" : "mb-12"}`}>
           <div className={isCompact ? "space-y-1" : "space-y-4"}>
             <h2 className={`${isCompact ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"} font-bold tracking-tight text-[var(--stitch-text)]`}>
-              One-Click Integrations
+              {t("title")}
             </h2>
             <p className={`max-w-xl text-[var(--stitch-text-muted)] ${isCompact ? "text-base" : "text-lg"}`}>
               {isCompact
-                ? "Connect your tools in seconds with our pre-built adapters."
-                : "Connect your favorite development tools in seconds with our pre-built gateway adapters."}
+                ? t("subtitleCompact")
+                : t("subtitleFull")}
             </p>
           </div>
           <Link
             href="/services"
             className={`flex items-center gap-2 font-bold text-[var(--stitch-primary)] hover:underline ${isCompact ? "text-sm" : ""}`}
           >
-            Explore all 50+ integrations
+            {t("exploreAll")}
             <MaterialIcon name="arrow_forward" size={isCompact ? 12 : 16} />
           </Link>
         </div>
@@ -50,7 +61,7 @@ export function HomeIntegrations({ variant = "full" }: HomeIntegrationsProps) {
               </div>
               <div className="text-center">
                 <h4 className={`${isCompact ? "text-base" : "text-lg"} font-bold text-[var(--stitch-text)]`}>
-                  {isCompact && integration.name === "GitHub Copilot" ? "GitHub" : integration.name}
+                  {isCompact ? integration.compactName : integration.name}
                 </h4>
                 {!isCompact && <p className="text-sm text-slate-500">{integration.subtitle}</p>}
               </div>

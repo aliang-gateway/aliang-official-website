@@ -3,18 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import ThemeToggle from "@/app/components/ThemeToggle";
 import { MobileMenu } from "@/components/ui/MobileMenu";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { cn } from "@/lib/utils";
 
 const SESSION_TOKEN_KEY = "session_token";
-
-const navLinks = [
-  { href: "/blog", label: "Blog" },
-  { href: "/docs", label: "Document" },
-  { href: "/services", label: "Service" },
-];
 
 type UserProfile = {
   email: string;
@@ -37,6 +33,7 @@ function buildAvatarLabel(user: UserProfile | null) {
 }
 
 export function SiteHeader() {
+  const t = useTranslations("header");
   const router = useRouter();
   const pathname = usePathname();
   const activePath = pathname;
@@ -50,8 +47,14 @@ export function SiteHeader() {
 
   const isLoggedIn = user !== null;
   const primaryCta = isLoggedIn
-    ? { href: "/dashboard", label: "Dashboard" }
-    : { href: "/login", label: "Login" };
+    ? { href: "/dashboard", label: t("dashboard") }
+    : { href: "/login", label: t("login") };
+
+  const navLinks = [
+    { href: "/blog", label: t("blog") },
+    { href: "/docs", label: t("document") },
+    { href: "/services", label: t("service") },
+  ];
 
   useEffect(() => {
     const sessionToken = localStorage.getItem(SESSION_TOKEN_KEY);
@@ -179,11 +182,12 @@ export function SiteHeader() {
               </svg>
               <input
                 className="w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] py-2 pl-10 pr-4 text-sm text-[var(--stitch-text)] outline-none transition-all placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
-                placeholder="Search architecture..."
+                placeholder={t("searchPlaceholder")}
                 type="search"
               />
             </label>
           )}
+          <LanguageSwitcher />
           <ThemeToggle />
 
           {isLoggedIn ? (
@@ -192,7 +196,7 @@ export function SiteHeader() {
                 type="button"
                 onClick={() => setAvatarMenuOpen(!avatarMenuOpen)}
                 className="flex size-10 items-center justify-center rounded-full bg-[var(--stitch-primary)] text-[11px] font-bold text-white shadow-sm transition-all hover:ring-2 hover:ring-[var(--stitch-primary)]/40"
-                aria-label="User menu"
+                aria-label={t("userMenu")}
               >
                 {avatarLabel}
               </button>
@@ -209,7 +213,7 @@ export function SiteHeader() {
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)]"
                     >
                       <MaterialIcon name="admin_panel_settings" size={18} />
-                      Admin
+                      {t("admin")}
                     </Link>
                   )}
                   <Link
@@ -218,7 +222,7 @@ export function SiteHeader() {
                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)]"
                   >
                     <MaterialIcon name="dashboard" size={18} />
-                    Dashboard
+                    {t("dashboard")}
                   </Link>
                   <Link
                     href="/account"
@@ -226,7 +230,7 @@ export function SiteHeader() {
                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)]"
                   >
                     <MaterialIcon name="person" size={18} />
-                    Account
+                    {t("account")}
                   </Link>
                   <button
                     type="button"
@@ -234,7 +238,7 @@ export function SiteHeader() {
                     className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-500 transition-colors hover:bg-[var(--stitch-bg)]"
                   >
                     <MaterialIcon name="logout" size={18} />
-                    Log out
+                    {t("logout")}
                   </button>
                 </div>
               )}

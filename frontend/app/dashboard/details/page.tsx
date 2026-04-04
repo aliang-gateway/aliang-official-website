@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { parseDashboardSimpleTrendPoints, parseDashboardUsageEnvelope } from "@/lib/dashboard-analytics-adapter";
 
@@ -244,6 +245,7 @@ function DashboardDetailsPageContent() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations("dashboard");
   const [isHydrated, setIsHydrated] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
   const [loading, setLoading] = useState(true);
@@ -433,15 +435,15 @@ function DashboardDetailsPageContent() {
       <section className="portal-shell space-y-6 py-8">
         <div className="portal-header clay-panel p-5">
           <div className="min-w-0 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Dashboard details</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("detailsTitle")}</p>
             <h1 className="section-title">
-              <span className="gradient-text">Request records</span>
+              <span className="gradient-text">{t("requestRecords")}</span>
             </h1>
           </div>
         </div>
 
         <div className="block-card p-5">
-          <p className="text-sm text-[var(--portal-muted)]">Loading deeper trends and recent request history...</p>
+          <p className="text-sm text-[var(--portal-muted)]">{t("loadingDetails")}</p>
         </div>
       </section>
     );
@@ -459,28 +461,28 @@ function DashboardDetailsPageContent() {
               <svg aria-hidden="true" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to dashboard
+              {t("backToDashboard")}
             </Link>
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Dashboard details</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("detailsTitle")}</p>
               <h1 className="section-title">
-                <span className="gradient-text">Request records</span>
+                <span className="gradient-text">{t("requestRecords")}</span>
               </h1>
               <p className="section-subtitle max-w-2xl">
-                Sign in again to view recent request records, token movement, and API request frequency trends.
+                {t("detailsSignInPrompt")}
               </p>
             </div>
           </div>
         </div>
 
         <div className="block-card space-y-4">
-          <p className="notice">Your session token is missing. Return to the main dashboard or sign in again to load private request history.</p>
+          <p className="notice">{t("detailsTokenMissing")}</p>
           <div className="flex flex-wrap gap-3">
             <Link href="/dashboard" className="btn-ghost inline-flex items-center justify-center no-underline">
-              Back to dashboard
+              {t("backToDashboard")}
             </Link>
             <Link href="/login" className="btn-primary inline-flex items-center justify-center no-underline">
-              Go to login
+              {t("goToLogin")}
             </Link>
           </div>
         </div>
@@ -499,79 +501,79 @@ function DashboardDetailsPageContent() {
             <svg aria-hidden="true" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to dashboard
+            {t("backToDashboard")}
           </Link>
 
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Dashboard details</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("detailsTitle")}</p>
             <h1 className="section-title">
-              <span className="gradient-text">Request records & trends</span>
+              <span className="gradient-text">{t("requestRecordsTrends")}</span>
             </h1>
             <p className="section-subtitle max-w-2xl">
-              Review recent request activity and the two deeper trend surfaces exposed by the simplified dashboard contract.
+              {t("requestRecordsTrendsDescription")}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <Link href="/dashboard" className="btn-ghost inline-flex items-center justify-center no-underline">
-            Home overview
+            {t("homeOverview")}
           </Link>
         </div>
       </div>
 
-      {error ? <p className="notice">Dashboard details are temporarily unavailable: {error}</p> : null}
-      {usageError ? <p className="notice">Usage records are temporarily unavailable: {usageError}</p> : null}
+      {error ? <p className="notice">{t("detailsErrorPrefix")}{error}</p> : null}
+      {usageError ? <p className="notice">{t("usageErrorPrefix")}{usageError}</p> : null}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <article className="block-card min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">Token trend</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Usage drift</h2>
+              <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">{t("tokenTrend")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("usageDrift")}</h2>
               <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                Daily token totals from the app-owned aggregation layer, kept inline so this page stays in the same dashboard family.
+                {t("tokenTrendDetailDescription")}
               </p>
             </div>
             <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
-              {tokenPoints.length > 0 ? `${tokenPoints.length} points` : "empty-safe"}
+              {tokenPoints.length > 0 ? t("pointsCount", { count: tokenPoints.length }) : t("emptySafe")}
             </div>
           </div>
-          <TrendDetail points={tokenPoints} tone="cyan" label="Daily token buckets" />
+          <TrendDetail points={tokenPoints} tone="cyan" label={t("dailyTokenBuckets")} />
         </article>
 
         <article className="block-card min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">API request frequency</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Request tempo</h2>
+              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("apiRequestFrequency")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("requestTempo")}</h2>
               <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                A simple request-frequency trend for deeper reading than the home page, without expanding into full analytics tooling.
+                {t("requestFrequencyDescription")}
               </p>
             </div>
             <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
-              {frequencyPoints.length > 0 ? `${frequencyPoints.length} points` : "empty-safe"}
+              {frequencyPoints.length > 0 ? t("pointsCount", { count: frequencyPoints.length }) : t("emptySafe")}
             </div>
           </div>
-          <TrendDetail points={frequencyPoints} tone="emerald" label="Daily request buckets" />
+          <TrendDetail points={frequencyPoints} tone="emerald" label={t("dailyRequestBuckets")} />
         </article>
       </div>
 
       <article className="block-card min-w-0 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-[var(--portal-muted)]">Usage records</p>
-            <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Paginated usage log</h2>
+            <p className="text-sm font-semibold text-[var(--portal-muted)]">{t("usageRecords")}</p>
+            <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("paginatedUsageLog")}</h2>
             <p className="mt-2 max-w-2xl text-sm text-[var(--portal-muted)]">
-              This table reads from the dedicated usage relay and stays deterministic when the payload is sparse, partial, or fully empty.
+              {t("usageLogDescription")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-full border border-[var(--portal-line)] bg-white/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)] dark:bg-slate-950/30">
-              {usageLoading ? "Loading records" : usagePagination.total > 0 ? `${formatNumber(usagePagination.total)} total` : "No records yet"}
+              {usageLoading ? t("loadingRecords") : usagePagination.total > 0 ? t("totalRecords", { count: formatNumber(usagePagination.total) }) : t("noRecordsYet")}
             </div>
             <div className="rounded-full border border-[var(--portal-line)] bg-white/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)] dark:bg-slate-950/30">
-              Page {formatNumber(usagePagination.page)} / {formatNumber(Math.max(usagePagination.total_pages, 1))}
+              {t("pageN", { current: formatNumber(usagePagination.page), total: formatNumber(Math.max(usagePagination.total_pages, 1)) })}
             </div>
           </div>
         </div>
@@ -580,13 +582,13 @@ function DashboardDetailsPageContent() {
           <table className="w-full min-w-[960px] text-left">
             <thead>
               <tr className="border-b border-[var(--portal-line)] bg-white/40 dark:bg-slate-950/20">
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Created</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Request ID</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Endpoint</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Model</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Total tokens</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Actual cost</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">Duration</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("created")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("requestId")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("endpoint")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("model")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("totalTokens")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("actualCost")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("duration")}</th>
               </tr>
             </thead>
             <tbody>
@@ -608,10 +610,9 @@ function DashboardDetailsPageContent() {
                 <tr>
                   <td colSpan={7} className="px-4 py-8">
                     <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-white/30 p-5 text-sm dark:bg-slate-950/20">
-                      <p className="font-semibold text-[var(--portal-ink)]">No usage records yet.</p>
+                      <p className="font-semibold text-[var(--portal-ink)]">{t("noUsageRecordsTitle")}</p>
                       <p className="text-[var(--portal-muted)]">
-                        The usage relay is working, but there are no aggregated rows to show for this page yet. Once traffic arrives, the latest
-                        records will appear here without changing the layout.
+                        {t("noUsageRecordsDescription")}
                       </p>
                     </div>
                   </td>
@@ -622,8 +623,8 @@ function DashboardDetailsPageContent() {
                 <tr>
                   <td colSpan={7} className="px-4 py-8">
                     <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-white/30 p-5 text-sm dark:bg-slate-950/20">
-                      <p className="font-semibold text-[var(--portal-ink)]">Loading usage records...</p>
-                      <p className="text-[var(--portal-muted)]">Fetching the current pagination window from the dashboard usage relay.</p>
+                      <p className="font-semibold text-[var(--portal-ink)]">{t("loadingUsageRecords")}</p>
+                      <p className="text-[var(--portal-muted)]">{t("fetchingUsageDescription")}</p>
                     </div>
                   </td>
                 </tr>
@@ -634,7 +635,7 @@ function DashboardDetailsPageContent() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] px-4 py-3">
           <p className="text-sm text-[var(--portal-muted)]">
-            Showing {usageRecords.length > 0 ? `${formatNumber((usagePagination.page - 1) * usagePagination.per_page + 1)}-${formatNumber((usagePagination.page - 1) * usagePagination.per_page + usageRecords.length)}` : "0-0"} of {formatNumber(usagePagination.total)} records
+            {t("showingRecords", { range: usageRecords.length > 0 ? `${formatNumber((usagePagination.page - 1) * usagePagination.per_page + 1)}-${formatNumber((usagePagination.page - 1) * usagePagination.per_page + usageRecords.length)}` : "0-0", total: formatNumber(usagePagination.total) })}
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -644,7 +645,7 @@ function DashboardDetailsPageContent() {
                onClick={() => updateUsageSearchParams(usagePage - 1, "push")}
               disabled={usageLoading || !usagePagination.has_prev}
             >
-              Previous
+              {t("previous")}
             </button>
             <button
               type="button"
@@ -652,7 +653,7 @@ function DashboardDetailsPageContent() {
                onClick={() => updateUsageSearchParams(usagePage + 1, "push")}
               disabled={usageLoading || !usagePagination.has_next}
             >
-              Next page
+              {t("nextPage")}
             </button>
           </div>
         </div>
@@ -662,19 +663,20 @@ function DashboardDetailsPageContent() {
 }
 
 function DashboardDetailsPageFallback() {
+  const t = useTranslations("dashboard");
   return (
     <section className="portal-shell space-y-6 py-8">
       <div className="portal-header clay-panel p-5">
         <div className="min-w-0 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Dashboard details</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("detailsTitle")}</p>
           <h1 className="section-title">
-            <span className="gradient-text">Request records</span>
+            <span className="gradient-text">{t("requestRecords")}</span>
           </h1>
         </div>
       </div>
 
       <div className="block-card p-5">
-        <p className="text-sm text-[var(--portal-muted)]">Loading deeper trends and recent request history...</p>
+        <p className="text-sm text-[var(--portal-muted)]">{t("loadingDetails")}</p>
       </div>
     </section>
   );

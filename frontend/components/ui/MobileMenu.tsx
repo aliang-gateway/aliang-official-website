@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "./MaterialIcon";
 import { cn } from "@/lib/utils";
 
@@ -22,18 +23,19 @@ export function MobileMenu({
   primaryAction,
   secondaryAction,
 }: MobileMenuProps) {
+  const t = useTranslations("mobileMenu");
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    
+
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
     }
-    
+
     return () => {
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "";
@@ -65,12 +67,12 @@ export function MobileMenu({
         )}
       >
         <div className="flex items-center justify-between border-b border-[var(--stitch-border)] p-4">
-          <span className="font-bold text-[var(--stitch-text)]">Menu</span>
+          <span className="font-bold text-[var(--stitch-text)]">{t("menu")}</span>
           <button
             type="button"
             onClick={onClose}
             className="flex size-8 items-center justify-center rounded text-[var(--stitch-text-muted)] transition-colors hover:bg-[var(--stitch-bg-elevated)] hover:text-[var(--stitch-text)]"
-            aria-label="Close menu"
+            aria-label={t("closeMenu")}
           >
             <MaterialIcon name="close" size={24} />
           </button>

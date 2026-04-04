@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { useTranslations } from "next-intl";
 
 type FooterGroup = {
   title: string;
@@ -48,6 +49,8 @@ function FooterColumns({ groups }: { groups: FooterGroup[] }) {
 
 export function SiteFooter() {
   const pathname = usePathname();
+  const t = useTranslations("footer");
+
   const isBlog = pathname.startsWith("/blog");
   const isServices = pathname === "/services";
   const isCompactHome = pathname === "/compact";
@@ -55,30 +58,30 @@ export function SiteFooter() {
   if (isBlog) {
     const groups: FooterGroup[] = [
       {
-        title: "Resources",
+        title: t("blog.resourcesTitle"),
         links: [
-          { href: "/docs", label: "Documentation" },
-          { href: "#", label: "API Reference" },
-          { href: "#", label: "Community Forum" },
-          { href: "#", label: "Open Source" },
+          { href: "/docs", label: t("blog.documentation") },
+          { href: "#", label: t("blog.apiReference") },
+          { href: "#", label: t("blog.communityForum") },
+          { href: "#", label: t("blog.openSource") },
         ],
       },
       {
-        title: "Platform",
+        title: t("blog.platformTitle"),
         links: [
-          { href: "#", label: "AI Routing Engine" },
-          { href: "#", label: "TUN Proxy Service" },
-          { href: "#", label: "Edge Locations" },
-          { href: "#", label: "Status Page" },
+          { href: "#", label: t("blog.aiRoutingEngine") },
+          { href: "#", label: t("blog.tunProxyService") },
+          { href: "#", label: t("blog.edgeLocations") },
+          { href: "#", label: t("blog.statusPage") },
         ],
       },
       {
-        title: "Company",
+        title: t("blog.companyTitle"),
         links: [
-          { href: "#", label: "About Us" },
-          { href: "#", label: "Careers" },
-          { href: "#", label: "Security Policy" },
-          { href: "#", label: "Contact" },
+          { href: "#", label: t("blog.aboutUs") },
+          { href: "#", label: t("blog.careers") },
+          { href: "#", label: t("blog.securityPolicy") },
+          { href: "#", label: t("blog.contact") },
         ],
       },
     ];
@@ -87,14 +90,14 @@ export function SiteFooter() {
       <footer className="border-t border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] px-6 py-12 md:px-20">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 md:grid-cols-4">
           <FooterBrand
-            title="ALiang Gateway"
-            description="Redefining edge intelligence through advanced networking protocols and LLM-centric gateway architecture."
+            title={t("blog.brandTitle")}
+            description={t("blog.brandDescription")}
           />
           <FooterColumns groups={groups} />
         </div>
 
         <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-[var(--stitch-border)] pt-8 md:flex-row">
-          <p className="text-xs text-[var(--stitch-text-muted)]">© 2024 ALiang Tech Gateway. All rights reserved.</p>
+          <p className="text-xs text-[var(--stitch-text-muted)]">{t("blog.copyright")}</p>
           <div className="flex gap-6 text-[var(--stitch-text-muted)]">
             <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="share" size={20} /></Link>
             <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="terminal" size={20} /></Link>
@@ -108,30 +111,30 @@ export function SiteFooter() {
   if (isServices) {
     const groups: FooterGroup[] = [
       {
-        title: "Resources",
+        title: t("services.resourcesTitle"),
         links: [
-          { href: "/docs", label: "Documentation" },
-          { href: "#", label: "API Reference" },
-          { href: "#", label: "Community Forum" },
-          { href: "#", label: "Status Page" },
+          { href: "/docs", label: t("services.documentation") },
+          { href: "#", label: t("services.apiReference") },
+          { href: "#", label: t("services.communityForum") },
+          { href: "#", label: t("services.statusPage") },
         ],
       },
       {
-        title: "Platform",
+        title: t("services.platformTitle"),
         links: [
-          { href: "#", label: "macOS Client" },
-          { href: "#", label: "Windows Client" },
-          { href: "#", label: "Linux Client" },
-          { href: "#", label: "Browser Extension" },
+          { href: "#", label: t("services.macosClient") },
+          { href: "#", label: t("services.windowsClient") },
+          { href: "#", label: t("services.linuxClient") },
+          { href: "#", label: t("services.browserExtension") },
         ],
       },
       {
-        title: "Company",
+        title: t("services.companyTitle"),
         links: [
-          { href: "#", label: "About Us" },
-          { href: "#", label: "Careers" },
-          { href: "#", label: "Privacy Policy" },
-          { href: "#", label: "Terms of Service" },
+          { href: "#", label: t("services.aboutUs") },
+          { href: "#", label: t("services.careers") },
+          { href: "#", label: t("services.privacyPolicy") },
+          { href: "#", label: t("services.termsOfService") },
         ],
       },
     ];
@@ -142,10 +145,10 @@ export function SiteFooter() {
           <div className="col-span-2">
             <div className="mb-6 flex items-center gap-2">
               <MaterialIcon name="hub" size={28} className="text-[var(--stitch-primary)]" />
-              <span className="text-xl font-bold tracking-tight text-[var(--stitch-text)]">ALiang Gateway</span>
+              <span className="text-xl font-bold tracking-tight text-[var(--stitch-text)]">{t("services.brandTitle")}</span>
             </div>
             <p className="mb-6 max-w-xs text-sm leading-relaxed text-[var(--stitch-text-muted)]">
-              Accelerating the world&apos;s AI development with secure, low-latency connectivity solutions for every platform.
+              {t("services.brandDescription")}
             </p>
             <div className="flex gap-4 text-[var(--stitch-text-muted)]">
               <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="language" size={20} /></Link>
@@ -156,7 +159,7 @@ export function SiteFooter() {
           <FooterColumns groups={groups} />
         </div>
         <div className="mx-auto mt-16 max-w-7xl border-t border-[var(--stitch-border)] pt-8 text-center text-xs text-[var(--stitch-text-muted)]">
-          © 2024 ALiang Gateway. All rights reserved. Built with precision for the AI era.
+          {t("services.copyright")}
         </div>
       </footer>
     );
@@ -165,24 +168,24 @@ export function SiteFooter() {
   if (isCompactHome) {
     const groups: FooterGroup[] = [
       {
-        title: "Product",
+        title: t("compact.productTitle"),
         links: [
-          { href: "/#features", label: "Features" },
-          { href: "/services", label: "Pricing" },
+          { href: "/#features", label: t("compact.features") },
+          { href: "/services", label: t("compact.pricing") },
         ],
       },
       {
-        title: "Resources",
+        title: t("compact.resourcesTitle"),
         links: [
-          { href: "/docs", label: "Documentation" },
-          { href: "/blog", label: "Blog" },
+          { href: "/docs", label: t("compact.documentation") },
+          { href: "/blog", label: t("compact.blog") },
         ],
       },
       {
-        title: "Company",
+        title: t("compact.companyTitle"),
         links: [
-          { href: "#", label: "Security" },
-          { href: "#", label: "Privacy" },
+          { href: "#", label: t("compact.security") },
+          { href: "#", label: t("compact.privacy") },
         ],
       },
     ];
@@ -195,9 +198,9 @@ export function SiteFooter() {
               <div className="flex size-5 items-center justify-center rounded bg-[var(--stitch-primary)] text-white">
                 <MaterialIcon name="hub" size={10} />
               </div>
-              <h2 className="text-base font-bold text-[var(--stitch-text)]">ALiang Gateway</h2>
+              <h2 className="text-base font-bold text-[var(--stitch-text)]">{t("compact.brandTitle")}</h2>
             </div>
-            <p className="text-xs text-[var(--stitch-text-muted)]">The reliable bridge to professional AI services.</p>
+            <p className="text-xs text-[var(--stitch-text-muted)]">{t("compact.brandDescription")}</p>
           </div>
           {groups.map((group) => (
             <div key={group.title}>
@@ -216,7 +219,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mx-auto mt-8 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-[var(--stitch-border)] px-6 pt-6 md:flex-row md:px-20">
-          <p className="text-[10px] text-[var(--stitch-text-muted)]">© 2024 ALiang Gateway Inc. All rights reserved.</p>
+          <p className="text-[10px] text-[var(--stitch-text-muted)]">{t("compact.copyright")}</p>
           <div className="flex gap-4 text-[var(--stitch-text-muted)]">
             <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="public" size={16} /></Link>
             <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="alternate_email" size={16} /></Link>
@@ -228,30 +231,30 @@ export function SiteFooter() {
 
   const groups: FooterGroup[] = [
     {
-      title: "Product",
+      title: t("default.productTitle"),
       links: [
-        { href: "/#features", label: "Features" },
-        { href: "/#integrations", label: "Integrations" },
-        { href: "/services", label: "Pricing" },
-        { href: "#", label: "API Reference" },
+        { href: "/#features", label: t("default.features") },
+        { href: "/#integrations", label: t("default.integrations") },
+        { href: "/services", label: t("default.pricing") },
+        { href: "#", label: t("default.apiReference") },
       ],
     },
     {
-      title: "Resources",
+      title: t("default.resourcesTitle"),
       links: [
-        { href: "/docs", label: "Documentation" },
-        { href: "/blog", label: "Blog" },
-        { href: "#", label: "Support" },
-        { href: "#", label: "Status" },
+        { href: "/docs", label: t("default.documentation") },
+        { href: "/blog", label: t("default.blog") },
+        { href: "#", label: t("default.support") },
+        { href: "#", label: t("default.status") },
       ],
     },
     {
-      title: "Company",
+      title: t("default.companyTitle"),
       links: [
-        { href: "#", label: "About" },
-        { href: "#", label: "Security" },
-        { href: "#", label: "Privacy" },
-        { href: "#", label: "Terms" },
+        { href: "#", label: t("default.about") },
+        { href: "#", label: t("default.security") },
+        { href: "#", label: t("default.privacy") },
+        { href: "#", label: t("default.terms") },
       ],
     },
   ];
@@ -260,14 +263,14 @@ export function SiteFooter() {
     <footer className="border-t border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] py-12">
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-6 md:grid-cols-4 md:px-20">
         <FooterBrand
-          title="ALiang AI"
-          description="The world's most reliable bridge to professional AI services."
+          title={t("default.brandTitle")}
+          description={t("default.brandDescription")}
         />
         <FooterColumns groups={groups} />
       </div>
 
       <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-[var(--stitch-border)] px-6 pt-8 md:flex-row md:px-20">
-        <p className="text-xs text-[var(--stitch-text-muted)]">© 2024 ALiang AI Services Inc. All rights reserved.</p>
+        <p className="text-xs text-[var(--stitch-text-muted)]">{t("default.copyright")}</p>
         <div className="flex gap-6 text-[var(--stitch-text-muted)]">
           <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="public" size={20} /></Link>
           <Link href="#" className="transition-colors hover:text-[var(--stitch-primary)]"><MaterialIcon name="alternate_email" size={20} /></Link>

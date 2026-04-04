@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { useTranslations } from "next-intl";
 
 type LoginResponse = {
   access_token?: string;
@@ -31,6 +32,7 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,19 +90,19 @@ function LoginContent() {
     <section className="portal-shell py-12">
       <div className="mx-auto w-full max-w-[440px] rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold leading-tight text-[var(--stitch-text)]">Welcome Back</h1>
-          <p className="text-sm text-[var(--stitch-text-muted)]">Login to your ALiang Gateway account</p>
+          <h1 className="mb-2 text-3xl font-bold leading-tight text-[var(--stitch-text)]">{t("welcomeBack")}</h1>
+          <p className="text-sm text-[var(--stitch-text-muted)]">{t("subtitle")}</p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-email">
-              Email
+              {t("email")}
             </label>
             <input
               id="login-email"
               className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
-              placeholder="name@company.com"
+              placeholder={t("emailPlaceholder")}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -111,14 +113,14 @@ function LoginContent() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-password">
-                Password
+                {t("password")}
               </label>
             </div>
             <div className="relative flex items-center">
               <input
                 id="login-password"
                 className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-4 pr-12 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
-                placeholder="Enter your password"
+                placeholder={t("passwordPlaceholder")}
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -137,15 +139,15 @@ function LoginContent() {
             type="submit"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Logging in..." : "Login"}
+            {isSubmitting ? t("loggingIn") : t("loginButton")}
           </button>
         </form>
 
         <div className="mt-8 text-center">
           <p className="text-sm text-[var(--stitch-text-muted)]">
-            Don&apos;t have an account?
+            {t("noAccount")}
             <Link className="ml-1 font-semibold text-[var(--stitch-primary)] hover:underline" href="/register">
-              Create an account
+              {t("createAccount")}
             </Link>
           </p>
         </div>

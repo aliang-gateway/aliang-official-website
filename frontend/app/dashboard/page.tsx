@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
 import { parseDashboardModelsEnvelope, parseDashboardSimpleTrendPoints, parseDashboardTrendEnvelope } from "@/lib/dashboard-analytics-adapter";
@@ -109,34 +110,34 @@ type TicketMessageTone = "success" | "error";
 
 type TemplateDefinition = {
   id: ClientTemplateId;
-  label: string;
-  helper: string;
+  labelKey: string;
+  helperKey: string;
   supportedFormats: TemplateFormat[];
 };
 
 const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   {
     id: "claude-code",
-    label: "Claude Code",
-    helper: "Quick terminal export for Anthropic-compatible CLI setup.",
+    labelKey: "templateClaudeCodeLabel",
+    helperKey: "templateClaudeCodeHelper",
     supportedFormats: ["shell"],
   },
   {
     id: "codex",
-    label: "Codex",
-    helper: "OpenAI-compatible config for Codex-style local tooling.",
+    labelKey: "templateCodexLabel",
+    helperKey: "templateCodexHelper",
     supportedFormats: ["json", "yaml"],
   },
   {
     id: "openai",
-    label: "OpenAI",
-    helper: "OpenAI SDK/client settings pointing at your routed gateway.",
+    labelKey: "templateOpenaiLabel",
+    helperKey: "templateOpenaiHelper",
     supportedFormats: ["json", "yaml"],
   },
   {
     id: "gemini",
-    label: "Gemini",
-    helper: "Gemini client bridge using the same single routed user key.",
+    labelKey: "templateGeminiLabel",
+    helperKey: "templateGeminiHelper",
     supportedFormats: ["json", "yaml"],
   },
 ];
@@ -147,10 +148,10 @@ const TREND_RANGE_OPTIONS: Array<{ value: TrendRange; label: string }> = [
   { value: "90d", label: "90d" },
 ];
 
-const TREND_GRANULARITY_OPTIONS: Array<{ value: TrendGranularity; label: string }> = [
-  { value: "day", label: "Day" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
+const TREND_GRANULARITY_OPTIONS: Array<{ value: TrendGranularity; labelKey: string }> = [
+  { value: "day", labelKey: "dayLabel" },
+  { value: "week", labelKey: "weekLabel" },
+  { value: "month", labelKey: "monthLabel" },
 ];
 
 const ALLOWED_TREND_GRANULARITY: Record<TrendRange, TrendGranularity[]> = {
@@ -666,8 +667,8 @@ function ModelSharePieChart({
   }, []);
 
   return (
-    <div className="mt-4 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-      <div className="grid gap-4">
+    <div className="mt-4 min-w-0 overflow-hidden rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
+      <div className="grid min-w-0 gap-4">
         <div className="flex items-center justify-center">
           <svg viewBox="0 0 100 100" className="h-52 w-52" aria-label="Model share pie chart">
             <circle cx="50" cy="50" r="42" fill="rgba(255,255,255,0.45)" className="dark:fill-[rgba(15,23,42,0.4)]" />
@@ -684,9 +685,9 @@ function ModelSharePieChart({
           </svg>
         </div>
 
-        <div className="grid gap-3">
+        <div className="grid gap-3 min-w-0">
           {segments.map((segment) => (
-            <div key={`${segment.model}-legend`} className="rounded-[1rem] border border-[var(--portal-line)] bg-white/55 p-3 dark:bg-slate-950/30">
+            <div key={`${segment.model}-legend`} className="min-w-0 rounded-[1rem] border border-[var(--portal-line)] bg-white/55 p-3 dark:bg-slate-950/30">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -763,6 +764,7 @@ function DashboardPageContent() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations("dashboard");
   const [isHydrated, setIsHydrated] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1069,7 +1071,7 @@ function DashboardPageContent() {
     if (checkoutState === "success") {
       setPurchaseMessage({
         tone: "success",
-        text: "Stripe payment completed. We are refreshing your dashboard package summary and applying entitlements now.",
+        text: t("stripeSuccess"),
       });
       if (sessionToken) {
         void loadDashboard();
@@ -1077,7 +1079,7 @@ function DashboardPageContent() {
     } else if (checkoutState === "cancelled") {
       setPurchaseMessage({
         tone: "error",
-        text: "Stripe checkout was cancelled before payment completed. No package changes were applied.",
+        text: t("stripeCancelled"),
       });
     }
 
@@ -1254,7 +1256,7 @@ function DashboardPageContent() {
       setRedeemCode("");
       setPurchaseMessage({
         tone: "success",
-        text: "Prepaid redeem request submitted. Your balance card was refreshed, and any upstream processing delay is surfaced here instead of being treated as instant payment completion.",
+        text: t("prepaidSuccess"),
       });
       await loadDashboard();
     } catch (redeemError) {
@@ -1345,7 +1347,7 @@ function DashboardPageContent() {
   const redeemEndpoint = purchaseOptions?.prepaid_topup.redeem_endpoint ?? "/api/wallet/redeem";
   const appliedTrendRangeLabel = TREND_RANGE_OPTIONS.find((option) => option.value === selectedTrendRange)?.label ?? selectedTrendRange;
   const appliedTrendGranularityLabel =
-    TREND_GRANULARITY_OPTIONS.find((option) => option.value === appliedTrendGranularity)?.label ?? appliedTrendGranularity;
+    t(TREND_GRANULARITY_OPTIONS.find((option) => option.value === appliedTrendGranularity)?.labelKey ?? "dayLabel");
   const purchaseMessageClassName =
     purchaseMessage?.tone === "error"
       ? "text-red-500 dark:text-red-400"
@@ -1363,7 +1365,7 @@ function DashboardPageContent() {
     return (
       <section className="portal-shell py-8">
         <div className="clay-panel p-5">
-          <p className="text-sm text-[var(--portal-muted)]">Loading your dashboard...</p>
+          <p className="text-sm text-[var(--portal-muted)]">{t("loading")}</p>
         </div>
       </section>
     );
@@ -1374,19 +1376,19 @@ function DashboardPageContent() {
       <section className="portal-shell space-y-6 py-8">
         <div className="clay-panel space-y-2 p-5">
           <h1 className="section-title">
-            <span className="gradient-text">Dashboard</span>
+            <span className="gradient-text">{t("title")}</span>
           </h1>
-          <p className="section-subtitle">Sign in to see your request traffic, package status, and action entry points.</p>
+          <p className="section-subtitle">{t("signInPrompt")}</p>
         </div>
 
         <div className="block-card space-y-4">
-          <p className="notice">Your session token is missing. Please sign in again to load your private dashboard surfaces.</p>
+          <p className="notice">{t("tokenMissing")}</p>
           <div className="flex flex-wrap gap-3">
             <Link href="/login" className="btn-primary inline-flex items-center justify-center no-underline">
-              Go to login
+              {t("goToLogin")}
             </Link>
             <Link href="/services" className="btn-ghost inline-flex items-center justify-center no-underline">
-              View packages
+              {t("viewPackages")}
             </Link>
           </div>
         </div>
@@ -1398,17 +1400,17 @@ function DashboardPageContent() {
     <section className="portal-shell space-y-6 py-8">
       <div className="portal-header clay-panel p-5">
         <div className="min-w-0 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Simplified home</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("headerLabel")}</p>
           <h1 className="section-title">
-            <span className="gradient-text">Usage dashboard</span>
+            <span className="gradient-text">{t("headerTitle")}</span>
           </h1>
           <p className="section-subtitle max-w-2xl">
-            A lightweight home for request flow, token usage, package status, balance, and the next actions your account needs.
+            {t("headerDescription")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn-ghost" onClick={() => window.location.reload()}>
-            Refresh
+            {t("refresh")}
           </button>
           <button
             type="button"
@@ -1419,12 +1421,12 @@ function DashboardPageContent() {
               router.replace("/login");
             }}
           >
-            Sign out
+            {t("signOut")}
           </button>
         </div>
       </div>
 
-      {error ? <p className="notice">Dashboard data is temporarily unavailable: {error}</p> : null}
+      {error ? <p className="notice">{t("errorPrefix")}{error}</p> : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
         <div className="grid min-w-0 gap-6">
@@ -1432,20 +1434,20 @@ function DashboardPageContent() {
             <article className="block-card min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">Token trend</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Consumption curve</h2>
+                  <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">{t("tokenTrend")}</p>
+                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("consumptionCurve")}</h2>
                   <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                    Token consumption now follows the documented trend contract, with range and aggregation controls that stay inside the valid matrix.
+                    {t("tokenTrendDescription")}
                   </p>
                 </div>
                 <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
-                  {tokenPoints.length > 0 ? `${tokenPoints.length} points` : "preview"}
+                  {tokenPoints.length > 0 ? t("points", { count: tokenPoints.length }) : t("preview")}
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Range</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("range")}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {TREND_RANGE_OPTIONS.map((option) => {
                       const isSelected = option.value === selectedTrendRange;
@@ -1469,7 +1471,7 @@ function DashboardPageContent() {
                 </div>
 
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Granularity</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("granularity")}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {TREND_GRANULARITY_OPTIONS.map((option) => {
                       const isAllowed = ALLOWED_TREND_GRANULARITY[selectedTrendRange].includes(option.value);
@@ -1489,19 +1491,19 @@ function DashboardPageContent() {
                           aria-pressed={isSelected}
                           aria-describedby={!isAllowed ? "dashboard-trend-granularity-note" : undefined}
                         >
-                          {option.label}
+                          {t(option.labelKey)}
                         </button>
                       );
                     })}
                   </div>
                   <p id="dashboard-trend-granularity-note" className="mt-2 text-xs text-[var(--portal-muted)]">
-                    Invalid combinations automatically snap to the nearest supported granularity for the selected range.
+                    {t("granularityNote")}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--portal-muted)]">
                   <span>
-                    Applied: {appliedTrendRangeLabel} · {appliedTrendGranularityLabel}
+                    {t("appliedLabel")} {appliedTrendRangeLabel} · {appliedTrendGranularityLabel}
                   </span>
                   <span>
                     {tokenTrend?.start_date || trendDateRange.start_date} → {tokenTrend?.end_date || trendDateRange.end_date}
@@ -1515,14 +1517,14 @@ function DashboardPageContent() {
             <article className="block-card min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Model share</p>
-                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Token distribution</h2>
+                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("modelShare")}</p>
+                  <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("tokenDistribution")}</h2>
                   <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                    Share of total tokens by model for the same applied period. The slice order is deterministic: highest total token volume first, then model name.
+                    {t("modelShareDescription")}
                   </p>
                 </div>
                 <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
-                  {modelShareItems.length > 0 ? `${modelShareItems.length} models` : "empty"}
+                  {modelShareItems.length > 0 ? t("models", { count: modelShareItems.length }) : t("empty")}
                 </div>
               </div>
               <ModelSharePieChart items={modelShareItems} startDate={modelShare?.start_date ?? ""} endDate={modelShare?.end_date ?? ""} />
@@ -1533,18 +1535,20 @@ function DashboardPageContent() {
             <article className="block-card min-w-0 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Package</p>
+                  <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("package")}</p>
                   <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
-                    {visiblePackageSummary?.tier_name ?? "No package yet"}
+                    {visiblePackageSummary?.tier_name ?? t("noPackageYet")}
                   </h2>
                   <p className="mt-2 text-sm text-[var(--portal-muted)]">
                     {visiblePackageSummary?.status === "active"
-                      ? `Subscription ${visiblePackageSummary.subscription_id ?? "--"}${visiblePackageSummary.expires_at ? ` expires on ${formatShortDate(visiblePackageSummary.expires_at)}` : ""}`
-                      : "Start with a package or prepaid balance to unlock routed usage."}
+                      ? (visiblePackageSummary.expires_at
+                          ? t("subscriptionExpires", { id: visiblePackageSummary.subscription_id ?? "--", date: formatShortDate(visiblePackageSummary.expires_at!) })
+                          : t("subscriptionActive", { id: visiblePackageSummary.subscription_id ?? "--" }))
+                      : t("noPackageDescription")}
                   </p>
                 </div>
                 <span className="rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay)] px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
-                  {visiblePackageSummary?.status ?? "unconfigured"}
+                  {{unconfigured: t("statusUnconfigured"), active: t("statusActive"), expired: t("statusExpired"), cancelled: t("statusCancelled"), suspended: t("statusSuspended"), pending: t("statusPending")}[visiblePackageSummary?.status ?? "unconfigured"] ?? visiblePackageSummary?.status ?? "unconfigured"}
                 </span>
               </div>
 
@@ -1564,7 +1568,7 @@ function DashboardPageContent() {
                         }`}
                         aria-pressed={isSelected}
                       >
-                        {summary.tier_name ?? `Subscription ${index + 1}`}
+                        {summary.tier_name ?? t("subscriptionN", { index: index + 1 })}
                       </button>
                     );
                   })}
@@ -1573,7 +1577,7 @@ function DashboardPageContent() {
 
               {quotaPreview.length === 0 ? (
                 <p className="rounded-[1rem] border border-dashed border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
-                  No active subscription summary has been loaded yet.
+                  {t("noSubscriptionLoaded")}
                 </p>
               ) : (
                 <ul className="grid gap-3">
@@ -1581,7 +1585,7 @@ function DashboardPageContent() {
                     <li key={quota.period} className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{quota.label} usage</p>
+                          <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{t("usage", { label: {daily: t("daily"), weekly: t("weekly"), monthly: t("monthly")}[quota.period] ?? quota.period })}</p>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{quota.period}</p>
                         </div>
                         <p className="text-sm font-semibold text-[var(--portal-ink)]">
@@ -1599,34 +1603,34 @@ function DashboardPageContent() {
 
             <article className="block-card min-w-0 space-y-4">
               <div>
-                <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Metrics</p>
+                <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("metrics")}</p>
                 <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
-                  Account indicators
+                  {t("accountIndicators")}
                 </h2>
                 <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                  Quick-read account health using the exact home/account metric mappings requested for this dashboard surface.
+                  {t("metricsDescription")}
                 </p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Balance</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("balance")}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.balance ?? null)}</p>
                 </div>
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today requests</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todayRequests")}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_requests ?? null)}</p>
                 </div>
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today spend</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todaySpend")}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.today_spend ?? null)}</p>
                 </div>
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Today token</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todayToken")}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_token ?? null)}</p>
                 </div>
                 <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Cumulative token</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("cumulativeToken")}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.cumulative_token ?? null)}</p>
                 </div>
               </div>
@@ -1637,14 +1641,14 @@ function DashboardPageContent() {
         <div className="grid min-w-0 gap-6">
           <article className="block-card min-w-0 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Config & API key</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Client setup entry</h2>
+              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("configApiKey")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("clientSetupEntry")}</h2>
               <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                Prepare your single user key for Claude Code, Codex, OpenAI, and Gemini templates from one entry point.
+                {t("configDescription")}
               </p>
             </div>
             <div className="rounded-[1rem] border border-dashed border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
-              Generate or paste one routed user key, then switch between Claude Code, Codex, OpenAI, and Gemini config views without leaving the dashboard.
+              {t("configHint")}
             </div>
             <div className="flex flex-wrap gap-3">
               <button
@@ -1657,20 +1661,20 @@ function DashboardPageContent() {
                   setCopyState("idle");
                 }}
               >
-                Open config setup
+                {t("openConfigSetup")}
               </button>
               <Link href="/account" className="btn-ghost inline-flex items-center justify-center no-underline">
-                Manage session & keys
+                {t("manageSessionKeys")}
               </Link>
             </div>
           </article>
 
           <article className="block-card min-w-0 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Purchase</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Top up or extend</h2>
+              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("purchase")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("topUpOrExtend")}</h2>
               <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                One entry surface for package purchase durations and prepaid redeem-code top-up.
+                {t("purchaseDescription")}
               </p>
             </div>
 
@@ -1678,20 +1682,20 @@ function DashboardPageContent() {
               <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Package purchase</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("packagePurchase")}</p>
                     <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                      Choose one package tier, then continue to Stripe Checkout. The actual entitlement that gets fulfilled after payment comes from the package configuration saved in admin.
+                      {t("packagePurchaseDescription")}
                     </p>
                   </div>
                   <Link href="/services" className="btn-ghost inline-flex items-center justify-center no-underline">
-                    Compare packages
+                    {t("comparePackages")}
                   </Link>
                 </div>
 
                 <div className="mt-4 grid gap-3">
                   <div>
                     <label htmlFor="dashboard-package-tier" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
-                      Package tier
+                      {t("packageTier")}
                     </label>
                     <select
                       id="dashboard-package-tier"
@@ -1700,7 +1704,7 @@ function DashboardPageContent() {
                       onChange={(event) => setSelectedPackageTierCode(event.target.value)}
                       disabled={packageTiers.length === 0 || packageActionLoading}
                     >
-                      {packageTiers.length === 0 ? <option value="">No public tiers loaded</option> : null}
+                      {packageTiers.length === 0 ? <option value="">{t("noPublicTiers")}</option> : null}
                       {packageTiers.map((tier) => (
                         <option key={tier.code} value={tier.code}>
                           {tier.name} ({tier.code})
@@ -1716,25 +1720,25 @@ function DashboardPageContent() {
                       onClick={() => void handlePackagePurchase()}
                       disabled={packageActionLoading}
                     >
-                      {packageActionLoading ? "Redirecting to Stripe..." : "Checkout with Stripe"}
+                      {packageActionLoading ? t("redirectingToStripe") : t("checkoutWithStripe")}
                     </button>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Prepaid top-up</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("prepaidTopUp")}</p>
                 <p className="mt-2 text-sm text-[var(--portal-ink)]">
-                  Redeem-code endpoint: <span className="font-mono">{redeemEndpoint}</span>
+                  {t("redeemEndpoint")} <span className="font-mono">{redeemEndpoint}</span>
                 </p>
                 <p className="mt-2 text-sm text-[var(--portal-muted)]">
-                  Currency hint: {purchaseOptions?.prepaid_topup.currency_hint ?? "CNY"}. If redeem is unavailable upstream, this card shows a non-destructive error and keeps your current balance unchanged.
+                  {t("currencyHint", { currency: purchaseOptions?.prepaid_topup.currency_hint ?? "CNY" })}
                 </p>
 
                 <div className="mt-4 grid gap-3">
                   <div>
                     <label htmlFor="dashboard-redeem-code" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
-                      Redeem code
+                      {t("redeemCode")}
                     </label>
                     <input
                       id="dashboard-redeem-code"
@@ -1749,7 +1753,7 @@ function DashboardPageContent() {
 
                   <div className="flex flex-wrap gap-3">
                     <button type="button" className="btn-primary w-fit" onClick={() => void handlePrepaidTopUp()} disabled={prepaidActionLoading}>
-                      {prepaidActionLoading ? "Submitting top-up..." : "Redeem prepaid code"}
+                      {prepaidActionLoading ? t("submittingTopUp") : t("redeemPrepaidCode")}
                     </button>
                   </div>
                 </div>
@@ -1761,23 +1765,23 @@ function DashboardPageContent() {
 
           <article className="block-card min-w-0 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Ticket feedback</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Support entry</h2>
-              <p className="mt-2 text-sm text-[var(--portal-muted)]">Capture delivery issues, model feedback, or billing questions from a single lightweight starting point.</p>
+              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("ticketFeedback")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("supportEntry")}</h2>
+              <p className="mt-2 text-sm text-[var(--portal-muted)]">{t("ticketDescription")}</p>
             </div>
 
             <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
               <div className="grid gap-3">
                 <div>
                   <label htmlFor="dashboard-ticket-title" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
-                    Title
+                    {t("titleLabel")}
                   </label>
                   <input
                     id="dashboard-ticket-title"
                     className="field mt-2"
                     type="text"
                     maxLength={120}
-                    placeholder="Short summary of the issue"
+                    placeholder={t("titlePlaceholder")}
                     value={ticketTitle}
                     onChange={(event) => {
                       setTicketTitle(event.target.value);
@@ -1789,7 +1793,7 @@ function DashboardPageContent() {
 
                 <div>
                   <label htmlFor="dashboard-ticket-category" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
-                    Category
+                    {t("category")}
                   </label>
                   <select
                     id="dashboard-ticket-category"
@@ -1801,21 +1805,21 @@ function DashboardPageContent() {
                     }}
                     disabled={ticketSubmitting}
                   >
-                    <option value="delivery_issue">Delivery issue</option>
-                    <option value="model_feedback">Model feedback</option>
-                    <option value="billing_question">Billing question</option>
-                    <option value="other">Other</option>
+                    <option value="delivery_issue">{t("deliveryIssue")}</option>
+                    <option value="model_feedback">{t("modelFeedback")}</option>
+                    <option value="billing_question">{t("billingQuestion")}</option>
+                    <option value="other">{t("other")}</option>
                   </select>
                 </div>
 
                 <div>
                   <label htmlFor="dashboard-ticket-message" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
-                    Message
+                    {t("messageLabel")}
                   </label>
                   <textarea
                     id="dashboard-ticket-message"
                     className="field mt-2 min-h-[108px] resize-y"
-                    placeholder="Describe what happened and what you expected."
+                    placeholder={t("messagePlaceholder")}
                     value={ticketMessage}
                     onChange={(event) => {
                       setTicketMessage(event.target.value);
@@ -1829,7 +1833,7 @@ function DashboardPageContent() {
 
             <div className="flex flex-wrap gap-3">
               <button type="button" className="btn-primary w-fit" onClick={() => void handleTicketSubmit()} disabled={ticketSubmitting}>
-                {ticketSubmitting ? "Submitting ticket..." : "Create feedback ticket"}
+                {ticketSubmitting ? t("submittingTicket") : t("createFeedbackTicket")}
               </button>
             </div>
 
@@ -1838,12 +1842,12 @@ function DashboardPageContent() {
 
           <article className="block-card min-w-0 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">Details</p>
-              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">Open deeper records</h2>
-              <p className="mt-2 text-sm text-[var(--portal-muted)]">Move into the dedicated details page for request history, token trend depth, and API frequency analysis.</p>
+              <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("details")}</p>
+              <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("openDeeperRecords")}</h2>
+              <p className="mt-2 text-sm text-[var(--portal-muted)]">{t("detailsDescription")}</p>
             </div>
             <Link href="/dashboard/details" className="btn-primary inline-flex w-fit items-center justify-center no-underline">
-              Go to details page
+              {t("goToDetailsPage")}
             </Link>
           </article>
         </div>
@@ -1859,7 +1863,7 @@ function DashboardPageContent() {
           <button
             type="button"
             className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
-            aria-label="Close config setup modal"
+            aria-label={t("closeConfigModal")}
             onClick={closeConfigModal}
           />
 
@@ -1869,19 +1873,19 @@ function DashboardPageContent() {
           >
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--portal-line)] px-5 py-4 sm:px-6">
               <div className="min-w-0 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">Config modal</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("configModal")}</p>
                 <h2 id="dashboard-config-modal-title" className="text-2xl font-bold text-[var(--portal-ink)]">
-                  Single key, four client templates
+                  {t("singleKeyFourTemplates")}
                 </h2>
                 <p className="max-w-2xl text-sm text-[var(--portal-muted)]">
-                  One routed user key powers every template below. Copy the rendered config exactly as shown and treat it as sensitive because the real key is embedded.
+                  {t("configModalDescription")}
                 </p>
               </div>
               <button
                 type="button"
                 ref={closeButtonRef}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay)] text-xl font-semibold text-[var(--portal-ink)] transition-transform duration-200 hover:-translate-y-[1px]"
-                aria-label="Close config setup modal"
+                aria-label={t("closeConfigModal")}
                 onClick={closeConfigModal}
               >
                 ×
@@ -1893,12 +1897,12 @@ function DashboardPageContent() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <label htmlFor="dashboard-user-key" className="text-sm font-semibold text-[var(--portal-ink)]">
-                      Underlying user key
+                      {t("underlyingUserKey")}
                     </label>
                     <textarea
                       id="dashboard-user-key"
                       className="field min-h-[112px] resize-y font-mono text-sm"
-                      placeholder="Paste an existing routed user key"
+                      placeholder={t("pasteExistingKey")}
                       value={userKey}
                       onChange={(event) => {
                         setUserKey(event.target.value);
@@ -1906,22 +1910,22 @@ function DashboardPageContent() {
                       }}
                     />
                     <p className="text-xs leading-5 text-[var(--portal-muted)]">
-                      This is the only key source for every template in the modal. Paste an existing routed key from your account list and treat it as sensitive.
+                      {t("keySourceDescription")}
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
                     <button type="button" className="btn-ghost" onClick={() => setUserKey("")}>
-                      Clear key
+                      {t("clearKey")}
                     </button>
                   </div>
 
                   <div className="rounded-[1rem] border border-amber-400/40 bg-amber-50/80 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                    Sensitive-key warning: the rendered snippets below contain your real user key, not a placeholder. Avoid screenshots, shared terminals, and pasted logs.
+                    {t("sensitiveKeyWarning")}
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm font-semibold text-[var(--portal-ink)]">Template</p>
+                    <p className="text-sm font-semibold text-[var(--portal-ink)]">{t("template")}</p>
                     <div className="grid gap-2">
                       {TEMPLATE_DEFINITIONS.map((template) => {
                         const isActive = template.id === selectedTemplate;
@@ -1939,8 +1943,8 @@ function DashboardPageContent() {
                               setCopyState("idle");
                             }}
                           >
-                            <p className="text-sm font-semibold text-[var(--portal-ink)]">{template.label}</p>
-                            <p className="mt-1 text-xs leading-5 text-[var(--portal-muted)]">{template.helper}</p>
+                            <p className="text-sm font-semibold text-[var(--portal-ink)]">{t(template.labelKey)}</p>
+                            <p className="mt-1 text-xs leading-5 text-[var(--portal-muted)]">{t(template.helperKey)}</p>
                           </button>
                         );
                       })}
@@ -1952,9 +1956,9 @@ function DashboardPageContent() {
               <div className="flex min-h-0 flex-col p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--portal-line)] pb-4">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{selectedTemplateDefinition.label}</p>
-                    <h3 className="mt-1 text-xl font-bold text-[var(--portal-ink)]">Rendered client config</h3>
-                    <p className="mt-2 max-w-2xl text-sm text-[var(--portal-muted)]">{selectedTemplateDefinition.helper}</p>
+                    <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t(selectedTemplateDefinition.labelKey)}</p>
+                    <h3 className="mt-1 text-xl font-bold text-[var(--portal-ink)]">{t("renderedClientConfig")}</h3>
+                    <p className="mt-2 max-w-2xl text-sm text-[var(--portal-muted)]">{t(selectedTemplateDefinition.helperKey)}</p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -1987,28 +1991,28 @@ function DashboardPageContent() {
 
                   <div className="grid gap-3 self-start">
                     <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Gateway base URL</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("gatewayBaseUrl")}</p>
                       <p className="mt-2 break-all text-sm font-semibold text-[var(--portal-ink)]">{gatewayBaseUrl}</p>
                     </div>
 
                     <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">Copy</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("copy")}</p>
                       <button type="button" className="btn-primary mt-3 w-full" onClick={() => void handleCopyConfig()} disabled={!userKey.trim()}>
-                        Copy rendered config
+                        {t("copyRenderedConfig")}
                       </button>
                       <p className="mt-3 text-xs leading-5 text-[var(--portal-muted)]">
                         {copyState === "copied"
-                          ? "Copied the currently rendered config with your real key included."
+                          ? t("copyCopied")
                           : copyState === "error"
-                            ? "Copy failed in this browser context. Select the config block manually instead."
-                            : "Copy uses the active template and active format exactly as shown above."}
+                            ? t("copyError")
+                            : t("copyIdle")}
                       </p>
                     </div>
 
                     <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4 text-sm text-[var(--portal-muted)]">
                       {userKey.trim()
-                        ? "Template content is live and interpolated from your current user key. Changing the key updates all template views immediately."
-                        : "Add a user key first so the template output contains real credentials instead of an empty value."}
+                        ? t("templateContentLive")
+                        : t("addKeyFirst")}
                     </div>
                   </div>
                 </div>
@@ -2022,10 +2026,11 @@ function DashboardPageContent() {
 }
 
 function DashboardPageFallback() {
+  const t = useTranslations("dashboard");
   return (
     <section className="portal-shell py-8">
       <div className="clay-panel p-5">
-        <p className="text-sm text-[var(--portal-muted)]">Loading your dashboard...</p>
+        <p className="text-sm text-[var(--portal-muted)]">{t("loading")}</p>
       </div>
     </section>
   );
