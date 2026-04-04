@@ -23,6 +23,7 @@ import (
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/configcenter"
 	"ai-api-portal/backend/internal/db"
+	"ai-api-portal/backend/internal/doc"
 	"ai-api-portal/backend/internal/download"
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/model"
@@ -37,6 +38,7 @@ type routes struct {
 	sqlDialect           string
 	apiKey               *apikey.Service
 	articleSvc           *article.Service
+	docSvc               *doc.Service
 	configCenterSvc      *configcenter.Service
 	downloadSvc          *download.Service
 	fulfillmentSvc       *fulfillment.Service
@@ -475,7 +477,67 @@ const (
 	adminArticleStatusDraft     = "draft"
 	adminArticleStatusPublished = "published"
 	maxArticleSlugLength        = 128
+	adminDocSlugLength        = 128
 )
+
+// ── Doc DTO DTO────────────────────────────────────
+
+type adminDocCategoryDTO struct {
+	ID          int64   `json:"id"`
+	Slug        string  `json:"slug"`
+	Title       string `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	SortOrder   int64   `json:"sort_order"`
+	Status      string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type adminDocCategoryListResponse struct {
+	Categories []adminDocCategoryDTO `json:"categories"`
+}
+
+type adminDocCategoryDetailResponse struct {
+	Category adminDocCategoryDTO `json:"category"`
+}
+
+type adminDocPageDTO struct {
+	ID         int64   `json:"id"`
+	Slug       string `json:"slug"`
+	Title      string `json:"title"`
+	CategoryID int64   `json:"category_id"`
+	MDXBody    string `json:"mdx_body"`
+	SortOrder  int64   `json:"sort_order"`
+	Status      string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type adminDocPageListResponse struct {
+	Pages []adminDocPageDTO `json:"pages"`
+}
+
+type adminDocPageDetailResponse struct {
+	Page adminDocPageDTO `json:"page"`
+}
+
+type publicDocCategoryWithPagesDTO struct {
+	Slug        string  `json:"slug"`
+	Title       string `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Pages      []publicDocPageSummary `json:"pages"`
+}
+
+type publicDocPageSummary struct {
+	Slug       string  `json:"slug"`
+	Title      string `json:"title"`
+	MDXBody    string `json:"mdx_body"`
+}
+
+type publicDocPageDetailResponse struct {
+	Page publicDocPageSummary `json:"page"`
+}
 
 var articleSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
@@ -497,6 +559,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		sqlDialect:           strings.TrimSpace(opts.SQLDialect),
 		apiKey:               apikey.NewService(database),
 		articleSvc:           article.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
+		docSvc:              doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
@@ -592,6 +655,25 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("DELETE /admin/articles/{slug}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteArticle))))
 	mux.Handle("POST /admin/articles/{slug}/publish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPublishArticle))))
 	mux.Handle("POST /admin/articles/{slug}/unpublish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUnpublishArticle))))
+	// Public: Docs
+	mux.HandleFunc("GET /public/docs/categories", r.handlePublicListDocCategoriesWithPages)
+	mux.HandleFunc("GET /public/docs/pages/{slug}", r.handlePublicGetDocPage)
+	// Admin: Doc Categories
+	mux.Handle("GET /admin/docs/categories", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListDocCategories))))
+	mux.Handle("POST /admin/docs/categories", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateDocCategory))))
+	mux.Handle("GET /admin/docs/categories/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetDocCategory))))
+	mux.Handle("PUT /admin/docs/categories/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateDocCategory))))
+	mux.Handle("DELETE /admin/docs/categories/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteDocCategory))))
+	mux.Handle("POST /admin/docs/categories/{id}/publish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPublishDocCategory))))
+	mux.Handle("POST /admin/docs/categories/{id}/unpublish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUnpublishDocCategory))))
+	// Admin: Doc Pages
+	mux.Handle("GET /admin/docs/pages", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListDocPages))))
+	mux.Handle("POST /admin/docs/pages", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateDocPage))))
+	mux.Handle("GET /admin/docs/pages/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetDocPage))))
+	mux.Handle("PUT /admin/docs/pages/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateDocPage))))
+	mux.Handle("DELETE /admin/docs/pages/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteDocPage))))
+	mux.Handle("POST /admin/docs/pages/{id}/publish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPublishDocPage))))
+	mux.Handle("POST /admin/docs/pages/{id}/unpublish", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUnpublishDocPage))))
 	// Admin: Config Center - Software Configs
 	mux.Handle("GET /admin/config-center/software", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListSoftwareConfigs))))
 	mux.Handle("POST /admin/config-center/software", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateSoftwareConfig))))

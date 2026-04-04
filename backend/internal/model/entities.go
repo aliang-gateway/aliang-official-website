@@ -162,6 +162,30 @@ type Download struct {
 	UpdatedAt    time.Time
 }
 
+type DocCategory struct {
+	ID          int64
+	Slug        string
+	Title       string
+	Description *string
+	Icon        *string
+	SortOrder   int64
+	Status      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type DocPage struct {
+	ID         int64
+	Slug       string
+	Title      string
+	CategoryID int64
+	MDXBody    string
+	SortOrder  int64
+	Status     string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type Article struct {
 	ID              int64
 	LegacyID        *int64
