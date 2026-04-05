@@ -3979,6 +3979,29 @@ func (r *routes) executeDelegatedAPIKeyCreation(ctx context.Context, job *fulfil
 	return nil
 }
 
+func (r *routes) ensureUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
+	if r.proxyClient == nil || r.sub2apiAuth == nil {
+		return nil
+	}
+	bearerToken, err := r.sub2apiAuth.GetBearerTokenByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get bearer token for user %d: %w", userID, err)
+	}
+	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
+	_, createErr := r.proxyClient.CreateUserAPIKey(ctx, bearerToken, proxy.CreateUserAPIKeyRequest{
+		Name:    "auto-key",
+		GroupID: groupID,
+	}, childKey)
+	if createErr == nil {
+		return nil
+	}
+	var apiErr *proxy.APIError
+	if errors.As(createErr, &apiErr) && apiErr.IsConflict() {
+		return nil // key already exists
+	}
+	return createErr
+}
+
 func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) error {
 	pkg, err := r.loadAdminPackageByCode(ctx, strings.TrimSpace(payload.TierCode))
 	if err != nil {
@@ -4020,6 +4043,10 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		}
 		validityDays := int(pkg.ValueAmount)
 		for _, groupID := range pkg.GroupIDs {
+			if ensureErr := r.ensureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+				redeemErr = ensureErr
+				break
+			}
 			childKey := parentIdempotencyKey + ":package:" + strconv.FormatInt(groupID, 10)
 			groupIDCopy := groupID
 			_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
