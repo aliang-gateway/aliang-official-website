@@ -20,13 +20,13 @@ import (
 // -------------------------------------------------------
 
 type softwareConfigResponse struct {
-	ID           int64    `json:"id"`
-	SoftwareCode string   `json:"software_code"`
-	SoftwareName string   `json:"software_name"`
-	GroupID      int64    `json:"group_id"`
-	Description  string   `json:"description"`
-	IsEnabled    bool     `json:"is_enabled"`
-	Tags         []string `json:"tags,omitempty"`
+	ID           int64     `json:"id"`
+	SoftwareCode string    `json:"software_code"`
+	SoftwareName string    `json:"software_name"`
+	GroupID      int64     `json:"group_id"`
+	Description  string    `json:"description"`
+	IsEnabled    bool      `json:"is_enabled"`
+	Tags         []string  `json:"tags,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -463,14 +463,14 @@ func (r *routes) handleAdminCreateTemplate(w http.ResponseWriter, req *http.Requ
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":                tpl.ID,
+		"id":                 tpl.ID,
 		"software_config_id": tpl.SoftwareConfigID,
-		"name":              tpl.Name,
-		"format":            tpl.Format,
-		"content":           tpl.Content,
-		"is_default":        tpl.IsDefault,
-		"created_at":        tpl.CreatedAt,
-		"updated_at":        tpl.UpdatedAt,
+		"name":               tpl.Name,
+		"format":             tpl.Format,
+		"content":            tpl.Content,
+		"is_default":         tpl.IsDefault,
+		"created_at":         tpl.CreatedAt,
+		"updated_at":         tpl.UpdatedAt,
 	})
 }
 
@@ -649,15 +649,19 @@ func (r *routes) handleAdminDeleteGlobalVar(w http.ResponseWriter, req *http.Req
 // -------------------------------------------------------
 
 func (r *routes) handleGetDefaultConfig(w http.ResponseWriter, req *http.Request) {
+	user, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	tag := strings.TrimSpace(req.URL.Query().Get("tag"))
 	if tag == "" {
 		writeError(w, http.StatusBadRequest, "tag query parameter is required")
 		return
 	}
 
-	// API key substitution is not possible server-side because keys are stored hashed.
-	// The config template is returned with placeholders intact; the client fills in the API key.
-	result, err := r.configCenterSvc.GetDefaultConfigByTag(req.Context(), tag, "")
+	result, err := r.configCenterSvc.GetDefaultConfigByTag(req.Context(), tag)
 	if err != nil {
 		if errors.Is(err, configcenter.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "default config not found for tag")
@@ -665,6 +669,18 @@ func (r *routes) handleGetDefaultConfig(w http.ResponseWriter, req *http.Request
 		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to resolve config: %v", err))
 		return
+	}
+
+	if user.Role != "admin" {
+		authorizedGroupIDs, err := r.loadAuthorizedGroupIDSet(req.Context(), user.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve user access")
+			return
+		}
+		if _, allowed := authorizedGroupIDs[result.GroupID]; !allowed {
+			writeError(w, http.StatusNotFound, "default config not found for tag")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, result)

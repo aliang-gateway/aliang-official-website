@@ -358,13 +358,16 @@ func (s *Service) DeleteGlobalVar(ctx context.Context, varKey string) error {
 type DefaultConfigResult struct {
 	SoftwareCode string `json:"software_code"`
 	SoftwareName string `json:"software_name"`
+	TemplateName string `json:"template_name"`
 	Format       string `json:"format"`
 	Content      string `json:"content"`
+	GroupID      int64  `json:"-"`
 }
 
-// GetDefaultConfigByTag resolves a tag to a fully-populated config template.
-// apiKey is the user's API key to fill into the template.
-func (s *Service) GetDefaultConfigByTag(ctx context.Context, tag string, apiKey string) (*DefaultConfigResult, error) {
+// GetDefaultConfigByTag resolves a tag to the default config template content.
+// Known global template variables are rendered server-side, while unresolved
+// placeholders are preserved for the client to fill in.
+func (s *Service) GetDefaultConfigByTag(ctx context.Context, tag string) (*DefaultConfigResult, error) {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return nil, errors.New("tag is required")
@@ -392,33 +395,23 @@ func (s *Service) GetDefaultConfigByTag(ctx context.Context, tag string, apiKey 
 		return nil, fmt.Errorf("get default template: %w", err)
 	}
 
-	// 3. Get all global vars
 	globalVars, err := s.ListGlobalVars(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list global vars: %w", err)
 	}
 
-	// 4. Build replacement map
-	replacements := make(map[string]string)
-	for _, v := range globalVars {
-		replacements[v.VarKey] = v.VarValue
-	}
-	// Override apikey with the user's actual key
-	if apiKey != "" {
-		replacements["apikey"] = apiKey
-	}
-
-	// 5. Replace placeholders
 	content := tpl.Content
-	for key, value := range replacements {
-		content = strings.ReplaceAll(content, "{{"+key+"}}", value)
+	for _, v := range globalVars {
+		content = strings.ReplaceAll(content, "{{"+v.VarKey+"}}", v.VarValue)
 	}
 
 	return &DefaultConfigResult{
 		SoftwareCode: cfg.SoftwareCode,
 		SoftwareName: cfg.SoftwareName,
+		TemplateName: tpl.Name,
 		Format:       tpl.Format,
 		Content:      content,
+		GroupID:      cfg.GroupID,
 	}, nil
 }
 
