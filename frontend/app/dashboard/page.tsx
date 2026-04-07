@@ -15,7 +15,7 @@ const DASHBOARD_TREND_TIMEZONE = "Asia/Shanghai";
 type TrendRange = "7d" | "30d" | "90d";
 type TrendGranularity = "day" | "week" | "month";
 
-type ClientTemplateId = "claude-code" | "codex" | "openai" | "gemini";
+type ClientTemplateId = "opencode" | "claude" | "codex";
 type TemplateFormat = "json" | "yaml" | "shell";
 
 type TrendPoint = {
@@ -117,27 +117,21 @@ type TemplateDefinition = {
 
 const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   {
-    id: "claude-code",
-    labelKey: "templateClaudeCodeLabel",
-    helperKey: "templateClaudeCodeHelper",
+    id: "opencode",
+    labelKey: "templateOpencodeLabel",
+    helperKey: "templateOpencodeHelper",
+    supportedFormats: ["json"],
+  },
+  {
+    id: "claude",
+    labelKey: "templateClaudeLabel",
+    helperKey: "templateClaudeHelper",
     supportedFormats: ["shell"],
   },
   {
     id: "codex",
     labelKey: "templateCodexLabel",
     helperKey: "templateCodexHelper",
-    supportedFormats: ["json", "yaml"],
-  },
-  {
-    id: "openai",
-    labelKey: "templateOpenaiLabel",
-    helperKey: "templateOpenaiHelper",
-    supportedFormats: ["json", "yaml"],
-  },
-  {
-    id: "gemini",
-    labelKey: "templateGeminiLabel",
-    helperKey: "templateGeminiHelper",
     supportedFormats: ["json", "yaml"],
   },
 ];
@@ -170,10 +164,6 @@ function escapeSingleQuotedShell(value: string) {
 
 function formatYamlScalar(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
-}
-
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/$/, "");
 }
 
 function isTrendGranularity(value: string): value is TrendGranularity {
@@ -238,15 +228,27 @@ function buildTrendDateRange(range: TrendRange, timeZone: string) {
   };
 }
 
-function buildTemplateContent(templateId: ClientTemplateId, format: TemplateFormat, userKey: string, gatewayBaseUrl: string) {
+function buildTemplateContent(templateId: ClientTemplateId, format: TemplateFormat, userKey: string) {
+  const baseUrl = "https://api.aliang.one";
   const escapedKey = escapeJsonString(userKey);
-  const escapedBaseUrl = escapeJsonString(gatewayBaseUrl);
+  const escapedBaseUrl = escapeJsonString(baseUrl);
   const yamlKey = formatYamlScalar(userKey);
-  const yamlBaseUrl = formatYamlScalar(gatewayBaseUrl);
+  const yamlBaseUrl = formatYamlScalar(baseUrl);
 
-  if (templateId === "claude-code") {
+  if (templateId === "opencode") {
     return [
-      `export ANTHROPIC_BASE_URL='${escapeSingleQuotedShell(gatewayBaseUrl)}'`,
+      "{",
+      '  "provider": "custom",',
+      `  "base_url": "${escapedBaseUrl}/v1",`,
+      `  "api_key": "${escapedKey}",`,
+      '  "model": "claude-sonnet-4-20250514"',
+      "}",
+    ].join("\n");
+  }
+
+  if (templateId === "claude") {
+    return [
+      `export ANTHROPIC_BASE_URL='${escapeSingleQuotedShell(baseUrl)}'`,
       `export ANTHROPIC_AUTH_TOKEN='${escapeSingleQuotedShell(userKey)}'`,
       "claude",
     ].join("\n");
@@ -272,51 +274,8 @@ function buildTemplateContent(templateId: ClientTemplateId, format: TemplateForm
     ].join("\n");
   }
 
-  if (templateId === "openai") {
-    if (format === "yaml") {
-      return [
-        "openai:",
-        `  api_key: ${yamlKey}`,
-        `  base_url: ${yamlBaseUrl}`,
-        "  model: gpt-4.1-mini",
-      ].join("\n");
-    }
-
-    return [
-      "{",
-      '  "openai": {',
-      `    "api_key": "${escapedKey}",`,
-      `    "base_url": "${escapedBaseUrl}",`,
-      '    "model": "gpt-4.1-mini"',
-      "  }",
-      "}",
-    ].join("\n");
-  }
-
-  if (format === "yaml") {
-    return [
-      "gemini:",
-      `  api_key: ${yamlKey}`,
-      `  base_url: ${yamlBaseUrl}`,
-      "  model: gemini-2.5-pro",
-    ].join("\n");
-  }
-
-  return [
-    "{",
-    '  "gemini": {',
-    `    "api_key": "${escapedKey}",`,
-    `    "base_url": "${escapedBaseUrl}",`,
-    '    "model": "gemini-2.5-pro"',
-    "  }",
-    "}",
-  ].join("\n");
+  return "";
 }
-
-type RuntimeConfigResponse = {
-  apiBaseUrl?: string;
-  error?: string;
-};
 
 function formatShortDate(value: string) {
   const date = new Date(value);
@@ -771,8 +730,8 @@ function DashboardPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardHomeResponse | null>(null);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplateId>("claude-code");
-  const [selectedFormat, setSelectedFormat] = useState<TemplateFormat>("shell");
+  const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplateId>("opencode");
+  const [selectedFormat, setSelectedFormat] = useState<TemplateFormat>("json");
   const [userKey, setUserKey] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [selectedPackageTierCode, setSelectedPackageTierCode] = useState("");
@@ -789,7 +748,6 @@ function DashboardPageContent() {
   const [tokenTrend, setTokenTrend] = useState<TokenTrendResponse | null>(null);
   const [modelShare, setModelShare] = useState<{ start_date: string; end_date: string; items: ModelShareDatum[] } | null>(null);
   const [metricSummary, setMetricSummary] = useState<DashboardMetricSummary | null>(null);
-  const [gatewayBaseUrl, setGatewayBaseUrl] = useState("");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const configTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -811,42 +769,13 @@ function DashboardPageContent() {
   );
 
   const renderedConfig = useMemo(() => {
-    return buildTemplateContent(selectedTemplate, selectedFormat, userKey.trim(), gatewayBaseUrl);
-  }, [gatewayBaseUrl, selectedFormat, selectedTemplate, userKey]);
+    return buildTemplateContent(selectedTemplate, selectedFormat, userKey.trim());
+  }, [selectedFormat, selectedTemplate, userKey]);
 
   const appliedTrendGranularity = useMemo(
     () => normalizeTrendGranularity(selectedTrendRange, selectedTrendGranularity),
     [selectedTrendGranularity, selectedTrendRange],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadRuntimeConfig() {
-      try {
-        const response = await fetch("/api/runtime-config", {
-          method: "GET",
-          cache: "no-store",
-          headers: { accept: "application/json" },
-        });
-
-        const payload = (await response.json()) as RuntimeConfigResponse;
-        if (!cancelled && response.ok && payload.apiBaseUrl) {
-          setGatewayBaseUrl(trimTrailingSlash(payload.apiBaseUrl));
-        }
-      } catch {
-        if (!cancelled) {
-          setGatewayBaseUrl("");
-        }
-      }
-    }
-
-    void loadRuntimeConfig();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const updateTrendSearchParams = useCallback(
     (range: TrendRange, granularity: TrendGranularity, historyMode: "push" | "replace") => {
@@ -1992,7 +1921,7 @@ function DashboardPageContent() {
                   <div className="grid gap-3 self-start">
                     <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
                       <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("gatewayBaseUrl")}</p>
-                      <p className="mt-2 break-all text-sm font-semibold text-[var(--portal-ink)]">{gatewayBaseUrl}</p>
+                      <p className="mt-2 break-all text-sm font-semibold text-[var(--portal-ink)]">https://api.aliang.one</p>
                     </div>
 
                     <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">

@@ -146,7 +146,7 @@ GET /api/public/downloads/check
 
 **透传目标**：`GET <backend>/public/downloads/check?platform=...&version=...&software=...`
 
-**版本号格式**：`vMAJOR.MINOR.PATCH`（如 `v1.2.0`），支持带或不带 `v` 前缀。
+**版本号格式**：`vMAJOR.MINOR.PATCH`（如 `v1.2.0`、`v1.23.123`），每段支持多位数字，且当前实现要求保留 `v` 前缀。
 
 **响应字段**：
 

@@ -26,10 +26,10 @@ func NewService(database *sql.DB, sqlDialect string) *Service {
 
 var (
 	ErrNotFound       = errors.New("not found")
-	ErrInvalidVersion = errors.New("invalid version format, expected vMAJOR.MINOR.PATCH with single digits")
+	ErrInvalidVersion = errors.New("invalid version format, expected vMAJOR.MINOR.PATCH with numeric segments")
 )
 
-var versionPattern = regexp.MustCompile(`^v(\d)\.(\d)\.(\d)$`)
+var versionPattern = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
 
 func (s *Service) rebind(q string) string {
 	return db.Rebind(s.sqlDialect, q)

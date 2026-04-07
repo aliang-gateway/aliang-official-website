@@ -28,7 +28,7 @@ const SESSION_TOKEN_STORAGE_KEY = "session_token";
 const platformOptions = ["linux", "darwin", "windows"];
 const fileTypeOptions = ["dmg", "zip", "exe", "deb", "pkg", "bin", "AppImage", "msi"];
 
-const versionRegex = /^v\d\.\d\.\d$/;
+const versionRegex = /^v\d+\.\d+\.\d+$/;
 
 export default function DownloadCenterPage() {
   const [downloads, setDownloads] = useState<Download[]>([]);
@@ -143,7 +143,7 @@ export default function DownloadCenterPage() {
 
     const trimmedVersion = version.trim();
     if (!versionRegex.test(trimmedVersion)) {
-      setFormError("Version must be in vX.X.X format with single digits (e.g. v1.0.0, v2.3.9)");
+      setFormError("Version must be in vX.X.X format with numeric segments (e.g. v1.0.0, v1.23.123)");
       return;
     }
     if (!softwareName.trim() || !downloadUrl.trim()) {
