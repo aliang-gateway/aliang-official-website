@@ -634,24 +634,28 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 	insertTierGroupBinding(t, ctx, database, tierID, 77)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/api/v1/admin/redeem-codes/create-and-redeem" {
-			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
-		}
-		if req.Method != http.MethodPost {
-			t.Fatalf("expected POST, got %s", req.Method)
-		}
-		if got := req.Header.Get("Idempotency-Key"); got != "stripe:evt_stripe_1:package:77" {
-			t.Fatalf("unexpected idempotency key: %q", got)
-		}
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			t.Fatalf("read upstream body: %v", err)
-		}
-		if !strings.Contains(string(body), `"type":"subscription"`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) || !strings.Contains(string(body), `"value":30`) {
-			t.Fatalf("unexpected create-and-redeem payload: %s", string(body))
-		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":1,"code":"ORDER-G77","type":"subscription","value":30,"status":"used","group_id":77,"validity_days":30}}}`))
+		switch {
+		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
+			if req.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", req.Method)
+			}
+			if got := req.Header.Get("Idempotency-Key"); got != "stripe:evt_stripe_1:package:77" {
+				t.Fatalf("unexpected idempotency key: %q", got)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read upstream body: %v", err)
+			}
+			if !strings.Contains(string(body), `"type":"subscription"`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) || !strings.Contains(string(body), `"value":30`) {
+				t.Fatalf("unexpected create-and-redeem payload: %s", string(body))
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":1,"code":"ORDER-G77","type":"subscription","value":30,"status":"used","group_id":77,"validity_days":30}}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -677,6 +681,9 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 		StripeClient:         stripeClient,
 	})
 	userID, _ := createUserViaAPI(t, mux, "stripe-webhook-user@example.com", "Stripe Webhook User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
 
 	eventBody := []byte(fmt.Sprintf(`{
 	  "id":"evt_stripe_1",
@@ -747,17 +754,21 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 
 	callCount := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/api/v1/admin/redeem-codes/create-and-redeem" {
-			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
-		}
-		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		if callCount == 1 {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"message":"internal error"}`))
-			return
+		switch {
+		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
+			callCount++
+			if callCount == 1 {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"internal error"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":2,"code":"AUTO-G77","type":"subscription","value":3,"status":"used","group_id":77,"validity_days":3}}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":2,"code":"AUTO-G77","type":"subscription","value":3,"status":"used","group_id":77,"validity_days":3}}}`))
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -773,6 +784,9 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 	})
 	userID, userSessionToken := createUserViaAPI(t, mux, "retry-status-user@example.com", "Retry Status User", "user", "")
 	_, adminSessionToken := createUserViaAPI(t, mux, "retry-status-admin@example.com", "Retry Status Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
 
 	body := `{"payment_event_id":"evt_retry_status_1","provider":"stripe","user_id":` + strconv.FormatInt(userID, 10) + `,"tier_code":"daily","order_id":"cs_auto_retry"}`
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -1652,8 +1666,14 @@ func TestUserVisibleGroupsAreFilteredByPackageBindings(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 	userID, userSessionToken := createUserViaAPI(t, mux, "groups-user@example.com", "Groups User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
+	adminID, adminSessionToken := createUserViaAPI(t, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, adminID, "upstream-admin-token", "upstream-admin-refresh-token"); err != nil {
+		t.Fatalf("seed admin sub2api auth token: %v", err)
+	}
 
 	userReq := httptest.NewRequest(http.MethodGet, "/groups/available", nil)
 	setBearerAuth(userReq, userSessionToken)

@@ -1,0 +1,154 @@
+package sub2api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"ai-api-portal/backend/internal/proxy"
+	"ai-api-portal/backend/internal/sub2apiauth"
+)
+
+// UserResolver resolves local session tokens to user IDs and roles.
+// routes implements this interface so Gateway does not depend on routes.
+type UserResolver interface {
+	FindUserIDBySession(ctx context.Context, sessionToken string) (int64, bool, error)
+	FindUserRoleByID(ctx context.Context, userID int64) (string, bool, error)
+}
+
+// Gateway combines the proxy client and auth service into a single entry point
+// for upstream sub2api interactions.
+type Gateway struct {
+	proxy *proxy.Client
+	auth  *sub2apiauth.Service
+}
+
+// NewGateway creates a Gateway from its two dependencies.
+func NewGateway(proxyClient *proxy.Client, authSvc *sub2apiauth.Service) *Gateway {
+	return &Gateway{proxy: proxyClient, auth: authSvc}
+}
+
+// IsConfigured returns true when both the proxy client and auth service are present.
+func (g *Gateway) IsConfigured() bool {
+	return g != nil && g.proxy != nil && g.auth != nil
+}
+
+// HasUpstreamToken checks whether a user has a stored upstream bearer token.
+func (g *Gateway) HasUpstreamToken(ctx context.Context, userID int64) (bool, error) {
+	if g == nil || g.auth == nil {
+		return false, nil
+	}
+	_, err := g.auth.GetBearerTokenByUserID(ctx, userID)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+		return false, nil
+	}
+	return false, err
+}
+
+// CreateUserAPIKeyForUser resolves the user's upstream token and creates an API key.
+func (g *Gateway) CreateUserAPIKeyForUser(ctx context.Context, userID int64, req proxy.CreateUserAPIKeyRequest, idempotencyKey string) (*proxy.ResponseEnvelope[proxy.APIKey], error) {
+	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get bearer token for user %d: %w", userID, err)
+	}
+	return g.proxy.CreateUserAPIKey(ctx, bearerToken, req, idempotencyKey)
+}
+
+// EnsureUserKeyInGroup ensures the user has an auto-key in the specified group,
+// tolerating 409 (already exists).
+func (g *Gateway) EnsureUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
+	if g.proxy == nil || g.auth == nil {
+		return nil
+	}
+	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get bearer token for user %d: %w", userID, err)
+	}
+	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
+	_, createErr := g.proxy.CreateUserAPIKey(ctx, bearerToken, proxy.CreateUserAPIKeyRequest{
+		Name:    "auto-key",
+		GroupID: groupID,
+	}, childKey)
+	if createErr == nil {
+		return nil
+	}
+	var apiErr *proxy.APIError
+	if errors.As(createErr, &apiErr) && apiErr.IsConflict() {
+		return nil // key already exists
+	}
+	return createErr
+}
+
+// ReplaceAuthHeader resolves a local session token in the Authorization header
+// to the user's upstream bearer token. Admin users without an upstream token
+// are left unchanged.
+func (g *Gateway) ReplaceAuthHeader(ctx context.Context, headers http.Header, resolver UserResolver) error {
+	if headers == nil || g == nil || g.auth == nil {
+		return nil
+	}
+
+	authHeader := strings.TrimSpace(headers.Get("Authorization"))
+	if authHeader == "" {
+		return nil
+	}
+
+	localSessionToken, err := extractBearerToken(authHeader)
+	if err != nil {
+		return nil
+	}
+
+	userID, found, err := resolver.FindUserIDBySession(ctx, localSessionToken)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	upstreamAccessToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			role, foundRole, roleErr := resolver.FindUserRoleByID(ctx, userID)
+			if roleErr != nil {
+				return roleErr
+			}
+			if foundRole && role == "admin" {
+				return nil
+			}
+		}
+		return err
+	}
+
+	headers.Set("Authorization", "Bearer "+upstreamAccessToken)
+	return nil
+}
+
+// CaptureTokens delegates to the auth service's UpsertToken.
+func (g *Gateway) CaptureTokens(ctx context.Context, input sub2apiauth.UpsertTokenInput) error {
+	if g == nil || g.auth == nil {
+		return nil
+	}
+	return g.auth.UpsertToken(ctx, input)
+}
+
+// extractBearerToken extracts the token portion from a "Bearer <token>" header.
+func extractBearerToken(rawAuthHeader string) (string, error) {
+	authHeader := strings.TrimSpace(rawAuthHeader)
+	const bearerPrefix = "Bearer "
+	if !strings.HasPrefix(authHeader, bearerPrefix) {
+		return "", errors.New("missing bearer token")
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	if token == "" {
+		return "", errors.New("missing bearer token")
+	}
+
+	return token, nil
+}

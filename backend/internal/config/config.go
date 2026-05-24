@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	Server          ServerConfig   `yaml:"server"`
+	LogLevel        string         `yaml:"log_level"`
 	Database        DatabaseConfig `yaml:"database"`
 	Auth            AuthConfig     `yaml:"auth"`
 	Register        RegisterConfig `yaml:"register"`
@@ -117,6 +118,9 @@ func Load(path string) (*Config, error) {
 	if value, ok := os.LookupEnv("STRIPE_CANCEL_URL"); ok {
 		cfg.Stripe.CancelURL = value
 	}
+	if value, ok := os.LookupEnv("LOG_LEVEL"); ok {
+		cfg.LogLevel = value
+	}
 
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -150,6 +154,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Stripe.Currency == "" {
 		c.Stripe.Currency = "cny"
+	}
+	c.LogLevel = strings.ToLower(strings.TrimSpace(c.LogLevel))
+	if c.LogLevel == "" {
+		c.LogLevel = "info"
 	}
 }
 

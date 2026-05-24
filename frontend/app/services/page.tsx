@@ -127,7 +127,7 @@ function DownloadButton({ items, t }: { items: DownloadItem[]; t: ReturnType<typ
           onClick={() => handleDownload(primary.download_url)}
           className="flex-1 rounded-l-lg bg-[var(--stitch-text)] py-2 font-medium text-[var(--stitch-bg)] transition-colors hover:bg-[var(--stitch-text)]/80"
         >
-          .{primary.file_type} &middot; {primary.version}
+          .{primary.file_type} · {primary.version}
         </button>
         <button
           type="button"
@@ -179,6 +179,7 @@ export default function ServicesPage() {
 
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [downloadsLoading, setDownloadsLoading] = useState(true);
+  const [openSourceProgress, setOpenSourceProgress] = useState(15);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem("session_token") ?? "");
@@ -221,6 +222,24 @@ export default function ServicesPage() {
       }
     }
     void loadDownloads();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProgress() {
+      try {
+        const res = await fetch("/api/opensource/progress");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data.progress === "number") {
+          setOpenSourceProgress(data.progress);
+        }
+      } catch {
+        // 失败保留默认值 15
+      }
+    }
+    void loadProgress();
     return () => { cancelled = true; };
   }, []);
 
@@ -267,7 +286,6 @@ export default function ServicesPage() {
     }
   };
 
-  // Group downloads by platform
   const grouped = new Map<string, DownloadItem[]>();
   for (const dl of downloads) {
     const existing = grouped.get(dl.platform) ?? [];
@@ -275,10 +293,7 @@ export default function ServicesPage() {
     grouped.set(dl.platform, existing);
   }
 
-  // Use platformOrder to render in consistent order
   const platformsToShow = platformOrder.filter((p) => grouped.has(p));
-
-  // Find latest version across all downloads for hero badge
   const latestVersion = downloads.length > 0 ? downloads[0].version : null;
 
   return (
@@ -380,7 +395,6 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      {/* Pricing Plans */}
       <section className="bg-[var(--stitch-bg)] py-24 px-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
@@ -408,7 +422,7 @@ export default function ServicesPage() {
                       {pkg.name}
                     </h3>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black text-[var(--stitch-text)]">{"\u00A5"}{formatPrice(pkg.price_micros)}</span>
+                      <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
                       {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
                     </div>
                     {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}
@@ -430,13 +444,37 @@ export default function ServicesPage() {
                     {checkoutPendingCode === pkg.code
                       ? t("redirecting")
                       : pkg.price_micros > 0
-                        ? t("buyWithStripe")
-                        : t("openDashboard")}
+                      ? t("buyWithStripe")
+                      : t("openDashboard")}
                   </button>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="bg-[var(--stitch-bg-elevated)] py-24 px-6">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-8">
+            <h2 className="mb-4 text-4xl font-black text-[var(--stitch-text)]">{t("openSourceTitle")}</h2>
+            <p className="text-[var(--stitch-text-muted)]">{t("openSourceDescription")}</p>
+          </div>
+          <div className="relative rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-sm font-bold uppercase tracking-wider text-[var(--stitch-text)]">
+                {t("openSourceProgressLabel")}
+              </span>
+              <span className="text-sm font-bold text-[var(--stitch-primary)]">{openSourceProgress}%</span>
+            </div>
+            <div className="relative h-4 overflow-hidden rounded-full bg-[var(--stitch-bg-elevated)]">
+              <div
+                className="absolute left-0 top-0 h-full bg-[var(--stitch-primary)] transition-all duration-500"
+                style={{ width: `${openSourceProgress}%` }}
+              />
+            </div>
+            <p className="mt-6 text-sm text-[var(--stitch-text-muted)]">{t("openSourceThanks")}</p>
+          </div>
         </div>
       </section>
     </>

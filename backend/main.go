@@ -6,8 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	_ "ai-api-portal/backend/docs"
@@ -42,10 +43,16 @@ func main() {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
+
+	initLogger(cfg.LogLevel)
+	slog.Info("config loaded", "log_level", cfg.LogLevel, "db_driver", cfg.Database.Driver, "port", cfg.Server.Port)
+
 	if cfg.Sub2APIBaseURL == "" {
-		log.Fatalf("failed to load config: SUB2API_BASE_URL is required")
+		slog.Error("failed to load config: SUB2API_BASE_URL is required")
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -53,17 +60,21 @@ func main() {
 
 	database, err := db.Open(ctx, cfg.Database.Driver, cfg.Database.EffectiveDSN())
 	if err != nil {
-		log.Fatalf("failed to open database: %v", err)
+		slog.Error("failed to open database", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := database.Close(); err != nil {
-			log.Printf("failed to close database: %v", err)
+			slog.Error("failed to close database", "error", err)
 		}
 	}()
+	slog.Info("database connected", "driver", cfg.Database.Driver)
 
 	if err := db.ApplyMigrations(ctx, database, cfg.Database.Driver); err != nil {
-		log.Fatalf("failed to apply migrations: %v", err)
+		slog.Error("failed to apply migrations", "error", err)
+		os.Exit(1)
 	}
+	slog.Info("database migrations applied")
 
 	opts := user.ServiceOptions{
 		AllowedEmailDomains:      cfg.Register.AllowedEmailDomains,
@@ -79,20 +90,23 @@ func main() {
 			FromName: cfg.SMTP.FromName,
 		})
 		if err != nil {
-			log.Fatalf("failed to init smtp sender: %v", err)
+			slog.Error("failed to init smtp sender", "error", err)
+			os.Exit(1)
 		}
 		opts.MailSender = sender
 	}
 	userSvc := user.NewServiceWithOptions(database, opts)
 
 	if cfg.Redis.Enabled {
-		log.Printf("redis configured at %s (db=%d)", cfg.Redis.Addr, cfg.Redis.DB)
+		slog.Info("redis configured", "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
 	}
 
 	proxyClient, err := proxy.NewClientWithOptions(cfg.Sub2APIBaseURL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: cfg.Sub2APIAdminKey})
 	if err != nil {
-		log.Fatalf("failed to init sub2api proxy client: %v", err)
+		slog.Error("failed to init sub2api proxy client", "error", err)
+		os.Exit(1)
 	}
+	slog.Info("sub2api proxy client initialized", "base_url", cfg.Sub2APIBaseURL)
 
 	var stripeClient *portalstripe.Client
 	if cfg.Stripe.SecretKey != "" {
@@ -104,8 +118,10 @@ func main() {
 			CancelURL:      cfg.Stripe.CancelURL,
 		})
 		if err != nil {
-			log.Fatalf("failed to init stripe client: %v", err)
+			slog.Error("failed to init stripe client", "error", err)
+			os.Exit(1)
 		}
+		slog.Info("stripe client initialized")
 	}
 
 	mux := http.NewServeMux()
@@ -119,9 +135,63 @@ func main() {
 		SQLDialect:           cfg.Database.Driver,
 	})
 
+	handler := requestLogger(mux)
+
 	addr := ":" + cfg.Server.Port
-	log.Printf("backend server listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	slog.Info("backend server listening", "addr", addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		slog.Error("server stopped", "error", err)
+		os.Exit(1)
 	}
+}
+
+func initLogger(level string) {
+	var slogLevel slog.Level
+	switch level {
+	case "debug":
+		slogLevel = slog.LevelDebug
+	case "info":
+		slogLevel = slog.LevelInfo
+	case "warn":
+		slogLevel = slog.LevelWarn
+	case "error":
+		slogLevel = slog.LevelError
+	default:
+		slogLevel = slog.LevelInfo
+	}
+
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     slogLevel,
+		AddSource: true,
+	})
+	slog.SetDefault(slog.New(handler))
+}
+
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(sw, r)
+
+		duration := time.Since(start)
+		slog.Info("http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"query", r.URL.RawQuery,
+			"status", sw.status,
+			"duration", duration.String(),
+			"remote", r.RemoteAddr,
+		)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
 }

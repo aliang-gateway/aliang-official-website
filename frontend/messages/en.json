@@ -88,7 +88,7 @@
       "security": "Security",
       "privacy": "Privacy",
       "terms": "Terms",
-      "copyright": "© 2024 ALiang AI Services Inc. All rights reserved."
+      "copyright": "© 2026 ALiang AI Services Inc. All rights reserved."
     }
   },
   "homeHero": {
@@ -195,7 +195,11 @@
     "noPlans": "No plans available at this time.",
     "buyWithStripe": "Buy with Stripe",
     "openDashboard": "Open Dashboard",
-    "redirecting": "Redirecting..."
+    "redirecting": "Redirecting...",
+    "openSourceTitle": "Open Source Roadmap",
+    "openSourceDescription": "If our software helps you, please share it with others. We will open-source the codebase once we reach our user milestone.",
+    "openSourceProgressLabel": "Progress",
+    "openSourceThanks": "Thank you for your support and for spreading the word!"
   },
   "blog": {
     "edition": "Edition 2024.Q3",

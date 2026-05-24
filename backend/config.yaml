@@ -1,6 +1,8 @@
 server:
   port: "8081"
 
+log_level: "debug"
+
 database:
   driver: "postgres"
   # path: "./data.db"

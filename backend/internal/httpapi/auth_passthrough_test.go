@@ -59,8 +59,8 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected nested data object, got %#v", payload["data"])
 	}
-	if data["access_token"] != "up-at-1" {
-		t.Fatalf("expected access_token up-at-1, got %#v", data["access_token"])
+	if data["access_token"] != payload["session_token"] {
+		t.Fatalf("expected data.access_token to be replaced with session_token, got %#v", data["access_token"])
 	}
 	if data["refresh_token"] != "up-rt-1" {
 		t.Fatalf("expected refresh_token up-rt-1, got %#v", data["refresh_token"])
@@ -359,8 +359,8 @@ func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
 	if got := payload["session_token"]; got == nil || got == "" {
 		t.Fatalf("expected root session_token to be injected, got %#v", got)
 	}
-	if payload["access_token"] != "missing-user-access" {
-		t.Fatalf("expected access_token missing-user-access, got %#v", payload["access_token"])
+	if payload["access_token"] != payload["session_token"] {
+		t.Fatalf("expected access_token to be replaced with session_token, got %#v", payload["access_token"])
 	}
 	if payload["refresh_token"] != "missing-user-refresh" {
 		t.Fatalf("expected refresh_token missing-user-refresh, got %#v", payload["refresh_token"])

@@ -17,7 +17,7 @@
 
 ### 2.1 前端代理地址
 
-站内页面、桌面客户端如果接的是网站层，通常访问 Next.js 暴露的接口：
+如果请求是先到 Next.js 前端服务，再由前端转发到后端，那么应访问 Next.js 暴露的接口：
 
 - `GET /api/public/downloads`
 - `GET /api/public/downloads/check`
@@ -29,12 +29,32 @@
 
 ### 2.2 后端真实地址
 
+如果请求是直接打后端服务，则必须使用后端真实路由，而不是前端代理路由。
+
 Next.js 会把请求转发到后端服务，目标地址由环境变量控制：
 
 - `API_BASE_URL`
 - `NEXT_PUBLIC_API_BASE_URL`
 
-例如：
+例如，前端代理路径：
+
+```txt
+http://127.0.0.1:3000/api/public/downloads/check
+```
+
+会转发到后端真实路径：
+
+```txt
+http://127.0.0.1:8081/public/downloads/check
+```
+
+注意：
+
+- 前端代理层带 `/api`
+- 后端真实服务的公开下载接口不带 `/api`
+- 因此 `http://127.0.0.1:8081/api/public/downloads/check` 会返回 `404`
+
+再举一个完整例子：
 
 ```txt
 https://your-frontend.example.com/api/public/downloads/check

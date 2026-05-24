@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"sort"
@@ -29,6 +29,7 @@ import (
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
 	portalstripe "ai-api-portal/backend/internal/stripe"
+	"ai-api-portal/backend/internal/sub2api"
 	"ai-api-portal/backend/internal/sub2apiauth"
 	"ai-api-portal/backend/internal/user"
 )
@@ -43,7 +44,7 @@ type routes struct {
 	downloadSvc          *download.Service
 	fulfillmentSvc       *fulfillment.Service
 	userSvc              *user.Service
-	sub2apiAuth          *sub2apiauth.Service
+	sub2api              *sub2api.Gateway
 	proxyClient          *proxy.Client
 	stripeClient         *portalstripe.Client
 	adminBootstrapSecret string
@@ -564,7 +565,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		userSvc:              userSvc,
-		sub2apiAuth:          sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
+		sub2api:              sub2api.NewGateway(opts.ProxyClient, sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect))),
 		proxyClient:          opts.ProxyClient,
 		stripeClient:         opts.StripeClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
@@ -604,6 +605,49 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		// Sub2API passthrough: redeem & usage
 		mux.HandleFunc("GET /redeem/history", r.handleRedeemHistoryPassthrough)
 		mux.HandleFunc("GET /usage/stats", r.handleUsageStatsPassthrough)
+
+		// alianggate app client compatibility routes
+		mux.HandleFunc("POST /api/auth/login", r.handleAuthLoginPassthrough)
+		mux.HandleFunc("POST /api/auth/refresh", r.handleAuthRefreshPassthrough)
+		mux.HandleFunc("POST /api/auth/logout", r.handleAuthLogoutPassthrough)
+		mux.HandleFunc("GET /api/auth/me", r.handleAuthMePassthrough)
+
+		// /api/v1/auth/* — alianggate compat paths
+		mux.HandleFunc("POST /api/v1/auth/register", r.handleAuthRegisterPassthrough)
+		mux.HandleFunc("POST /api/v1/auth/login", r.handleAuthLoginPassthrough)
+		mux.HandleFunc("POST /api/v1/auth/refresh", r.handleAuthRefreshPassthrough)
+		mux.HandleFunc("POST /api/v1/auth/logout", r.handleAuthLogoutPassthrough)
+		mux.HandleFunc("GET /api/v1/auth/me", r.handleAuthMePassthrough)
+
+		// alianggate user-center paths (bearer passthrough; no local-session gate)
+		mux.HandleFunc("GET /api/v1/user/profile", r.handleUserProfilePassthrough)
+		mux.HandleFunc("PUT /api/v1/user/profile", r.handleUserProfileUpdatePassthrough)
+		mux.HandleFunc("GET /api/v1/user/subscriptions/summary", r.handleUserSubSummaryPassthrough)
+		mux.HandleFunc("GET /api/v1/user/subscriptions/progress", r.handleUserSubProgressPassthrough)
+		mux.Handle("GET /api/v1/user/groups/available", authenticated(http.HandlerFunc(r.handleUserGroupsAvailablePassthrough)))
+		mux.Handle("GET /api/v1/user/api_keys", authenticated(http.HandlerFunc(r.handleUserAPIKeysPassthrough)))
+		mux.HandleFunc("POST /api/v1/user/code/redeem", r.handleUserCodeRedeemPassthrough)
+
+		// upstream-compatible passthrough routes (alianggate native paths)
+		mux.HandleFunc("PUT /api/v1/user", r.handleUpstreamPassthrough("/api/v1/user"))
+		mux.HandleFunc("GET /api/v1/subscriptions/summary", r.handleUpstreamPassthrough("/api/v1/subscriptions/summary"))
+		mux.HandleFunc("GET /api/v1/subscriptions/progress", r.handleUpstreamPassthrough("/api/v1/subscriptions/progress"))
+		mux.HandleFunc("GET /api/v1/keys", r.handleUpstreamPassthrough("/api/v1/keys"))
+		mux.HandleFunc("GET /api/v1/groups/available", r.handleUpstreamPassthrough("/api/v1/groups/available"))
+		mux.HandleFunc("POST /api/v1/redeem", r.handleUpstreamPassthrough("/api/v1/redeem"))
+
+		// alianggate dashboard / usage paths (native /api/v1/*, same upstream as /dashboard/*)
+		mux.HandleFunc("GET /api/v1/usage/dashboard/stats", r.handleDashboardHomePassthrough)
+		mux.HandleFunc("GET /api/v1/usage/dashboard/trend", r.handleDashboardDetailsPassthrough)
+		mux.HandleFunc("GET /api/v1/usage/dashboard/models", r.handleDashboardModelsPassthrough)
+		mux.HandleFunc("GET /api/v1/usage", r.handleDashboardUsagePassthrough)
+		mux.HandleFunc("GET /api/v1/admin/ops/dashboard/snapshot-v2", r.handleOpsDashboardSnapshotPassthrough)
+
+		mux.Handle("POST /api/user/auth/new/activate", authenticated(http.HandlerFunc(r.handleUpstreamPassthrough("/api/user/auth/new/activate"))))
+		mux.Handle("GET /api/user/auth/info/plan/info", authenticated(http.HandlerFunc(r.handleUpstreamPassthrough("/api/user/auth/info/plan/info"))))
+		mux.Handle("GET /api/production/prod/sui/user/sui/inbounds", authenticated(http.HandlerFunc(r.handleUpstreamPassthrough("/api/production/prod/sui/user/sui/inbounds"))))
+
+		mux.HandleFunc("GET /api/public/downloads/check", r.handlePublicVersionCheck)
 	} else {
 		mux.Handle("GET /subscription", authenticated(http.HandlerFunc(r.handleGetSubscription)))
 		mux.Handle("POST /api-keys", authenticated(http.HandlerFunc(r.handleCreateAPIKey)))
@@ -856,13 +900,16 @@ func (r *routes) handleAuthLoginPassthrough(w http.ResponseWriter, req *http.Req
 
 func (r *routes) handleAuthMePassthrough(w http.ResponseWriter, req *http.Request) {
 	if profile, handled, err := r.resolveLocalAuthMeProfile(req.Context(), req.Header.Get("Authorization")); err != nil {
+		slog.Error("resolveLocalAuthMeProfile error", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to resolve local session")
 		return
 	} else if handled {
+		slog.Debug("auth/me resolved locally", "email", profile.Email)
 		writeJSON(w, http.StatusOK, profile)
 		return
 	}
 
+	slog.Debug("auth/me falling through to upstream proxy")
 	r.handleAuthPassthrough(w, req, "/api/v1/auth/me")
 }
 
@@ -890,6 +937,10 @@ func (r *routes) handleDashboardUsagePassthrough(w http.ResponseWriter, req *htt
 	r.handleDashboardPassthrough(w, req, "/api/v1/usage")
 }
 
+func (r *routes) handleOpsDashboardSnapshotPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/admin/ops/dashboard/snapshot-v2")
+}
+
 func (r *routes) resolveLocalAuthMeProfile(ctx context.Context, authHeader string) (*user.UserProfile, bool, error) {
 	localSessionToken, err := extractBearerToken(authHeader)
 	if err != nil {
@@ -904,11 +955,13 @@ func (r *routes) resolveLocalAuthMeProfile(ctx context.Context, authHeader strin
 		return nil, false, nil
 	}
 
-	if r.proxyClient != nil && r.sub2apiAuth != nil {
-		if _, err := r.sub2apiAuth.GetBearerTokenByUserID(ctx, userID); err == nil {
-			return nil, false, nil
-		} else if !errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+	if r.sub2api.IsConfigured() {
+		hasToken, err := r.sub2api.HasUpstreamToken(ctx, userID)
+		if err != nil {
 			return nil, false, err
+		}
+		if hasToken {
+			return nil, false, nil
 		}
 	}
 
@@ -1044,6 +1097,36 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 	writeForwardedJSON(w, statusCode, headers, filteredPayload)
+}
+
+// ----- alianggate app client compatibility handlers -----
+
+func (r *routes) handleUserProfilePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/user/profile")
+}
+
+func (r *routes) handleUserProfileUpdatePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/user")
+}
+
+func (r *routes) handleUserSubSummaryPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/summary")
+}
+
+func (r *routes) handleUserSubProgressPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/progress")
+}
+
+func (r *routes) handleUserGroupsAvailablePassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleFilteredGroupsAvailablePassthrough(w, req)
+}
+
+func (r *routes) handleUserAPIKeysPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleFilteredAPIKeysListPassthrough(w, req)
+}
+
+func (r *routes) handleUserCodeRedeemPassthrough(w http.ResponseWriter, req *http.Request) {
+	r.handleDashboardPassthrough(w, req, "/api/v1/redeem")
 }
 
 func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -1340,6 +1423,8 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 		return
 	}
 
+	slog.Debug("auth passthrough", "method", req.Method, "upstream", upstreamPath)
+
 	requestBody := []byte(nil)
 	if req.Body != nil {
 		bodyBytes, err := io.ReadAll(req.Body)
@@ -1356,6 +1441,7 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 	requestRefreshToken := ""
 	if upstreamPath == "/api/v1/auth/login" && len(requestBody) > 0 {
 		requestEmail = extractAuthEmailFromRequestBody(requestBody)
+		slog.Debug("auth login request", "email", requestEmail)
 	}
 	if upstreamPath == "/api/v1/auth/refresh" && len(requestBody) > 0 {
 		requestRefreshToken = extractAuthRefreshTokenFromRequestBody(requestBody)
@@ -1364,8 +1450,9 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
-	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
 		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			slog.Warn("auth passthrough: upstream session unavailable", "path", upstreamPath)
 			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
 			return
 		}
@@ -1392,18 +1479,23 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(responseBody))
 
+	slog.Debug("auth passthrough upstream response", "path", upstreamPath, "status", resp.StatusCode)
+
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/refresh") {
 		localUserID, found, err := r.captureSub2APITokens(req.Context(), req, requestEmail, requestRefreshToken, responseBody)
 		if err != nil {
+			slog.Error("captureSub2APITokens failed", "path", upstreamPath, "error", err)
 			writeError(w, http.StatusInternalServerError, "failed to persist auth session")
 			return
 		}
+		slog.Debug("captureSub2APITokens result", "path", upstreamPath, "found", found, "user_id", localUserID)
 		if upstreamPath == "/api/v1/auth/login" && found {
 			sessionToken, sessionErr := r.createLocalSessionToken(req.Context(), localUserID)
 			if sessionErr != nil {
 				writeError(w, http.StatusInternalServerError, "failed to create local session")
 				return
 			}
+			slog.Info("local session created", "user_id", localUserID, "email", requestEmail)
 			responseBody, err = injectSessionTokenIntoAuthResponse(responseBody, sessionToken)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to finalize login response")
@@ -1413,10 +1505,17 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 			resp.ContentLength = int64(len(responseBody))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(responseBody)))
 		}
+		if upstreamPath == "/api/v1/auth/refresh" && found {
+			if extendErr := r.extendLocalSessionExpiry(req.Context(), localUserID); extendErr != nil {
+				slog.Warn("failed to extend session on refresh", "error", extendErr)
+			} else {
+				slog.Debug("session extended on refresh", "user_id", localUserID)
+			}
+		}
 	}
 
 	if err := proxy.CopyResponse(w, resp); err != nil {
-		log.Printf("proxy auth response copy failed for %s: %v", upstreamPath, err)
+		slog.Error("proxy auth response copy failed", "path", upstreamPath, "error", err)
 		return
 	}
 }
@@ -1442,7 +1541,7 @@ func (r *routes) captureSub2APITokens(ctx context.Context, req *http.Request, re
 		}
 	}
 
-	if err := r.sub2apiAuth.UpsertToken(ctx, sub2apiauth.UpsertTokenInput{
+	if err := r.sub2api.CaptureTokens(ctx, sub2apiauth.UpsertTokenInput{
 		UserID:         localUserID,
 		UpstreamUserID: upstreamUserID,
 		AccessToken:    accessToken,
@@ -1591,6 +1690,16 @@ func (r *routes) findLocalUserRoleByID(ctx context.Context, userID int64) (strin
 	}
 
 	return strings.TrimSpace(role), true, nil
+}
+
+// FindUserIDBySession implements sub2api.UserResolver.
+func (r *routes) FindUserIDBySession(ctx context.Context, sessionToken string) (int64, bool, error) {
+	return r.findLocalUserIDBySessionToken(ctx, sessionToken)
+}
+
+// FindUserRoleByID implements sub2api.UserResolver.
+func (r *routes) FindUserRoleByID(ctx context.Context, id int64) (string, bool, error) {
+	return r.findLocalUserRoleByID(ctx, id)
 }
 
 func extractAuthEmailFromRequestBody(body []byte) string {
@@ -1750,14 +1859,18 @@ func (r *routes) handleDashboardPassthrough(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	slog.Debug("dashboard passthrough", "method", req.Method, "upstream", upstreamPath)
+
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
-	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
 		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			slog.Warn("dashboard passthrough: upstream session unavailable", "path", upstreamPath)
 			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
 			return
 		}
+		slog.Error("dashboard passthrough: failed to resolve upstream session", "path", upstreamPath, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to resolve upstream session")
 		return
 	}
@@ -1768,9 +1881,18 @@ func (r *routes) handleDashboardPassthrough(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	slog.Debug("dashboard passthrough upstream response", "path", upstreamPath, "status", resp.StatusCode)
+
 	if err := proxy.CopyResponse(w, resp); err != nil {
-		log.Printf("proxy dashboard response copy failed for %s: %v", upstreamPath, err)
+		slog.Error("proxy dashboard response copy failed", "path", upstreamPath, "error", err)
 		return
+	}
+}
+
+// handleUpstreamPassthrough returns a handler that proxies the request to the specified upstream path.
+func (r *routes) handleUpstreamPassthrough(upstreamPath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		r.handleDashboardPassthrough(w, req, upstreamPath)
 	}
 }
 
@@ -1827,58 +1949,35 @@ func (r *routes) createLocalSessionToken(ctx context.Context, userID int64) (str
 	return plaintext, nil
 }
 
+func (r *routes) extendLocalSessionExpiry(ctx context.Context, userID int64) error {
+	newExpiry := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
+	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		UPDATE als_sessions
+		SET expires_at = ?
+		WHERE user_id = ?
+		  AND revoked_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1;
+	`), newExpiry, userID)
+	if err != nil {
+		return fmt.Errorf("extend session expiry: %w", err)
+	}
+	return nil
+}
+
 func injectSessionTokenIntoAuthResponse(body []byte, sessionToken string) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
 	payload["session_token"] = sessionToken
+	payload["access_token"] = sessionToken
 	if data, ok := payload["data"].(map[string]any); ok {
 		data["session_token"] = sessionToken
+		data["access_token"] = sessionToken
 		payload["data"] = data
 	}
 	return json.Marshal(payload)
-}
-
-func (r *routes) replaceAuthorizationWithStoredUpstreamToken(ctx context.Context, headers http.Header) error {
-	if headers == nil || r.sub2apiAuth == nil {
-		return nil
-	}
-
-	authHeader := strings.TrimSpace(headers.Get("Authorization"))
-	if authHeader == "" {
-		return nil
-	}
-
-	localSessionToken, err := extractBearerToken(authHeader)
-	if err != nil {
-		return nil
-	}
-
-	userID, found, err := r.findLocalUserIDBySessionToken(ctx, localSessionToken)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return nil
-	}
-
-	upstreamAccessToken, err := r.sub2apiAuth.GetBearerTokenByUserID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
-			role, foundRole, roleErr := r.findLocalUserRoleByID(ctx, userID)
-			if roleErr != nil {
-				return roleErr
-			}
-			if foundRole && role == "admin" {
-				return nil
-			}
-		}
-		return err
-	}
-
-	headers.Set("Authorization", "Bearer "+upstreamAccessToken)
-	return nil
 }
 
 func (r *routes) findLocalUserIDBySessionToken(ctx context.Context, sessionToken string) (int64, bool, error) {
@@ -2890,7 +2989,7 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 func (r *routes) handlePublicListArticles(w http.ResponseWriter, req *http.Request) {
 	als_articles, err := r.articleSvc.ListPublishedArticles(req.Context())
 	if err != nil {
-		log.Printf("[ERROR] handlePublicListArticles: list published articles: %v", err)
+		slog.Error("handlePublicListArticles: list published articles", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
@@ -2944,7 +3043,7 @@ func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handlePublicGetArticle: get article %q: %v", slug, err)
+		slog.Error("handlePublicGetArticle: get article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get article")
 		return
 	}
@@ -2973,7 +3072,7 @@ func (r *routes) handlePublicGetArticle(w http.ResponseWriter, req *http.Request
 func (r *routes) handleAdminListArticles(w http.ResponseWriter, req *http.Request) {
 	als_articles, err := r.articleSvc.ListArticles(req.Context(), article.ListArticlesFilters{})
 	if err != nil {
-		log.Printf("[ERROR] handleAdminListArticles: list articles: %v", err)
+		slog.Error("handleAdminListArticles: list articles", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list als_articles")
 		return
 	}
@@ -3044,7 +3143,7 @@ func (r *routes) handleAdminCreateArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		log.Printf("[ERROR] handleAdminCreateArticle: create article %q: %v", payload.Slug, err)
+		slog.Error("handleAdminCreateArticle: create article", "slug", payload.Slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to create article")
 		return
 	}
@@ -3065,7 +3164,7 @@ func (r *routes) handleAdminGetArticle(w http.ResponseWriter, req *http.Request)
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handleAdminGetArticle: find article %q: %v", slug, err)
+		slog.Error("handleAdminGetArticle: find article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get article")
 		return
 	}
@@ -3092,7 +3191,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handleAdminUpdateArticle: find article %q: %v", slug, err)
+		slog.Error("handleAdminUpdateArticle: find article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3177,7 +3276,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		log.Printf("[ERROR] handleAdminUpdateArticle: update article %q: %v", slug, err)
+		slog.Error("handleAdminUpdateArticle: update article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3188,7 +3287,7 @@ func (r *routes) handleAdminUpdateArticle(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handleAdminUpdateArticle: get article %d after update: %v", updatedArticle.ID, err)
+		slog.Error("handleAdminUpdateArticle: get article after update", "id", updatedArticle.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update article")
 		return
 	}
@@ -3208,7 +3307,7 @@ func (r *routes) handleAdminDeleteArticle(w http.ResponseWriter, req *http.Reque
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
-		log.Printf("[ERROR] handleAdminDeleteArticle: delete article %q: %v", slug, err)
+		slog.Error("handleAdminDeleteArticle: delete article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to delete article")
 		return
 	}
@@ -3228,7 +3327,7 @@ func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Requ
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
-		log.Printf("[ERROR] handleAdminPublishArticle: publish article %q: %v", slug, err)
+		slog.Error("handleAdminPublishArticle: publish article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to publish article")
 		return
 	}
@@ -3239,7 +3338,7 @@ func (r *routes) handleAdminPublishArticle(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handleAdminPublishArticle: find article %q after publish: %v", slug, err)
+		slog.Error("handleAdminPublishArticle: find article after publish", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return
 	}
@@ -3259,7 +3358,7 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 			writeError(w, http.StatusNotFound, "article not found")
 			return
 		}
-		log.Printf("[ERROR] handleAdminUnpublishArticle: unpublish article %q: %v", slug, err)
+		slog.Error("handleAdminUnpublishArticle: unpublish article", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to unpublish article")
 		return
 	}
@@ -3270,7 +3369,7 @@ func (r *routes) handleAdminUnpublishArticle(w http.ResponseWriter, req *http.Re
 		return
 	}
 	if err != nil {
-		log.Printf("[ERROR] handleAdminUnpublishArticle: find article %q after unpublish: %v", slug, err)
+		slog.Error("handleAdminUnpublishArticle: find article after unpublish", "slug", slug, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to retrieve updated article")
 		return
 	}
@@ -3338,7 +3437,7 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		AmountMinor:   amountMinor,
 	})
 	if err != nil {
-		log.Printf("stripe checkout session creation failed for user_id=%d tier_code=%s: %v", authUser.ID, pkg.Code, err)
+		slog.Error("stripe checkout session creation failed", "user_id", authUser.ID, "tier_code", pkg.Code, "error", err)
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to create stripe checkout session: %v", err))
 		return
 	}
@@ -3862,7 +3961,7 @@ func (r *routes) executePaymentSuccessFulfillment(ctx context.Context, job *fulf
 	if r.proxyClient == nil {
 		return nil, errors.New("proxy client is not configured")
 	}
-	if payload.APIKey != nil && r.sub2apiAuth == nil {
+	if payload.APIKey != nil && !r.sub2api.IsConfigured() {
 		return nil, errors.New("sub2api auth service is not configured")
 	}
 
@@ -3961,45 +4060,13 @@ func (r *routes) executeDelegatedAPIKeyCreation(ctx context.Context, job *fulfil
 		return nil
 	}
 
-	bearerToken, err := r.sub2apiAuth.GetBearerTokenByUserID(ctx, payload.UserID)
-	if err != nil {
-		_, applyErr := r.fulfillmentSvc.ApplyAPIKeyCreationResult(ctx, job.ID, err)
-		if applyErr != nil {
-			return applyErr
-		}
-		return nil
-	}
-
 	childKey := parentIdempotencyKey + ":api_key"
-	_, err = r.proxyClient.CreateUserAPIKey(ctx, bearerToken, *payload.APIKey, childKey)
+	_, err := r.sub2api.CreateUserAPIKeyForUser(ctx, payload.UserID, *payload.APIKey, childKey)
 	_, applyErr := r.fulfillmentSvc.ApplyAPIKeyCreationResult(ctx, job.ID, err)
 	if applyErr != nil {
 		return applyErr
 	}
 	return nil
-}
-
-func (r *routes) ensureUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
-	if r.proxyClient == nil || r.sub2apiAuth == nil {
-		return nil
-	}
-	bearerToken, err := r.sub2apiAuth.GetBearerTokenByUserID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("get bearer token for user %d: %w", userID, err)
-	}
-	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
-	_, createErr := r.proxyClient.CreateUserAPIKey(ctx, bearerToken, proxy.CreateUserAPIKeyRequest{
-		Name:    "auto-key",
-		GroupID: groupID,
-	}, childKey)
-	if createErr == nil {
-		return nil
-	}
-	var apiErr *proxy.APIError
-	if errors.As(createErr, &apiErr) && apiErr.IsConflict() {
-		return nil // key already exists
-	}
-	return createErr
 }
 
 func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) error {
@@ -4043,7 +4110,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		}
 		validityDays := int(pkg.ValueAmount)
 		for _, groupID := range pkg.GroupIDs {
-			if ensureErr := r.ensureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
 				redeemErr = ensureErr
 				break
 			}
@@ -4748,7 +4815,7 @@ func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string)
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
-	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
 		return nil, err
 	}
 
@@ -4776,7 +4843,7 @@ func (r *routes) filteredProxyJSONResponse(w http.ResponseWriter, req *http.Requ
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
-	if err := r.replaceAuthorizationWithStoredUpstreamToken(req.Context(), forwarded.Header); err != nil {
+	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
 		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
 			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
 			return nil, 0, nil, false, nil
@@ -4791,7 +4858,7 @@ func (r *routes) filteredProxyJSONResponse(w http.ResponseWriter, req *http.Requ
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		if copyErr := proxy.CopyResponse(w, resp); copyErr != nil {
-			log.Printf("proxy filtered response copy failed for %s: %v", upstreamPath, copyErr)
+			slog.Error("proxy filtered response copy failed", "path", upstreamPath, "error", copyErr)
 			return nil, 0, nil, false, nil
 		}
 		return nil, 0, nil, false, nil
@@ -5381,7 +5448,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	if status >= 500 {
-		log.Printf("[ERROR] HTTP %d: %s", status, message)
+		slog.Error("HTTP error", "status", status, "message", message)
 	}
 	writeJSON(w, status, errorResponse{Error: message})
 }
