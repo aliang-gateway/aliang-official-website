@@ -62,7 +62,7 @@ export default async function DocsSlugPage({
       <h1 className="text-3xl md:text-4xl font-bold text-[var(--stitch-text)] mb-8">
         {page.title}
       </h1>
-      <div className="text-[var(--stitch-text-muted)] leading-relaxed">
+      <div className="text-[var(--stitch-text)] leading-relaxed">
         <MDXRemote
           source={page.mdx_body}
           components={mdxComponents}
