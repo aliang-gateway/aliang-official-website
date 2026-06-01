@@ -878,6 +878,12 @@ function DashboardPageContent() {
         fetch("/api/groups/available", commonRequestInit),
       ]);
 
+      if (homeResponse.status === 401 || homeResponse.status === 403) {
+        localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+        router.replace("/login");
+        return;
+      }
+
       const homePayload = (await homeResponse.json()) as unknown;
       if (!homeResponse.ok) {
         const errorPayload = asRecord(homePayload);

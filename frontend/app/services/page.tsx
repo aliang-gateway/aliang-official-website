@@ -82,6 +82,7 @@ type DynamicPackage = {
   value_amount: number;
   description: string;
   features: string[];
+  is_published?: boolean;
 };
 
 function formatPrice(priceMicros: number): string {
@@ -246,6 +247,11 @@ export default function ServicesPage() {
   const handlePackageCheckout = async (pkg: DynamicPackage) => {
     setCheckoutError(null);
 
+    if (pkg.is_published === false) {
+      setCheckoutError(t("packageUnavailable"));
+      return;
+    }
+
     if (pkg.price_micros <= 0) {
       router.push("/dashboard");
       return;
@@ -334,7 +340,7 @@ export default function ServicesPage() {
           <div className="relative">
             <div className="aspect-video overflow-hidden rounded-2xl border-4 border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] shadow-2xl">
               <Image
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdbfe62AqCJSKa5V7u1se0IJGHIFUWK-fOmLPZ7MMaQwIyWYRTfpjRcDAxXxQoJypZFckiH1wbkf9e0P_UnsH-S1aNF65HAJX77TbNHSYo1hqtEpBgpeKai3qqu6V98jhIvmYZg-uEQ93BsCudtfwvmyYY9jxRYEz0H9HRnj4_jyBfHBIIJcM_2CJrPEDYRjFORR64yGaJNyaPdBEdXLZ-0LPUkAE4o7-ZVKeOOFJvmJnPJd6F3lVt90b2xYE8IZxbTdXtULknYrE"
+                src="https://aliang-1305838434.cos.ap-nanjing.myqcloud.com/docs/ChatGPT-2.png"
                 alt="Futuristic AI neural network visualization with green accents"
                 fill
                 className="object-cover"
@@ -412,43 +418,52 @@ export default function ServicesPage() {
             <p className="text-center text-[var(--stitch-text-muted)]">{t("noPlans")}</p>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-              {packages.map((pkg) => (
-                <div
-                  key={pkg.code}
-                  className="flex flex-col rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 shadow-sm transition-all hover:shadow-md"
-                >
-                  <div className="mb-8">
-                    <h3 className="mb-2 text-lg font-bold uppercase tracking-tight text-[var(--stitch-text-muted)]">
-                      {pkg.name}
-                    </h3>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
-                      {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
-                    </div>
-                    {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}
-                  </div>
-                  <ul className="mb-8 flex-grow space-y-4">
-                    {pkg.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-3 text-sm">
-                        <MaterialIcon name="check_circle" size={18} className="text-[var(--stitch-primary)]" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    type="button"
-                    className="w-full rounded-lg py-3 font-bold transition-colors bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
-                    onClick={() => void handlePackageCheckout(pkg)}
-                    disabled={checkoutPendingCode === pkg.code}
+              {packages.map((pkg) => {
+                const isPublished = pkg.is_published !== false;
+                return (
+                  <div
+                    key={pkg.code}
+                    className="flex flex-col rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-8 shadow-sm transition-all hover:shadow-md"
                   >
-                    {checkoutPendingCode === pkg.code
-                      ? t("redirecting")
-                      : pkg.price_micros > 0
-                      ? t("buyWithStripe")
-                      : t("openDashboard")}
-                  </button>
-                </div>
-              ))}
+                    <div className="mb-8">
+                      <h3 className="mb-2 text-lg font-bold uppercase tracking-tight text-[var(--stitch-text-muted)]">
+                        {pkg.name}
+                      </h3>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
+                        {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
+                      </div>
+                      {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}
+                    </div>
+                    <ul className="mb-8 flex-grow space-y-4">
+                      {pkg.features.map((feature) => (
+                        <li key={feature} className="flex items-center gap-3 text-sm">
+                          <MaterialIcon name="check_circle" size={18} className="text-[var(--stitch-primary)]" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className={`w-full rounded-lg py-3 font-bold transition-colors ${
+                        isPublished
+                          ? "bg-[var(--stitch-text)] text-[var(--stitch-bg)] hover:bg-[var(--stitch-text)]/80"
+                          : "cursor-not-allowed bg-[var(--stitch-bg-elevated)] text-[var(--stitch-text-muted)]"
+                      }`}
+                      onClick={() => void handlePackageCheckout(pkg)}
+                      disabled={checkoutPendingCode === pkg.code || !isPublished}
+                    >
+                      {!isPublished
+                        ? t("packageUnavailable")
+                        : checkoutPendingCode === pkg.code
+                        ? t("redirecting")
+                        : pkg.price_micros > 0
+                        ? t("buyWithStripe")
+                        : t("openDashboard")}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

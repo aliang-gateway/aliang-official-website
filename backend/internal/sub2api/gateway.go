@@ -51,6 +51,13 @@ func (g *Gateway) HasUpstreamToken(ctx context.Context, userID int64) (bool, err
 	return false, err
 }
 
+func (g *Gateway) UpstreamUserID(ctx context.Context, userID int64) (int64, bool, error) {
+	if g == nil || g.auth == nil {
+		return 0, false, nil
+	}
+	return g.auth.GetUpstreamUserIDByUserID(ctx, userID)
+}
+
 // CreateUserAPIKeyForUser resolves the user's upstream token and creates an API key.
 func (g *Gateway) CreateUserAPIKeyForUser(ctx context.Context, userID int64, req proxy.CreateUserAPIKeyRequest, idempotencyKey string) (*proxy.ResponseEnvelope[proxy.APIKey], error) {
 	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)

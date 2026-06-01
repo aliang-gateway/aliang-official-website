@@ -99,3 +99,28 @@ func (s *Service) GetBearerTokenByUserID(ctx context.Context, userID int64) (str
 
 	return bearer, nil
 }
+
+func (s *Service) GetUpstreamUserIDByUserID(ctx context.Context, userID int64) (int64, bool, error) {
+	if userID <= 0 {
+		return 0, false, errors.New("user id must be positive")
+	}
+
+	var upstreamUserID sql.NullInt64
+	err := s.db.QueryRowContext(ctx, db.Rebind(s.sqlDialect, `
+		SELECT upstream_user_id
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?
+		LIMIT 1;
+	`), userID).Scan(&upstreamUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("query sub2api upstream user id: %w", err)
+	}
+	if !upstreamUserID.Valid || upstreamUserID.Int64 <= 0 {
+		return 0, false, nil
+	}
+
+	return upstreamUserID.Int64, true, nil
+}

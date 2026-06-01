@@ -12,6 +12,7 @@ type AdminGroup = {
   platform?: string;
   subscription_type?: string;
   type?: string;
+  billing_type?: string;
 };
 
 type AdminPackage = {
@@ -24,6 +25,8 @@ type AdminPackage = {
   description: string;
   features: string[];
   is_enabled: boolean;
+  is_visible: boolean;
+  is_published: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -45,7 +48,8 @@ type PackageFormState = {
   valueAmount: number;
   description: string;
   features: string[];
-  isEnabled: boolean;
+  isVisible: boolean;
+  isPublished: boolean;
 };
 
 const defaultFormState: PackageFormState = {
@@ -57,7 +61,8 @@ const defaultFormState: PackageFormState = {
   valueAmount: 0,
   description: "",
   features: [],
-  isEnabled: true,
+  isVisible: true,
+  isPublished: true,
 };
 
 function formatDateTime(value?: string | null) {
@@ -113,10 +118,27 @@ function normalizeAdminGroups(groups: AdminGroup[]) {
       platform: String(group.platform ?? "").trim() || undefined,
       subscription_type: String(group.subscription_type ?? "").trim() || undefined,
       type: String(group.type ?? "").trim() || undefined,
+      billing_type: String(group.billing_type ?? "").trim() || undefined,
     });
   }
 
   return normalized;
+}
+
+function isSubscriptionGroup(group: AdminGroup) {
+  const billingType = String(group.billing_type ?? "").trim().toLowerCase();
+  if (billingType === "subscription") {
+    return true;
+  }
+  if (billingType === "balance") {
+    return false;
+  }
+  const rawType = String(group.subscription_type ?? group.type ?? "").trim().toLowerCase();
+  return rawType !== "" && rawType !== "standard" && rawType !== "balance";
+}
+
+function groupBillingLabel(group: AdminGroup) {
+  return isSubscriptionGroup(group) ? "Subscription group" : "Balance group";
 }
 
 function addFeature(features: string[]): string[] {
@@ -276,8 +298,8 @@ export default function AdminPackagesPage() {
         if (key === "groupIds") {
           return { ...prev, groupIds: Array.isArray(value) ? (value as number[]) : prev.groupIds };
         }
-        if (key === "isEnabled") {
-          return { ...prev, isEnabled: value as boolean };
+        if (key === "isVisible" || key === "isPublished") {
+          return { ...prev, [key]: value as boolean };
         }
         if (key === "priceMicros" || key === "valueAmount") {
           return { ...prev, [key]: Math.max(0, parseInt(String(value), 10) || 0) };
@@ -362,7 +384,8 @@ export default function AdminPackagesPage() {
         valueAmount: Number(pkg.value_amount) || 0,
         description: String(pkg.description ?? ""),
         features: Array.isArray(pkg.features) ? pkg.features : [],
-        isEnabled: pkg.is_enabled !== false,
+        isVisible: pkg.is_visible !== false,
+        isPublished: (pkg.is_published ?? pkg.is_enabled) !== false,
       });
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to load package detail");
@@ -413,7 +436,9 @@ export default function AdminPackagesPage() {
           value_amount: formState.valueAmount,
           description: formState.description,
           features_json: JSON.stringify(formState.features.filter((f: string) => f.trim() !== "")),
-          is_enabled: formState.isEnabled,
+          is_visible: formState.isVisible,
+          is_published: formState.isPublished,
+          is_enabled: formState.isPublished,
         }
       : {
           code: normalizedCode,
@@ -424,7 +449,9 @@ export default function AdminPackagesPage() {
           value_amount: formState.valueAmount,
           description: formState.description,
           features_json: JSON.stringify(formState.features.filter((f: string) => f.trim() !== "")),
-          is_enabled: formState.isEnabled,
+          is_visible: formState.isVisible,
+          is_published: formState.isPublished,
+          is_enabled: formState.isPublished,
         };
 
     try {
@@ -452,6 +479,47 @@ export default function AdminPackagesPage() {
       setFormError(error instanceof Error ? error.message : "Failed to save package");
     } finally {
       setIsSubmittingForm(false);
+    }
+  };
+
+  const handleDelete = async (packageCode: string) => {
+    const confirmed = window.confirm(`Delete package "${packageCode}" from this platform?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setRowLoadingCode(packageCode);
+    setGlobalError(null);
+    setGlobalSuccess(null);
+    setFormError(null);
+
+    try {
+      const response = await fetch(`/api/admin/packages/${encodeURIComponent(packageCode)}`, {
+        method: "DELETE",
+        headers: buildHeaders(),
+        cache: "no-store",
+      });
+
+      const responsePayload = (await response.json()) as unknown;
+      if (!response.ok) {
+        const message = extractApiError(responsePayload, "Failed to delete package");
+        if (handleAuthFailure(response.status, message)) {
+          setGlobalError(message);
+          return;
+        }
+        throw new Error(message);
+      }
+
+      if (editingCode === packageCode) {
+        resetForm();
+        setShowDialog(false);
+      }
+      setGlobalSuccess("Package deleted.");
+      await loadPackages();
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : "Failed to delete package");
+    } finally {
+      setRowLoadingCode(null);
     }
   };
 
@@ -547,7 +615,8 @@ export default function AdminPackagesPage() {
                   <th className="px-2 py-1">Name</th>
                   <th className="px-2 py-1">Price</th>
                   <th className="px-2 py-1">Value</th>
-                  <th className="px-2 py-1">Enabled</th>
+                  <th className="px-2 py-1">Visible</th>
+                  <th className="px-2 py-1">Published</th>
                   <th className="px-2 py-1">Bound groups</th>
                   <th className="px-2 py-1">Updated</th>
                   <th className="px-2 py-1">Actions</th>
@@ -569,8 +638,13 @@ export default function AdminPackagesPage() {
                           : "-"}
                       </td>
                       <td className="px-2 py-2">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${pkg.is_enabled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-slate-500/10 text-slate-500 dark:text-slate-400"}`}>
-                          {pkg.is_enabled ? "On" : "Off"}
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${pkg.is_visible ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-slate-500/10 text-slate-500 dark:text-slate-400"}`}>
+                          {pkg.is_visible ? "Shown" : "Hidden"}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${pkg.is_published ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+                          {pkg.is_published ? "On sale" : "Off sale"}
                         </span>
                       </td>
                       <td className="px-2 py-2">
@@ -605,6 +679,14 @@ export default function AdminPackagesPage() {
                             onClick={() => { void handleEdit(pkg.code).then(() => setShowDialog(true)); }}
                           >
                             Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost cursor-pointer px-3 py-1.5 text-xs text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
+                            disabled={isBlocked || isRowBusy || isSubmittingForm}
+                            onClick={() => { void handleDelete(pkg.code); }}
+                          >
+                            Delete
                           </button>
                           {isRowBusy ? (
                             <span className="text-xs text-[var(--portal-muted)]">Working...</span>
@@ -784,17 +866,29 @@ export default function AdminPackagesPage() {
                   </button>
                 </fieldset>
 
-                {/* Is Enabled */}
-                <label className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
-                  <input
-                    className="size-4 accent-emerald-500"
-                    type="checkbox"
-                    checked={formState.isEnabled}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("isEnabled", e.target.checked)}
-                    disabled={isBlocked || isSubmittingForm}
-                  />
-                  <span>Visible to users (enabled)</span>
-                </label>
+                <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
+                  <legend className="px-1 text-sm font-semibold text-[var(--portal-ink)]">Availability</legend>
+                  <label className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
+                    <input
+                      className="size-4 accent-emerald-500"
+                      type="checkbox"
+                      checked={formState.isVisible}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("isVisible", e.target.checked)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                    <span>Show on public package page</span>
+                  </label>
+                  <label className="flex items-center gap-3 text-sm text-[var(--portal-muted)]">
+                    <input
+                      className="size-4 accent-sky-500"
+                      type="checkbox"
+                      checked={formState.isPublished}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("isPublished", e.target.checked)}
+                      disabled={isBlocked || isSubmittingForm}
+                    />
+                    <span>Published for checkout and admin assignment</span>
+                  </label>
+                </fieldset>
 
                 {/* Bound groups */}
                 <fieldset className="grid gap-3 rounded-xl border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
@@ -812,6 +906,7 @@ export default function AdminPackagesPage() {
                         >
                           {group.name}
                           <span className="ml-1 font-mono text-[10px] opacity-75">#{group.id}</span>
+                          <span className="ml-1 text-[10px] opacity-75">{groupBillingLabel(group)}</span>
                         </span>
                       ))}
                     </div>
@@ -827,11 +922,14 @@ export default function AdminPackagesPage() {
                     <div className="grid gap-2">
                       {availableGroups.map((group: AdminGroup) => {
                         const isChecked = formState.groupIds.includes(group.id);
-                        const meta = [group.platform, group.subscription_type || group.type].filter(Boolean).join(" · ");
+                        const meta = [group.platform, groupBillingLabel(group), group.subscription_type || group.type].filter(Boolean).join(" · ");
+                        const isDisabled = isBlocked || isSubmittingForm;
                         return (
                           <label
                             key={group.id}
-                            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                            className={`flex items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                              isDisabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"
+                            } ${
                               isChecked
                                 ? "border-emerald-400/45 bg-emerald-500/10 dark:border-emerald-400/60 dark:bg-emerald-500/20"
                                 : "border-[var(--portal-line)] bg-[var(--portal-clay-strong)] hover:bg-[var(--portal-clay)]"
@@ -842,7 +940,7 @@ export default function AdminPackagesPage() {
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => toggleGroupID(group.id)}
-                              disabled={isBlocked || isSubmittingForm}
+                              disabled={isDisabled}
                             />
                             <span className="grid gap-1">
                               <span className="text-sm font-semibold text-[var(--portal-ink)]">{group.name}</span>

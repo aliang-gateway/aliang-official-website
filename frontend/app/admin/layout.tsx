@@ -1,11 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+
+const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 const adminNavItems = [
   { href: "/admin", label: "Overview", icon: "dashboard" },
+  { href: "/admin/users", label: "Users", icon: "people" },
   { href: "/admin/packages", label: "Packages", icon: "inventory_2" },
   { href: "/admin/payments", label: "Payments", icon: "receipt_long" },
   { href: "/admin/articles", label: "Articles", icon: "article" },
@@ -16,6 +20,53 @@ const adminNavItems = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [authed, setAuthed] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      const token = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/auth/me", {
+          method: "GET",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+          router.replace("/login");
+          return;
+        }
+        const payload = await res.json();
+        const role = payload?.data?.role ?? payload?.role;
+        if (role !== "admin") {
+          router.replace("/account");
+          return;
+        }
+        setAuthed(true);
+      } catch {
+        router.replace("/login");
+      }
+    };
+    void check();
+  }, [router]);
+
+  if (!authed) {
+    return (
+      <section className="portal-shell py-8">
+        <p className="text-sm text-[var(--stitch-text-muted)]">Checking admin session...</p>
+      </section>
+    );
+  }
 
   return (
     <section className="portal-shell py-8">

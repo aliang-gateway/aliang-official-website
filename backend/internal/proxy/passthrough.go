@@ -76,13 +76,13 @@ type AdminRequest struct {
 }
 
 type CreateAndRedeemRequest struct {
-	Code         string `json:"code"`
-	Type         string `json:"type,omitempty"`
+	Code         string  `json:"code"`
+	Type         string  `json:"type,omitempty"`
 	Value        float64 `json:"value"`
-	UserID       int64  `json:"user_id"`
-	GroupID      *int64 `json:"group_id,omitempty"`
-	ValidityDays *int   `json:"validity_days,omitempty"`
-	Notes        string `json:"notes,omitempty"`
+	UserID       int64   `json:"user_id"`
+	GroupID      *int64  `json:"group_id,omitempty"`
+	ValidityDays *int    `json:"validity_days,omitempty"`
+	Notes        string  `json:"notes,omitempty"`
 }
 
 type UpdateUserBalanceRequest struct {
@@ -91,11 +91,20 @@ type UpdateUserBalanceRequest struct {
 	Notes     string  `json:"notes,omitempty"`
 }
 
+type AssignAdminSubscriptionRequest struct {
+	UserID       int64  `json:"user_id"`
+	GroupID      int64  `json:"group_id"`
+	ValidityDays int    `json:"validity_days,omitempty"`
+	Notes        string `json:"notes,omitempty"`
+}
+
 type AdminUser struct {
-	ID      int64   `json:"id"`
-	Balance float64 `json:"balance"`
-	Email   string  `json:"email,omitempty"`
-	Name    string  `json:"name,omitempty"`
+	ID            int64   `json:"id"`
+	Balance       float64 `json:"balance"`
+	Email         string  `json:"email,omitempty"`
+	Name          string  `json:"name,omitempty"`
+	Username      string  `json:"username,omitempty"`
+	AllowedGroups []int64 `json:"allowed_groups,omitempty"`
 }
 
 type CreateUserAPIKeyRequest struct {
@@ -142,15 +151,27 @@ type CreateAndRedeemData struct {
 }
 
 type RedeemCode struct {
-	ID           int64  `json:"id"`
-	Code         string `json:"code"`
-	Type         string `json:"type"`
+	ID           int64   `json:"id"`
+	Code         string  `json:"code"`
+	Type         string  `json:"type"`
 	Value        float64 `json:"value"`
-	Status       string `json:"status"`
-	UsedBy       *int64 `json:"used_by,omitempty"`
-	GroupID      *int64 `json:"group_id,omitempty"`
-	ValidityDays *int   `json:"validity_days,omitempty"`
-	Notes        string `json:"notes,omitempty"`
+	Status       string  `json:"status"`
+	UsedBy       *int64  `json:"used_by,omitempty"`
+	GroupID      *int64  `json:"group_id,omitempty"`
+	ValidityDays *int    `json:"validity_days,omitempty"`
+	Notes        string  `json:"notes,omitempty"`
+}
+
+type AdminSubscription struct {
+	ID         int64  `json:"id"`
+	UserID     int64  `json:"user_id"`
+	GroupID    int64  `json:"group_id"`
+	StartsAt   string `json:"starts_at,omitempty"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
+	Status     string `json:"status,omitempty"`
+	AssignedBy int64  `json:"assigned_by,omitempty"`
+	Notes      string `json:"notes,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
 }
 
 const (
@@ -384,6 +405,81 @@ func (c *Client) UpdateUserBalance(ctx context.Context, userID int64, req Update
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *Client) AssignAdminSubscription(ctx context.Context, req AssignAdminSubscriptionRequest, idempotencyKey string) (*ResponseEnvelope[AdminSubscription], error) {
+	if err := validateAssignAdminSubscriptionRequest(req, idempotencyKey); err != nil {
+		return nil, err
+	}
+	var resp ResponseEnvelope[AdminSubscription]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method:         http.MethodPost,
+		Path:           "/api/v1/admin/subscriptions/assign",
+		Body:           req,
+		IdempotencyKey: idempotencyKey,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) GetAdminUser(ctx context.Context, userID int64) (*ResponseEnvelope[AdminUser], error) {
+	if userID <= 0 {
+		return nil, errors.New("user id must be greater than 0")
+	}
+	var resp ResponseEnvelope[AdminUser]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method: http.MethodGet,
+		Path:   fmt.Sprintf("/api/v1/admin/users/%d", userID),
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) UpdateAdminUserAllowedGroups(ctx context.Context, userID int64, allowedGroups []int64, idempotencyKey string) (*ResponseEnvelope[AdminUser], error) {
+	if err := validateAllowedGroupsUpdate(userID, allowedGroups); err != nil {
+		return nil, err
+	}
+	var resp ResponseEnvelope[AdminUser]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method: http.MethodPut,
+		Path:   fmt.Sprintf("/api/v1/admin/users/%d", userID),
+		Body: map[string]any{
+			"allowed_groups": allowedGroups,
+		},
+		IdempotencyKey: idempotencyKey,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) GrantUserGroup(ctx context.Context, userID int64, groupID int64, idempotencyKey string) (*ResponseEnvelope[AdminUser], error) {
+	if userID <= 0 {
+		return nil, errors.New("user id must be greater than 0")
+	}
+	if groupID <= 0 {
+		return nil, errors.New("group_id must be greater than 0")
+	}
+	current, err := c.GetAdminUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	merged := mergeAllowedGroupIDs(current.Data.AllowedGroups, groupID)
+	if len(merged) == len(current.Data.AllowedGroups) {
+		alreadyGranted := true
+		for i := range merged {
+			if merged[i] != current.Data.AllowedGroups[i] {
+				alreadyGranted = false
+				break
+			}
+		}
+		if alreadyGranted {
+			return current, nil
+		}
+	}
+	return c.UpdateAdminUserAllowedGroups(ctx, userID, merged, idempotencyKey)
 }
 
 func (c *Client) CreateUserAPIKey(ctx context.Context, bearerToken string, req CreateUserAPIKeyRequest, idempotencyKey string) (*ResponseEnvelope[APIKey], error) {
@@ -717,8 +813,8 @@ func validateCreateAndRedeemRequest(req CreateAndRedeemRequest, idempotencyKey s
 		redeemType = RedeemTypeBalance
 	}
 	if redeemType == RedeemTypeSubscription {
-		if req.Value < 0 {
-			return errors.New("value must be zero or greater for subscription redeem")
+		if req.Value <= 0 {
+			return errors.New("value must be greater than 0 for subscription redeem")
 		}
 		if req.GroupID == nil || *req.GroupID <= 0 {
 			return errors.New("group_id is required for subscription redeem")
@@ -750,6 +846,60 @@ func validateUpdateUserBalanceRequest(userID int64, req UpdateUserBalanceRequest
 	default:
 		return errors.New("operation must be one of: set, add, subtract")
 	}
+}
+
+func validateAssignAdminSubscriptionRequest(req AssignAdminSubscriptionRequest, idempotencyKey string) error {
+	if strings.TrimSpace(idempotencyKey) == "" {
+		return errors.New("idempotency key is required")
+	}
+	if req.UserID <= 0 {
+		return errors.New("user_id must be greater than 0")
+	}
+	if req.GroupID <= 0 {
+		return errors.New("group_id must be greater than 0")
+	}
+	if req.ValidityDays < 0 {
+		return errors.New("validity_days must be zero or greater")
+	}
+	return nil
+}
+
+func validateAllowedGroupsUpdate(userID int64, allowedGroups []int64) error {
+	if userID <= 0 {
+		return errors.New("user id must be greater than 0")
+	}
+	seen := make(map[int64]struct{}, len(allowedGroups))
+	for _, groupID := range allowedGroups {
+		if groupID <= 0 {
+			return errors.New("allowed_groups must contain positive group ids")
+		}
+		if _, ok := seen[groupID]; ok {
+			return errors.New("allowed_groups must not contain duplicates")
+		}
+		seen[groupID] = struct{}{}
+	}
+	return nil
+}
+
+func mergeAllowedGroupIDs(existing []int64, groupID int64) []int64 {
+	merged := make([]int64, 0, len(existing)+1)
+	seen := make(map[int64]struct{}, len(existing)+1)
+	for _, existingID := range existing {
+		if existingID <= 0 {
+			continue
+		}
+		if _, ok := seen[existingID]; ok {
+			continue
+		}
+		seen[existingID] = struct{}{}
+		merged = append(merged, existingID)
+	}
+	if groupID > 0 {
+		if _, ok := seen[groupID]; !ok {
+			merged = append(merged, groupID)
+		}
+	}
+	return merged
 }
 
 func validateCreateUserAPIKeyRequest(req CreateUserAPIKeyRequest, bearerToken, idempotencyKey string) error {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ai-api-portal/backend/internal/auth"
+	"ai-api-portal/backend/internal/proxy"
 	"ai-api-portal/backend/internal/user"
 )
 
@@ -141,6 +142,75 @@ func TestChangePasswordSuccessAndWrongOldPassword(t *testing.T) {
 
 	if _, err := userSvc.Login(ctx, "password-httpapi@example.com", "OldPassword#123"); err == nil {
 		t.Fatalf("expected old password login to fail")
+	}
+}
+
+func TestChangePasswordRefreshesSub2APITokenWithNewPassword(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	oldPassword := "OldPassword#123"
+	hash, err := user.HashPassword(oldPassword)
+	if err != nil {
+		t.Fatalf("hash old password: %v", err)
+	}
+	userID := createUserWithPasswordHash(t, ctx, database, "sync-password@example.com", "Sync Password", "user", hash)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/login" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		var payload struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode upstream login payload: %v", err)
+		}
+		if payload.Email != "sync-password@example.com" || payload.Password != "NewPassword#789" {
+			t.Fatalf("unexpected upstream login payload: %+v", payload)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"synced-access","refresh_token":"synced-refresh","user":{"id":8080,"email":"sync-password@example.com"}}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
+
+	changeReq := makeAuthenticatedRequest(t, ctx, database, http.MethodPut, "/user/password", []byte(`{"old_password":"OldPassword#123","new_password":"NewPassword#789"}`), userID)
+	changeRec := httptest.NewRecorder()
+	mux.ServeHTTP(changeRec, changeReq)
+	if changeRec.Code != http.StatusOK {
+		t.Fatalf("change password status = %d, body=%s", changeRec.Code, changeRec.Body.String())
+	}
+
+	var (
+		accessToken    string
+		refreshToken   sql.NullString
+		upstreamUserID sql.NullInt64
+	)
+	if err := database.QueryRowContext(ctx, `
+		SELECT access_token, refresh_token, upstream_user_id
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?;
+	`, userID).Scan(&accessToken, &refreshToken, &upstreamUserID); err != nil {
+		t.Fatalf("query synced sub2api auth token: %v", err)
+	}
+	if accessToken != "synced-access" {
+		t.Fatalf("expected synced access token, got %q", accessToken)
+	}
+	if !refreshToken.Valid || refreshToken.String != "synced-refresh" {
+		t.Fatalf("expected synced refresh token, got %+v", refreshToken)
+	}
+	if !upstreamUserID.Valid || upstreamUserID.Int64 != 8080 {
+		t.Fatalf("expected upstream user id 8080, got %+v", upstreamUserID)
 	}
 }
 

@@ -54,6 +54,14 @@ func TestServiceUpsertAndGetBearerByUserID(t *testing.T) {
 		t.Fatalf("expected bearer access-2, got %q", bearer)
 	}
 
+	resolvedUpstreamUserID, found, err := service.GetUpstreamUserIDByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUpstreamUserIDByUserID error = %v", err)
+	}
+	if !found || resolvedUpstreamUserID != upstreamUserID {
+		t.Fatalf("expected upstream user id %d, found=%v got=%d", upstreamUserID, found, resolvedUpstreamUserID)
+	}
+
 	var (
 		storedAccess  string
 		storedRefresh sql.NullString

@@ -195,6 +195,7 @@
     "noPlans": "No plans available at this time.",
     "buyWithStripe": "Buy with Stripe",
     "openDashboard": "Open Dashboard",
+    "packageUnavailable": "Not available",
     "redirecting": "Redirecting...",
     "openSourceTitle": "Open Source Roadmap",
     "openSourceDescription": "If our software helps you, please share it with others. We will open-source the codebase once we reach our user milestone.",

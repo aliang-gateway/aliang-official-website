@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -119,6 +120,31 @@ type adminPaymentSuccessRequest struct {
 	Payload         json.RawMessage                 `json:"payload,omitempty"`
 }
 
+type adminQuickCreateUserRequest struct {
+	Email string `json:"email"`
+}
+
+type adminQuickCreateUserResponse struct {
+	ID        int64  `json:"id"`
+	LocalID   int64  `json:"local_id,omitempty"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Password  string `json:"password"`
+	CreatedAt string `json:"created_at"`
+}
+
+type adminAssignPackageRequest struct {
+	UserID   int64  `json:"user_id"`
+	TierCode string `json:"tier_code"`
+	Password string `json:"password,omitempty"`
+}
+
+type adminAssignPackageResponse struct {
+	PaymentEventID string                  `json:"payment_event_id"`
+	TierCode       string                  `json:"tier_code"`
+	FulfillmentJob *fulfillmentJobResponse `json:"fulfillment_job,omitempty"`
+}
+
 type createPackageCheckoutSessionRequest struct {
 	TierCode string `json:"tier_code"`
 }
@@ -181,6 +207,7 @@ type adminGroupResponse struct {
 	Platform         string `json:"platform,omitempty"`
 	Type             string `json:"type,omitempty"`
 	SubscriptionType string `json:"subscription_type,omitempty"`
+	BillingType      string `json:"billing_type,omitempty"`
 }
 
 type adminAvailableGroupsResponse struct {
@@ -197,6 +224,8 @@ type adminPackageRequest struct {
 	Description  string  `json:"description"`
 	FeaturesJSON string  `json:"features_json"`
 	IsEnabled    *bool   `json:"is_enabled,omitempty"`
+	IsVisible    *bool   `json:"is_visible,omitempty"`
+	IsPublished  *bool   `json:"is_published,omitempty"`
 }
 
 type adminPackageResponse struct {
@@ -209,6 +238,8 @@ type adminPackageResponse struct {
 	Description string   `json:"description"`
 	Features    []string `json:"features"`
 	IsEnabled   bool     `json:"is_enabled"`
+	IsVisible   bool     `json:"is_visible"`
+	IsPublished bool     `json:"is_published"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 }
@@ -225,6 +256,7 @@ type publicPackageResponse struct {
 	ValueAmount int64    `json:"value_amount"`
 	Description string   `json:"description"`
 	Features    []string `json:"features"`
+	IsPublished bool     `json:"is_published"`
 }
 
 type listPublicPackagesResponse struct {
@@ -478,7 +510,7 @@ const (
 	adminArticleStatusDraft     = "draft"
 	adminArticleStatusPublished = "published"
 	maxArticleSlugLength        = 128
-	adminDocSlugLength        = 128
+	adminDocSlugLength          = 128
 )
 
 // ── Doc DTO DTO────────────────────────────────────
@@ -486,13 +518,13 @@ const (
 type adminDocCategoryDTO struct {
 	ID          int64   `json:"id"`
 	Slug        string  `json:"slug"`
-	Title       string `json:"title"`
+	Title       string  `json:"title"`
 	Description *string `json:"description,omitempty"`
 	Icon        *string `json:"icon,omitempty"`
 	SortOrder   int64   `json:"sort_order"`
-	Status      string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	Status      string  `json:"status"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }
 
 type adminDocCategoryListResponse struct {
@@ -504,15 +536,15 @@ type adminDocCategoryDetailResponse struct {
 }
 
 type adminDocPageDTO struct {
-	ID         int64   `json:"id"`
+	ID         int64  `json:"id"`
 	Slug       string `json:"slug"`
 	Title      string `json:"title"`
-	CategoryID int64   `json:"category_id"`
+	CategoryID int64  `json:"category_id"`
 	MDXBody    string `json:"mdx_body"`
-	SortOrder  int64   `json:"sort_order"`
-	Status      string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	SortOrder  int64  `json:"sort_order"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 type adminDocPageListResponse struct {
@@ -524,16 +556,16 @@ type adminDocPageDetailResponse struct {
 }
 
 type publicDocCategoryWithPagesDTO struct {
-	Slug        string  `json:"slug"`
-	Title       string `json:"title"`
-	Description *string `json:"description,omitempty"`
-	Pages      []publicDocPageSummary `json:"pages"`
+	Slug        string                 `json:"slug"`
+	Title       string                 `json:"title"`
+	Description *string                `json:"description,omitempty"`
+	Pages       []publicDocPageSummary `json:"pages"`
 }
 
 type publicDocPageSummary struct {
-	Slug       string  `json:"slug"`
-	Title      string `json:"title"`
-	MDXBody    string `json:"mdx_body"`
+	Slug    string `json:"slug"`
+	Title   string `json:"title"`
+	MDXBody string `json:"mdx_body"`
 }
 
 type publicDocPageDetailResponse struct {
@@ -560,7 +592,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		sqlDialect:           strings.TrimSpace(opts.SQLDialect),
 		apiKey:               apikey.NewService(database),
 		articleSvc:           article.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
-		docSvc:              doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		docSvc:               doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
@@ -684,6 +716,8 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("PUT /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminSetUnitPrice))))
 	mux.Handle("DELETE /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeactivateUnitPrice))))
 	mux.Handle("POST /admin/fulfillment/payment-success", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPaymentSuccess))))
+	mux.Handle("POST /admin/users/quick-create", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminQuickCreateUser))))
+	mux.Handle("POST /admin/users/assign-package", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminAssignPackage))))
 	mux.Handle("GET /admin/fulfillment/jobs/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetFulfillmentJob))))
 	mux.Handle("POST /admin/fulfillment/jobs/{id}/replay", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminReplayFulfillmentJob))))
 	mux.Handle("GET /admin/groups/available", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListAvailableGroups))))
@@ -691,6 +725,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("POST /admin/packages", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreatePackage))))
 	mux.Handle("GET /admin/packages/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetPackage))))
 	mux.Handle("PUT /admin/packages/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdatePackage))))
+	mux.Handle("DELETE /admin/packages/{code}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeletePackage))))
 	mux.Handle("GET /admin/payments", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListPaymentRecords))))
 	mux.Handle("GET /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListArticles))))
 	mux.Handle("POST /admin/articles", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateArticle))))
@@ -753,8 +788,6 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	// Download Center: public version check (no auth required)
 	mux.HandleFunc("GET /public/downloads/check", r.handlePublicVersionCheck)
 	mux.HandleFunc("GET /public/downloads", r.handlePublicListDownloads)
-
-
 
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 }
@@ -885,6 +918,12 @@ func (r *routes) handleResetPassword(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to reset password")
 		return
+	}
+
+	if userID, found, lookupErr := r.findLocalUserIDByEmail(req.Context(), payload.Email); lookupErr != nil {
+		slog.Warn("failed to resolve local user after password reset for sub2api token sync", "email", payload.Email, "error", lookupErr)
+	} else if found {
+		r.trySyncSub2APIAuthTokensWithPassword(req.Context(), userID, payload.Email, payload.NewPassword, "password_reset")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"reset": true})
@@ -1222,6 +1261,7 @@ func (r *routes) handleAdminListAvailableGroups(w http.ResponseWriter, req *http
 			Platform:         group.Platform,
 			Type:             subscriptionType,
 			SubscriptionType: subscriptionType,
+			BillingType:      packageGroupBillingType(group),
 		})
 	}
 
@@ -1279,10 +1319,7 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	isEnabled := true
-	if normalized.IsEnabled != nil {
-		isEnabled = *normalized.IsEnabled
-	}
+	isVisible, isPublished := packageFlagsForCreate(normalized)
 
 	tx, err := r.db.BeginTx(req.Context(), nil)
 	if err != nil {
@@ -1293,9 +1330,9 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tierID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "id", normalized.Code, normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabled, now, now)
+		INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "id", normalized.Code, normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublished, isVisible, isPublished, now, now)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create package: %v", err))
 		return
@@ -1350,6 +1387,13 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
+	currentPkg, err := r.loadAdminPackageByCode(req.Context(), packageCode)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load package")
+		return
+	}
+	isVisibleVal, isPublishedVal := packageFlagsForUpdate(normalized, currentPkg)
+
 	tx, err := r.db.BeginTx(req.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
@@ -1357,13 +1401,8 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	isEnabledVal := false
-	if normalized.IsEnabled != nil {
-		isEnabledVal = *normalized.IsEnabled
-	}
-
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isEnabledVal, now, tierID)
+	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, is_visible = ?, is_published = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublishedVal, isVisibleVal, isPublishedVal, now, tierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
 		return
@@ -1395,6 +1434,31 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, pkg)
+}
+
+func (r *routes) handleAdminDeletePackage(w http.ResponseWriter, req *http.Request) {
+	packageCode := strings.TrimSpace(req.PathValue("code"))
+	if packageCode == "" {
+		writeError(w, http.StatusBadRequest, "package code is required")
+		return
+	}
+
+	result, err := r.db.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `DELETE FROM als_tiers WHERE code = ?;`), packageCode)
+	if err != nil {
+		writeError(w, http.StatusConflict, "package cannot be deleted because it is referenced by existing records")
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete package")
+		return
+	}
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "package not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "code": packageCode})
 }
 
 func (r *routes) handleSubscriptionsSummaryPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -1665,6 +1729,28 @@ func (r *routes) findLocalUserIDByStoredRefreshToken(ctx context.Context, refres
 	}
 	if err != nil {
 		return 0, false, fmt.Errorf("query local user by stored refresh token: %w", err)
+	}
+
+	return userID, true, nil
+}
+
+func (r *routes) findLocalUserIDByUpstreamUserID(ctx context.Context, upstreamUserID int64) (int64, bool, error) {
+	if upstreamUserID <= 0 {
+		return 0, false, nil
+	}
+
+	var userID int64
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT user_id
+		FROM als_sub2api_auth_tokens
+		WHERE upstream_user_id = ?
+		LIMIT 1;
+	`), upstreamUserID).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("query local user by upstream user id: %w", err)
 	}
 
 	return userID, true, nil
@@ -2110,6 +2196,8 @@ func (r *routes) handleChangePassword(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	r.trySyncSub2APIAuthTokensWithPassword(req.Context(), authUser.ID, authUser.Email, payload.NewPassword, "password_change")
+
 	writeJSON(w, http.StatusOK, map[string]bool{"changed": true})
 }
 
@@ -2144,6 +2232,8 @@ func (r *routes) handleSetInitialPassword(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to set password")
 		return
 	}
+
+	r.trySyncSub2APIAuthTokensWithPassword(req.Context(), authUser.ID, authUser.Email, payload.NewPassword, "password_set")
 
 	writeJSON(w, http.StatusOK, map[string]bool{"set": true})
 }
@@ -2939,9 +3029,9 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 // @Success 200 {object} publicArticleListResponse
 func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Request) {
 	rows, err := r.db.QueryContext(req.Context(), db.Rebind(r.sqlDialect, `
-		SELECT code, name, price_micros, value_type, value_amount, description, features_json
+		SELECT code, name, price_micros, value_type, value_amount, description, features_json, is_published
 		FROM als_tiers
-		WHERE is_enabled = ?
+		WHERE is_visible = ?
 		ORDER BY price_micros ASC;
 	`), true)
 	if err != nil {
@@ -2960,8 +3050,9 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 			valueAmount  int64
 			description  string
 			featuresJSON string
+			isPublished  bool
 		)
-		if err := rows.Scan(&code, &name, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON); err != nil {
+		if err := rows.Scan(&code, &name, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isPublished); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list packages")
 			return
 		}
@@ -2973,6 +3064,7 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 			ValueAmount: valueAmount,
 			Description: description,
 			Features:    parseFeaturesJSON(featuresJSON),
+			IsPublished: isPublished,
 		})
 	}
 
@@ -3409,8 +3501,8 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		writeError(w, http.StatusInternalServerError, "failed to load package")
 		return
 	}
-	if !pkg.IsEnabled {
-		writeError(w, http.StatusBadRequest, "package is not enabled")
+	if !pkg.IsPublished {
+		writeError(w, http.StatusBadRequest, "package is not published")
 		return
 	}
 	amountMinor, err := microsToCurrencyMinor(pkg.PriceMicros)
@@ -3626,6 +3718,439 @@ func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Requ
 	}
 
 	writeJSON(w, http.StatusAccepted, adminPaymentSuccessResponse{Job: toFulfillmentJobResponse(job)})
+}
+
+func (r *routes) handleAdminQuickCreateUser(w http.ResponseWriter, req *http.Request) {
+	if r.proxyClient == nil {
+		writeError(w, http.StatusInternalServerError, "auth proxy is not configured")
+		return
+	}
+
+	var payload adminQuickCreateUserRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.Email = strings.TrimSpace(strings.ToLower(payload.Email))
+	if payload.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	if _, found, err := r.findLocalUserIDByEmail(req.Context(), payload.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check user")
+		return
+	} else if found {
+		writeError(w, http.StatusConflict, "email already exists")
+		return
+	}
+
+	password, err := generateRandomPassword(12)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate password")
+		return
+	}
+	hash, err := user.HashPassword(password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	name := payload.Email
+	if atIdx := strings.Index(payload.Email, "@"); atIdx > 0 {
+		name = payload.Email[:atIdx]
+	}
+
+	upstreamBody, upstreamStatus, err := r.registerSub2APIUser(req.Context(), payload.Email, name, password)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to register upstream user")
+		return
+	}
+	if upstreamStatus < 200 || upstreamStatus >= 300 {
+		status := http.StatusBadGateway
+		if upstreamStatus == http.StatusConflict {
+			status = http.StatusConflict
+		}
+		writeError(w, status, formatUpstreamRegisterError(upstreamStatus, upstreamBody))
+		return
+	}
+
+	accessToken, refreshToken, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(upstreamBody)
+	if !ok || strings.TrimSpace(accessToken) == "" {
+		writeError(w, http.StatusBadGateway, "sub2api register response missing access token")
+		return
+	}
+	if upstreamUserID == nil || *upstreamUserID <= 0 {
+		writeError(w, http.StatusBadGateway, "sub2api register response missing user id")
+		return
+	}
+
+	tx, err := r.db.BeginTx(req.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to begin transaction")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().UTC()
+	userID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
+		INSERT INTO als_users(email, name, role, password_hash, email_verified)
+		VALUES (?, ?, 'user', ?, TRUE)
+	`, "id", payload.Email, name, hash)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			writeError(w, http.StatusConflict, "email already exists")
+			return
+		}
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create user: %v", err))
+		return
+	}
+
+	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+		INSERT INTO als_user_wallets(user_id, balance_micros, currency)
+		VALUES (?, 0, 'CNY')
+		ON CONFLICT(user_id) DO NOTHING
+	`), userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create wallet")
+		return
+	}
+
+	var refreshTokenValue any
+	if refreshToken != nil && strings.TrimSpace(*refreshToken) != "" {
+		refreshTokenValue = strings.TrimSpace(*refreshToken)
+	}
+	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+		INSERT INTO als_sub2api_auth_tokens(
+			user_id,
+			upstream_user_id,
+			access_token,
+			refresh_token,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			upstream_user_id = COALESCE(excluded.upstream_user_id, als_sub2api_auth_tokens.upstream_user_id),
+			access_token = excluded.access_token,
+			refresh_token = COALESCE(excluded.refresh_token, als_sub2api_auth_tokens.refresh_token),
+			updated_at = excluded.updated_at
+	`), userID, *upstreamUserID, strings.TrimSpace(accessToken), refreshTokenValue, now, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to store upstream auth token")
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit transaction")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, adminQuickCreateUserResponse{
+		ID:        *upstreamUserID,
+		LocalID:   userID,
+		Email:     payload.Email,
+		Name:      name,
+		Password:  password,
+		CreatedAt: now.Format(time.RFC3339),
+	})
+}
+
+func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Request) {
+	if r.fulfillmentSvc == nil {
+		writeError(w, http.StatusInternalServerError, "fulfillment service is not configured")
+		return
+	}
+
+	var payload adminAssignPackageRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	if payload.UserID <= 0 {
+		writeError(w, http.StatusBadRequest, "user_id must be positive")
+		return
+	}
+
+	payload.TierCode = strings.TrimSpace(payload.TierCode)
+	payload.Password = strings.TrimSpace(payload.Password)
+	if payload.TierCode == "" {
+		writeError(w, http.StatusBadRequest, "tier_code is required")
+		return
+	}
+
+	localUserID, _, err := r.resolveAdminPackageUserIDs(req.Context(), payload.UserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check user")
+		return
+	}
+	if payload.Password != "" {
+		profile, profileErr := r.userSvc.GetProfile(req.Context(), localUserID)
+		if profileErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load user profile")
+			return
+		}
+		if err := r.syncSub2APIAuthTokensWithPassword(req.Context(), localUserID, profile.Email, payload.Password); err != nil {
+			writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to refresh sub2api token with provided password: %v", err))
+			return
+		}
+	}
+
+	pkg, err := r.loadAdminPackageByCode(req.Context(), payload.TierCode)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("package not found: %v", err))
+		return
+	}
+	if !pkg.IsPublished {
+		writeError(w, http.StatusBadRequest, "package is not published")
+		return
+	}
+	if err := r.validatePackageGroupBindings(req.Context(), adminPackageRequest{
+		GroupIDs:    pkg.GroupIDs,
+		ValueType:   pkg.ValueType,
+		ValueAmount: pkg.ValueAmount,
+	}); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	paymentEventID := fmt.Sprintf("admin-assign-%d-%d", payload.UserID, time.Now().UTC().UnixMilli())
+	orderID := fmt.Sprintf("admin-order-%d", time.Now().UTC().UnixMilli())
+	idempotencyKey := fmt.Sprintf("admin-assign-%s-%d-%d", payload.TierCode, payload.UserID, time.Now().UTC().UnixNano())
+
+	checkoutSessionID := fmt.Sprintf("cs_admin_%d_%d", payload.UserID, time.Now().UTC().UnixMilli())
+	if recordErr := r.recordCheckoutSession(req.Context(), "admin", checkoutSessionID, localUserID, pkg, "", pkg.PriceMicros, "cny"); recordErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to record checkout session")
+		return
+	}
+
+	assignPayload := adminPaymentSuccessRequest{
+		PaymentEventID: paymentEventID,
+		OrderID:        orderID,
+		Provider:       "admin",
+		UserID:         localUserID,
+		TierCode:       payload.TierCode,
+	}
+
+	job, err := r.ingestAndMaybeExecutePaymentSuccess(req.Context(), assignPayload, idempotencyKey)
+	if err != nil {
+		if errors.Is(err, fulfillment.ErrIdempotencyConflict) {
+			writeError(w, http.StatusConflict, "idempotency conflict")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("fulfillment failed: %v", err))
+		return
+	}
+
+	if job != nil && job.ID > 0 {
+		_ = r.markCheckoutSessionCompleted(req.Context(), "admin", checkoutSessionID, paymentEventID, payload.TierCode, localUserID, "", pkg.PriceMicros, "cny", job.ID, nil)
+	}
+
+	var jobResp *fulfillmentJobResponse
+	if job != nil {
+		resp := toFulfillmentJobResponse(job)
+		jobResp = &resp
+	}
+	if job != nil {
+		switch job.Status {
+		case fulfillment.StatusFailedTerminal:
+			writeJSON(w, http.StatusBadRequest, adminAssignPackageResponse{
+				PaymentEventID: paymentEventID,
+				TierCode:       payload.TierCode,
+				FulfillmentJob: jobResp,
+			})
+			return
+		case fulfillment.StatusFailedRetryable:
+			writeJSON(w, http.StatusBadGateway, adminAssignPackageResponse{
+				PaymentEventID: paymentEventID,
+				TierCode:       payload.TierCode,
+				FulfillmentJob: jobResp,
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, adminAssignPackageResponse{
+		PaymentEventID: paymentEventID,
+		TierCode:       payload.TierCode,
+		FulfillmentJob: jobResp,
+	})
+}
+
+func generateRandomPassword(length int) (string, error) {
+	if length <= 0 {
+		return "", errors.New("password length must be positive")
+	}
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b)[:length], nil
+}
+
+func (r *routes) registerSub2APIUser(ctx context.Context, email, name, password string) ([]byte, int, error) {
+	bodyBytes, err := json.Marshal(map[string]string{
+		"email":    strings.TrimSpace(email),
+		"name":     strings.TrimSpace(name),
+		"password": password,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("marshal upstream register payload: %w", err)
+	}
+
+	forwarded, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://portal.local/auth/register", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, 0, fmt.Errorf("build upstream register request: %w", err)
+	}
+	forwarded.Header.Set("Content-Type", "application/json")
+	forwarded.Header.Set("Accept", "application/json")
+
+	resp, err := r.proxyClient.Do(ctx, forwarded, "/api/v1/auth/register")
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read upstream register response: %w", err)
+	}
+	return responseBody, resp.StatusCode, nil
+}
+
+func (r *routes) loginSub2APIUser(ctx context.Context, email, password string) ([]byte, int, error) {
+	bodyBytes, err := json.Marshal(map[string]string{
+		"email":    strings.TrimSpace(email),
+		"password": password,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("marshal upstream login payload: %w", err)
+	}
+
+	forwarded, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://portal.local/auth/login", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, 0, fmt.Errorf("build upstream login request: %w", err)
+	}
+	forwarded.Header.Set("Content-Type", "application/json")
+	forwarded.Header.Set("Accept", "application/json")
+
+	resp, err := r.proxyClient.Do(ctx, forwarded, "/api/v1/auth/login")
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read upstream login response: %w", err)
+	}
+	return responseBody, resp.StatusCode, nil
+}
+
+func (r *routes) trySyncSub2APIAuthTokensWithPassword(ctx context.Context, userID int64, email, password, reason string) {
+	if err := r.syncSub2APIAuthTokensWithPassword(ctx, userID, email, password); err != nil {
+		slog.Warn("sub2api token sync with password failed", "user_id", userID, "email", strings.TrimSpace(email), "reason", reason, "error", err)
+	}
+}
+
+func (r *routes) syncSub2APIAuthTokensWithPassword(ctx context.Context, userID int64, email, password string) error {
+	if r.proxyClient == nil || !r.sub2api.IsConfigured() {
+		return nil
+	}
+	email = strings.TrimSpace(strings.ToLower(email))
+	password = strings.TrimSpace(password)
+	if userID <= 0 || email == "" || password == "" {
+		return nil
+	}
+
+	body, status, err := r.loginSub2APIUser(ctx, email, password)
+	if err != nil {
+		return fmt.Errorf("login upstream user: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("sub2api login failed: %s", formatUpstreamAuthError(status, body))
+	}
+
+	accessToken, refreshToken, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(body)
+	if !ok || strings.TrimSpace(accessToken) == "" {
+		return errors.New("sub2api login response missing access token")
+	}
+
+	if err := r.sub2api.CaptureTokens(ctx, sub2apiauth.UpsertTokenInput{
+		UserID:         userID,
+		UpstreamUserID: upstreamUserID,
+		AccessToken:    accessToken,
+		RefreshToken:   refreshToken,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *routes) resolveAdminPackageUserIDs(ctx context.Context, requestedUserID int64) (int64, int64, error) {
+	if requestedUserID <= 0 {
+		return 0, 0, errors.New("user id must be positive")
+	}
+
+	localUserID, found, err := r.findLocalUserIDByUpstreamUserID(ctx, requestedUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if found {
+		return localUserID, requestedUserID, nil
+	}
+
+	var exists int64
+	err = r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT 1 FROM als_users WHERE id = ?`), requestedUserID).Scan(&exists)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, requestedUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return requestedUserID, upstreamUserID, nil
+}
+
+func formatUpstreamRegisterError(status int, body []byte) string {
+	message := strings.TrimSpace(extractErrorMessage(body))
+	if message == "" {
+		message = "sub2api register failed"
+	}
+	return fmt.Sprintf("%s: status %d", message, status)
+}
+
+func formatUpstreamAuthError(status int, body []byte) string {
+	message := strings.TrimSpace(extractErrorMessage(body))
+	if message == "" {
+		message = "sub2api auth failed"
+	}
+	return fmt.Sprintf("%s: status %d", message, status)
+}
+
+func extractErrorMessage(body []byte) string {
+	var payload map[string]any
+	if len(bytes.TrimSpace(body)) == 0 || json.Unmarshal(body, &payload) != nil {
+		return ""
+	}
+	for _, key := range []string{"error", "message", "reason"} {
+		if value := strings.TrimSpace(stringFromAny(payload[key])); value != "" {
+			return value
+		}
+	}
+	if data, ok := payload["data"].(map[string]any); ok {
+		for _, key := range []string{"error", "message", "reason"} {
+			if value := strings.TrimSpace(stringFromAny(data[key])); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 func (r *routes) ingestAndMaybeExecutePaymentSuccess(ctx context.Context, payload adminPaymentSuccessRequest, idempotencyKey string) (*fulfillment.Job, error) {
@@ -4031,7 +4556,10 @@ func (r *routes) executeBalanceRecharge(ctx context.Context, job *fulfillment.Jo
 	}
 
 	childKey := parentIdempotencyKey + ":balance"
-	_, err := r.proxyClient.UpdateUserBalance(ctx, payload.UserID, *payload.BalanceRecharge, childKey)
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, payload.UserID)
+	if err == nil {
+		_, err = r.proxyClient.UpdateUserBalance(ctx, upstreamUserID, *payload.BalanceRecharge, childKey)
+	}
 	if err != nil {
 		_, applyErr := r.fulfillmentSvc.ApplyBalanceRechargeResult(ctx, job.ID, err)
 		if applyErr != nil {
@@ -4072,21 +4600,36 @@ func (r *routes) executeDelegatedAPIKeyCreation(ctx context.Context, job *fulfil
 func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *fulfillment.Job, payload adminPaymentSuccessRequest, parentIdempotencyKey string) error {
 	pkg, err := r.loadAdminPackageByCode(ctx, strings.TrimSpace(payload.TierCode))
 	if err != nil {
-		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, err)
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
 		if applyErr != nil {
 			return applyErr
 		}
 		return nil
 	}
-	if !pkg.IsEnabled {
-		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, errors.New("package is not enabled"))
+	if !pkg.IsPublished {
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, errors.New("package is not published"))
 		if applyErr != nil {
 			return applyErr
 		}
 		return nil
 	}
 	if len(pkg.GroupIDs) == 0 {
-		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, errors.New("package has no bound groups"))
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, errors.New("package has no bound groups"))
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+	classifiedGroups, err := r.classifyPackageGroupIDs(ctx, pkg.GroupIDs)
+	if err != nil {
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
+		if applyErr != nil {
+			return applyErr
+		}
+		return nil
+	}
+	if err := validatePackageValueForClassifiedGroups(pkg.ValueType, pkg.ValueAmount, classifiedGroups); err != nil {
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -4094,59 +4637,98 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 	}
 
 	if _, _, err := r.ensureActiveSubscriptionForUser(ctx, payload.UserID, pkg.Code); err != nil {
-		_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, err)
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
 		if applyErr != nil {
 			return applyErr
 		}
 		return nil
 	}
 
-	var redeemErr error
-	switch strings.TrimSpace(pkg.ValueType) {
-	case "days":
-		if pkg.ValueAmount <= 0 {
-			redeemErr = errors.New("package days value must be positive")
-			break
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, payload.UserID)
+	if err != nil {
+		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
+		if applyErr != nil {
+			return applyErr
 		}
-		validityDays := int(pkg.ValueAmount)
-		for _, groupID := range pkg.GroupIDs {
-			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
-				redeemErr = ensureErr
-				break
-			}
-			childKey := parentIdempotencyKey + ":package:" + strconv.FormatInt(groupID, 10)
-			groupIDCopy := groupID
-			_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
-				Code:         buildRedeemCode(payload.OrderID, payload.PaymentEventID, groupID),
-				Type:         proxy.RedeemTypeSubscription,
-				Value:        float64(validityDays),
-				UserID:       payload.UserID,
-				GroupID:      &groupIDCopy,
-				ValidityDays: &validityDays,
-				Notes:        fmt.Sprintf("stripe package purchase %s", pkg.Code),
-			}, childKey)
-			if redeemErr != nil {
-				break
-			}
-		}
-	case "balance":
-		amount := microsToFloatCurrency(pkg.ValueAmount)
-		_, redeemErr = r.proxyClient.CreateAndRedeem(ctx, proxy.CreateAndRedeemRequest{
-			Code:   buildRedeemCode(payload.OrderID, payload.PaymentEventID, 0),
-			Type:   proxy.RedeemTypeBalance,
-			Value:  amount,
-			UserID: payload.UserID,
-			Notes:  fmt.Sprintf("stripe package purchase %s", pkg.Code),
-		}, parentIdempotencyKey+":package:balance")
-	default:
-		redeemErr = errors.New("package value_type is not supported for fulfillment")
+		return nil
 	}
 
-	_, applyErr := r.fulfillmentSvc.ApplyCreateAndRedeemResult(ctx, job.ID, redeemErr)
+	var fulfillmentErr error
+	switch strings.TrimSpace(pkg.ValueType) {
+	case "", "days", "balance":
+		if strings.TrimSpace(pkg.ValueType) == "balance" {
+			amount := microsToFloatCurrency(pkg.ValueAmount)
+			_, fulfillmentErr = r.proxyClient.UpdateUserBalance(ctx, upstreamUserID, proxy.UpdateUserBalanceRequest{
+				Balance:   amount,
+				Operation: "add",
+				Notes:     fmt.Sprintf("stripe package purchase %s", pkg.Code),
+			}, parentIdempotencyKey+":package:balance")
+			if fulfillmentErr != nil {
+				break
+			}
+		}
+
+		if pkg.ValueAmount <= 0 {
+			if len(classifiedGroups.SubscriptionGroupIDs) > 0 {
+				fulfillmentErr = errors.New("package days value must be positive for subscription groups")
+				break
+			}
+		}
+		validityDays := int(pkg.ValueAmount)
+		for _, groupID := range classifiedGroups.StandardGroupIDs {
+			childKey := parentIdempotencyKey + ":grant-group:" + strconv.FormatInt(groupID, 10)
+			_, fulfillmentErr = r.proxyClient.GrantUserGroup(ctx, upstreamUserID, groupID, childKey)
+			if fulfillmentErr != nil {
+				break
+			}
+			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+				fulfillmentErr = ensureErr
+				break
+			}
+		}
+		if fulfillmentErr != nil {
+			break
+		}
+		for _, groupID := range classifiedGroups.SubscriptionGroupIDs {
+			childKey := parentIdempotencyKey + ":assign-subscription:" + strconv.FormatInt(groupID, 10)
+			_, fulfillmentErr = r.proxyClient.AssignAdminSubscription(ctx, proxy.AssignAdminSubscriptionRequest{
+				UserID:       upstreamUserID,
+				GroupID:      groupID,
+				ValidityDays: validityDays,
+				Notes:        fmt.Sprintf("stripe package purchase %s", pkg.Code),
+			}, childKey)
+			if fulfillmentErr != nil {
+				break
+			}
+			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+				fulfillmentErr = ensureErr
+				break
+			}
+		}
+	default:
+		fulfillmentErr = errors.New("package value_type is not supported for fulfillment")
+	}
+
+	_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, fulfillmentErr)
 	if applyErr != nil {
 		return applyErr
 	}
 	return nil
+}
+
+func (r *routes) resolveSub2APIUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, errors.New("user id must be positive")
+	}
+	upstreamUserID, found, err := r.sub2api.UpstreamUserID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	if found {
+		return upstreamUserID, nil
+	}
+
+	return userID, nil
 }
 
 func (r *routes) handleAdminGetFulfillmentJob(w http.ResponseWriter, req *http.Request) {
@@ -4678,6 +5260,8 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			t.description,
 			t.features_json,
 			t.is_enabled,
+			t.is_visible,
+			t.is_published,
 			t.created_at,
 			t.updated_at,
 			tgb.group_id
@@ -4705,11 +5289,13 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			description  string
 			featuresJSON string
 			isEnabled    bool
+			isVisible    bool
+			isPublished  bool
 			createdAt    string
 			updatedAt    string
 			groupID      sql.NullInt64
 		)
-		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &createdAt, &updatedAt, &groupID); err != nil {
+		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &isVisible, &isPublished, &createdAt, &updatedAt, &groupID); err != nil {
 			return nil, err
 		}
 
@@ -4725,7 +5311,9 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 				ValueAmount: valueAmount,
 				Description: description,
 				Features:    parseFeaturesJSON(featuresJSON),
-				IsEnabled:   isEnabled,
+				IsEnabled:   isPublished,
+				IsVisible:   isVisible,
+				IsPublished: isPublished,
 				GroupIDs:    []int64{},
 				CreatedAt:   createdAt,
 				UpdatedAt:   updatedAt,
@@ -5257,6 +5845,137 @@ func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool)
 	sort.Slice(normalizedGroupIDs, func(i, j int) bool { return normalizedGroupIDs[i] < normalizedGroupIDs[j] })
 	payload.GroupIDs = normalizedGroupIDs
 	return payload, nil
+}
+
+func packageFlagsForCreate(payload adminPackageRequest) (isVisible bool, isPublished bool) {
+	isVisible = true
+	isPublished = true
+	if payload.IsEnabled != nil {
+		isVisible = *payload.IsEnabled
+		isPublished = *payload.IsEnabled
+	}
+	if payload.IsVisible != nil {
+		isVisible = *payload.IsVisible
+	}
+	if payload.IsPublished != nil {
+		isPublished = *payload.IsPublished
+	}
+	return isVisible, isPublished
+}
+
+func packageFlagsForUpdate(payload adminPackageRequest, current adminPackageResponse) (isVisible bool, isPublished bool) {
+	isVisible = current.IsVisible
+	isPublished = current.IsPublished
+	if payload.IsEnabled != nil {
+		if payload.IsVisible == nil {
+			isVisible = *payload.IsEnabled
+		}
+		if payload.IsPublished == nil {
+			isPublished = *payload.IsEnabled
+		}
+	}
+	if payload.IsVisible != nil {
+		isVisible = *payload.IsVisible
+	}
+	if payload.IsPublished != nil {
+		isPublished = *payload.IsPublished
+	}
+	return isVisible, isPublished
+}
+
+func (r *routes) validatePackageGroupBindings(ctx context.Context, payload adminPackageRequest) error {
+	if r.proxyClient == nil {
+		return nil
+	}
+	classifiedGroups, err := r.classifyPackageGroupIDs(ctx, payload.GroupIDs)
+	if err != nil {
+		return fmt.Errorf("failed to validate package groups: %w", err)
+	}
+	return validatePackageValueForClassifiedGroups(payload.ValueType, payload.ValueAmount, classifiedGroups)
+}
+
+type packageGroupClassification struct {
+	StandardGroupIDs     []int64
+	SubscriptionGroupIDs []int64
+	MissingGroupIDs      []int64
+}
+
+func (r *routes) classifyPackageGroupIDs(ctx context.Context, groupIDs []int64) (packageGroupClassification, error) {
+	var classified packageGroupClassification
+	if r.proxyClient == nil {
+		return classified, errors.New("proxy client is not configured")
+	}
+	resp, err := r.proxyClient.ListAdminGroups(ctx, "")
+	if err != nil {
+		return classified, err
+	}
+
+	groupsByID := make(map[int64]proxy.AdminGroup, len(resp.Data))
+	for _, group := range resp.Data {
+		if group.ID > 0 {
+			groupsByID[group.ID] = group
+		}
+	}
+
+	for _, groupID := range groupIDs {
+		group, ok := groupsByID[groupID]
+		if !ok {
+			classified.MissingGroupIDs = append(classified.MissingGroupIDs, groupID)
+			continue
+		}
+		if isSubscriptionGroup(group) {
+			classified.SubscriptionGroupIDs = append(classified.SubscriptionGroupIDs, groupID)
+		} else {
+			classified.StandardGroupIDs = append(classified.StandardGroupIDs, groupID)
+		}
+	}
+
+	return classified, nil
+}
+
+func validatePackageValueForClassifiedGroups(valueType string, valueAmount int64, classified packageGroupClassification) error {
+	if len(classified.MissingGroupIDs) > 0 {
+		return fmt.Errorf("package contains groups that do not exist in sub2api: %s", joinInt64s(classified.MissingGroupIDs))
+	}
+	if len(classified.SubscriptionGroupIDs) > 0 {
+		if strings.TrimSpace(valueType) != "days" {
+			return fmt.Errorf("packages with subscription groups must use value_type 'days'; subscription group_ids: %s", joinInt64s(classified.SubscriptionGroupIDs))
+		}
+		if valueAmount <= 0 {
+			return errors.New("value_amount must be > 0 for subscription groups")
+		}
+	}
+	return nil
+}
+
+func isSubscriptionGroup(group proxy.AdminGroup) bool {
+	subscriptionType := strings.ToLower(strings.TrimSpace(group.SubscriptionType))
+	if subscriptionType == "" {
+		subscriptionType = strings.ToLower(strings.TrimSpace(group.Type))
+	}
+	switch subscriptionType {
+	case "", "standard", "balance":
+		return false
+	case "subscription":
+		return true
+	default:
+		return true
+	}
+}
+
+func packageGroupBillingType(group proxy.AdminGroup) string {
+	if isSubscriptionGroup(group) {
+		return "subscription"
+	}
+	return "balance"
+}
+
+func joinInt64s(values []int64) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, strconv.FormatInt(value, 10))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func validateArticleSlug(slug string) error {

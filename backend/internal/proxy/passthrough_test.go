@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -531,6 +532,61 @@ func TestCreateAndRedeem_UsesExpectedRouteAndEnvelope(t *testing.T) {
 	}
 }
 
+func TestAssignAdminSubscription_UsesExpectedRouteAndEnvelope(t *testing.T) {
+	t.Parallel()
+
+	var seenPath string
+	var seenMethod string
+	var seenAPIKey string
+	var seenIdempotency string
+	var payload AssignAdminSubscriptionRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenMethod = r.Method
+		seenAPIKey = r.Header.Get("x-api-key")
+		seenIdempotency = r.Header.Get("Idempotency-Key")
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":10,"user_id":11,"group_id":99,"status":"active","assigned_by":0,"notes":"created by portal"}}`))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.AssignAdminSubscription(context.Background(), AssignAdminSubscriptionRequest{
+		UserID:       11,
+		GroupID:      99,
+		ValidityDays: 30,
+		Notes:        "created by portal",
+	}, "idem-assign-007")
+	if err != nil {
+		t.Fatalf("AssignAdminSubscription() error = %v", err)
+	}
+	if seenMethod != http.MethodPost {
+		t.Fatalf("expected POST, got %s", seenMethod)
+	}
+	if seenPath != "/api/v1/admin/subscriptions/assign" {
+		t.Fatalf("unexpected path: %s", seenPath)
+	}
+	if seenAPIKey != "admin-key-123" {
+		t.Fatalf("expected admin api key header, got %q", seenAPIKey)
+	}
+	if seenIdempotency != "idem-assign-007" {
+		t.Fatalf("expected idempotency header, got %q", seenIdempotency)
+	}
+	if payload.UserID != 11 || payload.GroupID != 99 || payload.ValidityDays != 30 {
+		t.Fatalf("unexpected request payload: %#v", payload)
+	}
+	if resp.Data.ID != 10 || resp.Data.UserID != 11 || resp.Data.GroupID != 99 {
+		t.Fatalf("unexpected subscription response: %#v", resp.Data)
+	}
+}
+
 func TestUpdateUserBalance_UsesExpectedRouteAndEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -578,6 +634,60 @@ func TestUpdateUserBalance_UsesExpectedRouteAndEnvelope(t *testing.T) {
 	}
 	if resp.Data.ID != 17 || resp.Data.Balance != 188.5 {
 		t.Fatalf("unexpected balance response: %#v", resp.Data)
+	}
+}
+
+func TestGrantUserGroup_MergesAllowedGroups(t *testing.T) {
+	t.Parallel()
+
+	var seenGetPath string
+	var seenPutPath string
+	var seenIdempotency string
+	var payload struct {
+		AllowedGroups []int64 `json:"allowed_groups"`
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			seenGetPath = r.URL.Path
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":17,"email":"user@example.com","allowed_groups":[3]}}`))
+		case http.MethodPut:
+			seenPutPath = r.URL.Path
+			seenIdempotency = r.Header.Get("Idempotency-Key")
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode payload: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":17,"email":"user@example.com","allowed_groups":[3,9]}}`))
+		default:
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.GrantUserGroup(context.Background(), 17, 9, "idem-grant-9")
+	if err != nil {
+		t.Fatalf("GrantUserGroup() error = %v", err)
+	}
+	if seenGetPath != "/api/v1/admin/users/17" {
+		t.Fatalf("unexpected get path: %s", seenGetPath)
+	}
+	if seenPutPath != "/api/v1/admin/users/17" {
+		t.Fatalf("unexpected put path: %s", seenPutPath)
+	}
+	if seenIdempotency != "idem-grant-9" {
+		t.Fatalf("expected idempotency header, got %q", seenIdempotency)
+	}
+	if !reflect.DeepEqual(payload.AllowedGroups, []int64{3, 9}) {
+		t.Fatalf("unexpected allowed groups payload: %+v", payload.AllowedGroups)
+	}
+	if !reflect.DeepEqual(resp.Data.AllowedGroups, []int64{3, 9}) {
+		t.Fatalf("unexpected allowed groups response: %+v", resp.Data.AllowedGroups)
 	}
 }
 

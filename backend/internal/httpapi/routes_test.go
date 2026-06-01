@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/proxy"
 	portalstripe "ai-api-portal/backend/internal/stripe"
+	"ai-api-portal/backend/internal/user"
 )
 
 func TestPublicTiersReturnsDefaultItemsWithoutAuth(t *testing.T) {
@@ -638,21 +640,23 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 		switch {
 		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
 			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
-		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Pro Subscription","subscription_type":"monthly"}]}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
 			if req.Method != http.MethodPost {
 				t.Fatalf("expected POST, got %s", req.Method)
 			}
-			if got := req.Header.Get("Idempotency-Key"); got != "stripe:evt_stripe_1:package:77" {
+			if got := req.Header.Get("Idempotency-Key"); got != "stripe:evt_stripe_1:assign-subscription:77" {
 				t.Fatalf("unexpected idempotency key: %q", got)
 			}
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				t.Fatalf("read upstream body: %v", err)
 			}
-			if !strings.Contains(string(body), `"type":"subscription"`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) || !strings.Contains(string(body), `"value":30`) {
-				t.Fatalf("unexpected create-and-redeem payload: %s", string(body))
+			if !strings.Contains(string(body), `"user_id":9001`) || !strings.Contains(string(body), `"group_id":77`) || !strings.Contains(string(body), `"validity_days":30`) {
+				t.Fatalf("unexpected assign subscription payload: %s", string(body))
 			}
-			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":1,"code":"ORDER-G77","type":"subscription","value":30,"status":"used","group_id":77,"validity_days":30}}}`))
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"user_id":9001,"group_id":77,"status":"active","validity_days":30}}`))
 		default:
 			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
 		}
@@ -681,7 +685,7 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 		StripeClient:         stripeClient,
 	})
 	userID, _ := createUserViaAPI(t, mux, "stripe-webhook-user@example.com", "Stripe Webhook User", "user", "")
-	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-refresh-token"); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, userID, 9001, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
 
@@ -758,14 +762,16 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 		switch {
 		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
 			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
-		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Daily Subscription","subscription_type":"daily"}]}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
 			callCount++
 			if callCount == 1 {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"message":"internal error"}`))
 				return
 			}
-			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"redeem_code":{"id":2,"code":"AUTO-G77","type":"subscription","value":3,"status":"used","group_id":77,"validity_days":3}}}`))
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":2,"user_id":1,"group_id":77,"status":"active"}}`))
 		default:
 			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
 		}
@@ -1107,6 +1113,85 @@ func TestAdminPaymentSuccessExecutesBalanceRechargeImmediately(t *testing.T) {
 	}
 }
 
+func TestPackageBalanceFulfillmentUsesAdminBalanceUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "credit-plus", "Credit Plus")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 25000000, value_type = 'balance', value_amount = 25000000, is_enabled = 1, is_published = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 88)
+
+	var upstreamCalls []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			upstreamCalls = append(upstreamCalls, "groups")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":88,"name":"Credit Group","subscription_type":"standard"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/1/balance":
+			upstreamCalls = append(upstreamCalls, "balance")
+			if req.Method != http.MethodPost {
+				t.Fatalf("expected POST balance update, got %s", req.Method)
+			}
+			if got := req.Header.Get("Idempotency-Key"); got != "idem-package-balance:package:balance" {
+				t.Fatalf("expected balance package idempotency key, got %q", got)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read balance payload: %v", err)
+			}
+			if !strings.Contains(string(body), `"balance":25`) || !strings.Contains(string(body), `"operation":"add"`) {
+				t.Fatalf("unexpected balance payload: %s", string(body))
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"balance":25}}`))
+		case req.URL.Path == "/api/v1/admin/users/1" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "get-user")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"email":"credit-user@example.com","allowed_groups":[]}}`))
+		case req.URL.Path == "/api/v1/admin/users/1" && req.Method == http.MethodPut:
+			upstreamCalls = append(upstreamCalls, "grant-group")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"email":"credit-user@example.com","allowed_groups":[88]}}`))
+		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":88,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
+			t.Fatalf("package balance fulfillment must not use redeem-codes")
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, _ := createUserViaAPI(t, mux, "credit-user@example.com", "Credit User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "credit-admin@example.com", "Credit Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, userID, 1, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
+
+	body := `{"payment_event_id":"evt_package_balance","user_id":` + strconv.FormatInt(userID, 10) + `,"tier_code":"credit-plus","order_id":"cs_package_balance"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
+	req.Header.Set("Idempotency-Key", "idem-package-balance")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rec.Code, rec.Body.String())
+	}
+	if got := strings.Join(upstreamCalls, ","); got != "groups,balance,get-user,grant-group,key" {
+		t.Fatalf("expected upstream calls groups,balance,get-user,grant-group,key; got %s", got)
+	}
+}
+
 func TestAdminPaymentSuccessExecutesDelegatedAPIKeyCreationImmediately(t *testing.T) {
 	t.Parallel()
 
@@ -1290,6 +1375,353 @@ func TestAdminAvailableGroupsReturnsMappedGroups(t *testing.T) {
 	}
 	if payload.Groups[1].ID != 77 || payload.Groups[1].SubscriptionType != "" {
 		t.Fatalf("unexpected second group payload: %+v", payload.Groups[1])
+	}
+}
+
+func TestAdminQuickCreateUserRegistersUpstreamAndStoresToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var upstreamEmail string
+	var upstreamName string
+	var upstreamPassword string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/register" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		var payload struct {
+			Email    string `json:"email"`
+			Name     string `json:"name"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode upstream register request: %v", err)
+		}
+		upstreamEmail = payload.Email
+		upstreamName = payload.Name
+		upstreamPassword = payload.Password
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"quick-upstream-access","refresh_token":"quick-upstream-refresh","user":{"id":901,"email":"quick-user@example.com","role":"user"}}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	_, adminSessionToken := createUserViaAPI(t, mux, "quick-admin@example.com", "Quick Admin", "admin", "test-admin-secret")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/quick-create", bytes.NewReader([]byte(`{"email":"Quick-User@Example.com"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var response adminQuickCreateUserResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode quick-create response: %v", err)
+	}
+	if response.ID != 901 || response.LocalID <= 0 || response.Email != "quick-user@example.com" || response.Name != "quick-user" || response.Password == "" {
+		t.Fatalf("unexpected quick-create response: %+v", response)
+	}
+	if upstreamEmail != response.Email || upstreamName != response.Name || upstreamPassword != response.Password {
+		t.Fatalf("unexpected upstream register payload email=%q name=%q password=%q response=%+v", upstreamEmail, upstreamName, upstreamPassword, response)
+	}
+
+	var (
+		passwordHash     sql.NullString
+		emailVerified    bool
+		accessToken      string
+		refreshToken     sql.NullString
+		upstreamUserID   sql.NullInt64
+		localWalletCount int64
+	)
+	if err := database.QueryRowContext(ctx, `SELECT password_hash, email_verified FROM als_users WHERE id = ?;`, response.LocalID).Scan(&passwordHash, &emailVerified); err != nil {
+		t.Fatalf("query created user: %v", err)
+	}
+	if !passwordHash.Valid || !user.CheckPassword(response.Password, passwordHash.String) {
+		t.Fatalf("expected local password hash to match generated password")
+	}
+	if !emailVerified {
+		t.Fatalf("expected admin-created local user to be email verified")
+	}
+	if err := database.QueryRowContext(ctx, `
+		SELECT access_token, refresh_token, upstream_user_id
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?;
+	`, response.LocalID).Scan(&accessToken, &refreshToken, &upstreamUserID); err != nil {
+		t.Fatalf("query stored sub2api token: %v", err)
+	}
+	if accessToken != "quick-upstream-access" || !refreshToken.Valid || refreshToken.String != "quick-upstream-refresh" || !upstreamUserID.Valid || upstreamUserID.Int64 != 901 {
+		t.Fatalf("unexpected stored sub2api token access=%q refresh=%+v upstream=%+v", accessToken, refreshToken, upstreamUserID)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_user_wallets WHERE user_id = ?;`, response.LocalID).Scan(&localWalletCount); err != nil {
+		t.Fatalf("count wallet rows: %v", err)
+	}
+	if localWalletCount != 1 {
+		t.Fatalf("expected wallet row for created user, got %d", localWalletCount)
+	}
+}
+
+func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "pro-monthly", "Pro Monthly")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 29900000, value_type = 'days', value_amount = 30, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 77)
+
+	var (
+		assignedUserID int64
+		upstreamCalls  []string
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/api/v1/auth/login":
+			upstreamCalls = append(upstreamCalls, "login")
+			var loginPayload struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&loginPayload); err != nil {
+				t.Fatalf("decode login payload: %v", err)
+			}
+			if loginPayload.Email != "assign-upstream-user@example.com" || loginPayload.Password != "LatestPassword#123" {
+				t.Fatalf("unexpected login payload: %+v", loginPayload)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"new-upstream-user-token","refresh_token":"new-upstream-refresh-token","user":{"id":32,"email":"assign-upstream-user@example.com"}}}`))
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Pro Subscription","subscription_type":"monthly"}]}`))
+		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "key")
+			if got := req.Header.Get("Authorization"); got != "Bearer new-upstream-user-token" {
+				t.Fatalf("expected delegated bearer token, got %q", got)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
+			upstreamCalls = append(upstreamCalls, "assign")
+			var payload proxy.AssignAdminSubscriptionRequest
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode assign subscription payload: %v", err)
+			}
+			assignedUserID = payload.UserID
+			if payload.UserID != 32 || payload.GroupID != 77 {
+				t.Fatalf("unexpected assign subscription payload: %+v", payload)
+			}
+			if payload.ValidityDays != 30 {
+				t.Fatalf("expected subscription validity days 30, got %v", payload.ValidityDays)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"user_id":32,"group_id":77,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	localUserID, _ := createUserViaAPI(t, mux, "assign-upstream-user@example.com", "Assign Upstream User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "assign-upstream-admin@example.com", "Assign Upstream Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 32, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/assign-package", bytes.NewReader([]byte(`{"user_id":32,"tier_code":"pro-monthly","password":"LatestPassword#123"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if assignedUserID != 32 {
+		t.Fatalf("expected upstream assign user id 32, got %d", assignedUserID)
+	}
+	if got := strings.Join(upstreamCalls, ","); got != "login,assign,key" {
+		t.Fatalf("expected upstream call order login,assign,key; got %s", got)
+	}
+	var storedAccess string
+	if err := database.QueryRowContext(ctx, `SELECT access_token FROM als_sub2api_auth_tokens WHERE user_id = ?;`, localUserID).Scan(&storedAccess); err != nil {
+		t.Fatalf("query refreshed upstream token: %v", err)
+	}
+	if storedAccess != "new-upstream-user-token" {
+		t.Fatalf("expected refreshed upstream token, got %q", storedAccess)
+	}
+
+	var subCount int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_subscriptions WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;`, localUserID).Scan(&subCount); err != nil {
+		t.Fatalf("count local subscriptions: %v", err)
+	}
+	if subCount != 1 {
+		t.Fatalf("expected one local subscription for local user %d, got %d", localUserID, subCount)
+	}
+}
+
+func TestAdminAssignPackageReturnsErrorWhenFulfillmentFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "daily", "Daily")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 1000000, value_type = 'days', value_amount = 1, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 77)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/admin/groups/all":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Daily Subscription","subscription_type":"daily"}]}`))
+		case "/api/v1/admin/subscriptions/assign":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":400,"message":"group is not a subscription type","reason":"GROUP_NOT_SUBSCRIPTION_TYPE"}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	localUserID, _ := createUserViaAPI(t, mux, "assign-fail-user@example.com", "Assign Fail User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "assign-fail-admin@example.com", "Assign Fail Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 34, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/assign-package", bytes.NewReader([]byte(`{"user_id":34,"tier_code":"daily"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	var response adminAssignPackageResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode assign package response: %v", err)
+	}
+	if response.FulfillmentJob == nil || response.FulfillmentJob.Status != fulfillment.StatusFailedTerminal {
+		t.Fatalf("expected failed terminal fulfillment job, got %+v", response.FulfillmentJob)
+	}
+	if response.FulfillmentJob.ErrorMessage == nil || !strings.Contains(*response.FulfillmentJob.ErrorMessage, "GROUP_NOT_SUBSCRIPTION_TYPE") {
+		t.Fatalf("expected upstream error in fulfillment response, got %+v", response.FulfillmentJob)
+	}
+}
+
+func TestAdminAssignPackageGrantsStandardGroupAndCreatesKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "standard-group-package", "Standard Group Package")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 1000000, value_type = '', value_amount = 0, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 88)
+
+	var grantPayload struct {
+		AllowedGroups []int64 `json:"allowed_groups"`
+	}
+	var keyPayload proxy.CreateUserAPIKeyRequest
+	var upstreamCalls []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			upstreamCalls = append(upstreamCalls, "groups")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":88,"name":"Plain Group","subscription_type":"standard"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/88" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "get-user")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":88,"email":"standard-user@example.com","allowed_groups":[11]}}`))
+		case req.URL.Path == "/api/v1/admin/users/88" && req.Method == http.MethodPut:
+			upstreamCalls = append(upstreamCalls, "grant-group")
+			if err := json.NewDecoder(req.Body).Decode(&grantPayload); err != nil {
+				t.Fatalf("decode grant group payload: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":88,"email":"standard-user@example.com","allowed_groups":[11,88]}}`))
+		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "key")
+			if got := req.Header.Get("Authorization"); got != "Bearer upstream-user-token" {
+				t.Fatalf("expected delegated bearer token, got %q", got)
+			}
+			if err := json.NewDecoder(req.Body).Decode(&keyPayload); err != nil {
+				t.Fatalf("decode api key payload: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":88,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	localUserID, _ := createUserViaAPI(t, mux, "assign-invalid-group-user@example.com", "Assign Invalid Group User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "assign-invalid-group-admin@example.com", "Assign Invalid Group Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 88, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/assign-package", bytes.NewReader([]byte(`{"user_id":88,"tier_code":"standard-group-package"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if !reflect.DeepEqual(grantPayload.AllowedGroups, []int64{11, 88}) {
+		t.Fatalf("expected merged allowed groups [11 88], got %+v", grantPayload.AllowedGroups)
+	}
+	if keyPayload.GroupID != 88 {
+		t.Fatalf("expected auto key in group 88, got %+v", keyPayload)
+	}
+	if got := strings.Join(upstreamCalls, ","); got != "groups,groups,get-user,grant-group,key" {
+		t.Fatalf("expected upstream call order groups,groups,get-user,grant-group,key; got %s", got)
+	}
+
+	var subCount int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_subscriptions WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;`, localUserID).Scan(&subCount); err != nil {
+		t.Fatalf("count local subscriptions: %v", err)
+	}
+	if subCount != 1 {
+		t.Fatalf("expected local active subscription record, got %d", subCount)
 	}
 }
 
@@ -1638,6 +2070,96 @@ func TestAdminPackageValidationAndNotFound(t *testing.T) {
 	mux.ServeHTTP(badUpdateRec, badUpdateReq)
 	if badUpdateRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad update status %d, got %d", http.StatusBadRequest, badUpdateRec.Code)
+	}
+
+	deleteMissingReq := httptest.NewRequest(http.MethodDelete, "/admin/packages/missing", nil)
+	setBearerAuth(deleteMissingReq, adminSessionToken)
+	deleteMissingRec := httptest.NewRecorder()
+	mux.ServeHTTP(deleteMissingRec, deleteMissingReq)
+	if deleteMissingRec.Code != http.StatusNotFound {
+		t.Fatalf("expected missing delete status %d, got %d", http.StatusNotFound, deleteMissingRec.Code)
+	}
+}
+
+func TestAdminDeletePackageRemovesLocalTierAndBindings(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "delete-me", "Delete Me")
+	insertTierGroupBinding(t, ctx, database, tierID, 11)
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
+	_, adminSessionToken := createUserViaAPI(t, mux, "package-delete-admin@example.com", "Package Delete Admin", "admin", "test-admin-secret")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/packages/delete-me", nil)
+	setBearerAuth(deleteReq, adminSessionToken)
+	deleteRec := httptest.NewRecorder()
+	mux.ServeHTTP(deleteRec, deleteReq)
+
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected delete status %d, got %d body=%s", http.StatusOK, deleteRec.Code, deleteRec.Body.String())
+	}
+
+	var tierCount int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_tiers WHERE code = ?;`, "delete-me").Scan(&tierCount); err != nil {
+		t.Fatalf("count deleted tier: %v", err)
+	}
+	if tierCount != 0 {
+		t.Fatalf("expected deleted tier count 0, got %d", tierCount)
+	}
+
+	var bindingCount int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_tier_group_bindings WHERE tier_id = ?;`, tierID).Scan(&bindingCount); err != nil {
+		t.Fatalf("count deleted tier bindings: %v", err)
+	}
+	if bindingCount != 0 {
+		t.Fatalf("expected deleted tier binding count 0, got %d", bindingCount)
+	}
+}
+
+func TestAdminPackageCRUDDoesNotTouchSub2API(t *testing.T) {
+	t.Parallel()
+
+	database := setupTestDB(t)
+
+	upstreamCallCount := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamCallCount++
+		t.Fatalf("package CRUD should not call upstream, got %s %s", req.Method, req.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	_, adminSessionToken := createUserViaAPI(t, mux, "package-subscription-admin@example.com", "Package Subscription Admin", "admin", "test-admin-secret")
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/packages", bytes.NewReader([]byte(`{"code":"local-only","name":"Local Only","group_ids":[11],"is_visible":true,"is_published":false}`)))
+	setBearerAuth(createReq, adminSessionToken)
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected local create status %d, got %d body=%s", http.StatusCreated, createRec.Code, createRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/packages/local-only", bytes.NewReader([]byte(`{"name":"Local Only Updated","group_ids":[11,22],"value_type":"days","value_amount":30,"is_visible":false,"is_published":true}`)))
+	setBearerAuth(updateReq, adminSessionToken)
+	updateRec := httptest.NewRecorder()
+	mux.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected local update status %d, got %d body=%s", http.StatusOK, updateRec.Code, updateRec.Body.String())
+	}
+
+	if upstreamCallCount != 0 {
+		t.Fatalf("expected no upstream calls, got %d", upstreamCallCount)
 	}
 }
 
@@ -2005,6 +2527,8 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 		"description":   "Enhanced speed for dedicated developers.",
 		"features_json": `["10 Global Nodes","500GB Monthly Traffic","Priority Email Support"]`,
 		"is_enabled":    true,
+		"is_visible":    true,
+		"is_published":  true,
 	})
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/packages", bytes.NewReader(createBody))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -2026,6 +2550,8 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 		Description string   `json:"description"`
 		Features    []string `json:"features"`
 		IsEnabled   bool     `json:"is_enabled"`
+		IsVisible   bool     `json:"is_visible"`
+		IsPublished bool     `json:"is_published"`
 	}
 	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
 		t.Fatalf("decode create response: %v", err)
@@ -2051,6 +2577,12 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 	if !created.IsEnabled {
 		t.Fatal("expected is_enabled true")
 	}
+	if !created.IsVisible {
+		t.Fatal("expected is_visible true")
+	}
+	if !created.IsPublished {
+		t.Fatal("expected is_published true")
+	}
 
 	// List packages — should include new fields
 	listReq := httptest.NewRequest(http.MethodGet, "/admin/packages", nil)
@@ -2069,6 +2601,8 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 			ValueType   string   `json:"value_type"`
 			Features    []string `json:"features"`
 			IsEnabled   bool     `json:"is_enabled"`
+			IsVisible   bool     `json:"is_visible"`
+			IsPublished bool     `json:"is_published"`
 		} `json:"packages"`
 	}
 	if err := json.NewDecoder(listRec.Body).Decode(&listPayload); err != nil {
@@ -2097,7 +2631,8 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 		"value_amount":  90,
 		"description":   "Better deal.",
 		"features_json": `["20 Global Nodes","Unlimited Traffic"]`,
-		"is_enabled":    false,
+		"is_visible":    false,
+		"is_published":  false,
 	})
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/packages/pro-monthly", bytes.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
@@ -2113,6 +2648,8 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 		PriceMicros int64    `json:"price_micros"`
 		ValueAmount int64    `json:"value_amount"`
 		IsEnabled   bool     `json:"is_enabled"`
+		IsVisible   bool     `json:"is_visible"`
+		IsPublished bool     `json:"is_published"`
 		Features    []string `json:"features"`
 	}
 	if err := json.NewDecoder(updateRec.Body).Decode(&updated); err != nil {
@@ -2127,23 +2664,29 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 	if updated.IsEnabled {
 		t.Fatal("expected is_enabled false after update")
 	}
+	if updated.IsVisible {
+		t.Fatal("expected is_visible false after update")
+	}
+	if updated.IsPublished {
+		t.Fatal("expected is_published false after update")
+	}
 	if len(updated.Features) != 2 {
 		t.Fatalf("expected 2 features after update, got %d", len(updated.Features))
 	}
 }
 
-func TestPublicPackagesReturnsOnlyEnabled(t *testing.T) {
+func TestPublicPackagesReturnsOnlyVisible(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	database := setupTestDB(t)
 
-	// Insert als_tiers directly — one enabled, one disabled
-	_, err := database.ExecContext(ctx, `INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled) VALUES ('free', 'Free', 0, 'days', 30, 'Perfect for exploring.', '["2 Global Nodes"]', 1);`)
+	// Insert als_tiers directly — one visible, one hidden.
+	_, err := database.ExecContext(ctx, `INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published) VALUES ('free', 'Free', 0, 'days', 30, 'Perfect for exploring.', '["2 Global Nodes"]', 1, 1, 1);`)
 	if err != nil {
 		t.Fatalf("insert free tier: %v", err)
 	}
-	_, err = database.ExecContext(ctx, `INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled) VALUES ('hidden', 'Hidden', 99000000, 'days', 365, 'Hidden tier.', '["Everything"]', 0);`)
+	_, err = database.ExecContext(ctx, `INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published) VALUES ('hidden', 'Hidden', 99000000, 'days', 365, 'Hidden tier.', '["Everything"]', 1, 0, 1);`)
 	if err != nil {
 		t.Fatalf("insert hidden tier: %v", err)
 	}

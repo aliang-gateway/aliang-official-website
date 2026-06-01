@@ -315,6 +315,11 @@ function DashboardDetailsPageContent() {
         });
 
         const payload = (await response.json()) as unknown;
+        if (response.status === 401 || response.status === 403) {
+          localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+          router.replace("/login");
+          return;
+        }
         if (!response.ok) {
           const errorPayload = asRecord(payload);
           throw new Error(asString(errorPayload?.error, "Failed to load dashboard details"));
@@ -390,6 +395,11 @@ function DashboardDetailsPageContent() {
         });
 
         const payload = (await response.json()) as unknown;
+        if (response.status === 401 || response.status === 403) {
+          localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+          router.replace("/login");
+          return;
+        }
         if (!response.ok) {
           const errorPayload = asRecord(payload);
           throw new Error(asString(errorPayload?.error, "Failed to load usage records"));

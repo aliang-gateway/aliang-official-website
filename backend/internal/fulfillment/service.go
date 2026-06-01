@@ -404,61 +404,11 @@ func (s *Service) TransitionJob(ctx context.Context, jobID int64, input *Transit
 }
 
 func (s *Service) ApplyCreateAndRedeemResult(ctx context.Context, jobID int64, resultErr error) (*Job, error) {
-	job, err := s.GetJobByID(ctx, jobID)
-	if err != nil {
-		return nil, err
-	}
+	return s.applyProxyResult(ctx, jobID, resultErr, "sub2api_create_and_redeem")
+}
 
-	now := s.currentTime()
-	if resultErr == nil {
-		return s.TransitionJob(ctx, jobID, &TransitionInput{
-			Status:       StatusFulfilled,
-			EventType:    "sub2api_create_and_redeem_succeeded",
-			StartedAt:    &now,
-			FinishedAt:   &now,
-			RetryCount:   &job.RetryCount,
-			EventPayload: nullableString(`{"outcome":"fulfilled"}`),
-		})
-	}
-
-	errorMessage := resultErr.Error()
-	retryCount := job.RetryCount
-	status := StatusFailedTerminal
-	eventType := "sub2api_create_and_redeem_failed_terminal"
-	availableAt := now
-	startedAt := now
-	finishedAt := now
-
-	var apiErr *proxy.APIError
-	if errors.As(resultErr, &apiErr) {
-		if apiErr.IsRetryable() {
-			status = StatusFailedRetryable
-			eventType = "sub2api_create_and_redeem_failed_retryable"
-			retryCount++
-			finishedAt = time.Time{}
-			if apiErr.RetryAfter > 0 {
-				availableAt = now.Add(apiErr.RetryAfter)
-			} else {
-				availableAt = now.Add(defaultRetryableDelay)
-			}
-		}
-	}
-
-	transition := &TransitionInput{
-		Status:       status,
-		ErrorMessage: &errorMessage,
-		EventType:    eventType,
-		StartedAt:    &startedAt,
-		RetryCount:   &retryCount,
-		EventPayload: nullableString(fmt.Sprintf(`{"error":%q}`, strings.TrimSpace(errorMessage))),
-	}
-	if status == StatusFailedRetryable {
-		transition.AvailableAt = &availableAt
-	} else {
-		transition.FinishedAt = &finishedAt
-	}
-
-	return s.TransitionJob(ctx, jobID, transition)
+func (s *Service) ApplyPackageFulfillmentResult(ctx context.Context, jobID int64, resultErr error) (*Job, error) {
+	return s.applyProxyResult(ctx, jobID, resultErr, "sub2api_package_fulfillment")
 }
 
 func (s *Service) ApplyBalanceRechargeResult(ctx context.Context, jobID int64, resultErr error) (*Job, error) {

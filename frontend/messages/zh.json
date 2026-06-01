@@ -195,6 +195,7 @@
     "noPlans": "目前暂无可用方案。",
     "buyWithStripe": "通过 Stripe 购买",
     "openDashboard": "打开控制台",
+    "packageUnavailable": "暂未上架",
     "redirecting": "正在跳转...",
     "openSourceTitle": "开源计划进度",
     "openSourceDescription": "如果觉得我们的软件对你有帮助，请帮我们分享！我们将在用户达到一定数量后开源代码。",
