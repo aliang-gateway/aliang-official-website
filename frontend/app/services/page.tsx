@@ -459,7 +459,7 @@ export default function ServicesPage() {
                         ? t("redirecting")
                         : pkg.price_micros > 0
                         ? t("buyWithStripe")
-                        : t("openDashboard")}
+                        : t("noPurchaseNeeded")}
                     </button>
                   </div>
                 );

@@ -638,10 +638,10 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
-			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
 		case req.URL.Path == "/api/v1/admin/groups/all":
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Pro Subscription","subscription_type":"monthly"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/9001/subscriptions" && req.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
 		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
 			if req.Method != http.MethodPost {
 				t.Fatalf("expected POST, got %s", req.Method)
@@ -657,6 +657,13 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 				t.Fatalf("unexpected assign subscription payload: %s", string(body))
 			}
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"user_id":9001,"group_id":77,"status":"active","validity_days":30}}`))
+		case req.URL.Path == "/api/v1/admin/users/9001/api-keys" && req.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/9001/api-keys" && req.Method == http.MethodPost:
+			if got := req.Header.Get("Idempotency-Key"); got != "stripe:evt_stripe_1:ensure-key:77" {
+				t.Fatalf("unexpected api key idempotency key: %q", got)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
 		default:
 			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
 		}
@@ -760,10 +767,10 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
-			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
 		case req.URL.Path == "/api/v1/admin/groups/all":
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Daily Subscription","subscription_type":"daily"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/1/subscriptions" && req.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
 		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
 			callCount++
 			if callCount == 1 {
@@ -772,6 +779,10 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":2,"user_id":1,"group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/users/1/api-keys" && req.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/1/api-keys" && req.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
 		default:
 			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
 		}
@@ -1153,7 +1164,10 @@ func TestPackageBalanceFulfillmentUsesAdminBalanceUpdate(t *testing.T) {
 		case req.URL.Path == "/api/v1/admin/users/1" && req.Method == http.MethodPut:
 			upstreamCalls = append(upstreamCalls, "grant-group")
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"email":"credit-user@example.com","allowed_groups":[88]}}`))
-		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+		case req.URL.Path == "/api/v1/admin/users/1/api-keys" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/1/api-keys" && req.Method == http.MethodPost:
 			upstreamCalls = append(upstreamCalls, "key")
 			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":88,"status":"active"}}`))
 		case req.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem":
@@ -1187,8 +1201,8 @@ func TestPackageBalanceFulfillmentUsesAdminBalanceUpdate(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rec.Code, rec.Body.String())
 	}
-	if got := strings.Join(upstreamCalls, ","); got != "groups,balance,get-user,grant-group,key" {
-		t.Fatalf("expected upstream calls groups,balance,get-user,grant-group,key; got %s", got)
+	if got := strings.Join(upstreamCalls, ","); got != "groups,balance,get-user,grant-group,list-key,key" {
+		t.Fatalf("expected upstream calls groups,balance,get-user,grant-group,list-key,key; got %s", got)
 	}
 }
 
@@ -1508,10 +1522,20 @@ func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
 			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"new-upstream-user-token","refresh_token":"new-upstream-refresh-token","user":{"id":32,"email":"assign-upstream-user@example.com"}}}`))
 		case req.URL.Path == "/api/v1/admin/groups/all":
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Pro Subscription","subscription_type":"monthly"}]}`))
-		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+		case req.URL.Path == "/api/v1/admin/users/32/subscriptions" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-subscriptions")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
+		case req.URL.Path == "/api/v1/admin/users/32/api-keys" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/32/api-keys" && req.Method == http.MethodPost:
 			upstreamCalls = append(upstreamCalls, "key")
-			if got := req.Header.Get("Authorization"); got != "Bearer new-upstream-user-token" {
-				t.Fatalf("expected delegated bearer token, got %q", got)
+			var payload proxy.CreateUserAPIKeyRequest
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode api key payload: %v", err)
+			}
+			if payload.Name != "auto-key" || payload.GroupID != 77 {
+				t.Fatalf("unexpected api key payload: %+v", payload)
 			}
 			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"status":"active"}}`))
 		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
@@ -1559,8 +1583,8 @@ func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
 	if assignedUserID != 32 {
 		t.Fatalf("expected upstream assign user id 32, got %d", assignedUserID)
 	}
-	if got := strings.Join(upstreamCalls, ","); got != "login,assign,key" {
-		t.Fatalf("expected upstream call order login,assign,key; got %s", got)
+	if got := strings.Join(upstreamCalls, ","); got != "login,list-subscriptions,assign,list-key,key" {
+		t.Fatalf("expected upstream call order login,list-subscriptions,assign,list-key,key; got %s", got)
 	}
 	var storedAccess string
 	if err := database.QueryRowContext(ctx, `SELECT access_token FROM als_sub2api_auth_tokens WHERE user_id = ?;`, localUserID).Scan(&storedAccess); err != nil {
@@ -1595,6 +1619,8 @@ func TestAdminAssignPackageReturnsErrorWhenFulfillmentFails(t *testing.T) {
 		switch req.URL.Path {
 		case "/api/v1/admin/groups/all":
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Daily Subscription","subscription_type":"daily"}]}`))
+		case "/api/v1/admin/users/34/subscriptions":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
 		case "/api/v1/admin/subscriptions/assign":
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"code":400,"message":"group is not a subscription type","reason":"GROUP_NOT_SUBSCRIPTION_TYPE"}`))
@@ -1669,11 +1695,11 @@ func TestAdminAssignPackageGrantsStandardGroupAndCreatesKey(t *testing.T) {
 				t.Fatalf("decode grant group payload: %v", err)
 			}
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":88,"email":"standard-user@example.com","allowed_groups":[11,88]}}`))
-		case req.URL.Path == "/api/v1/keys" && req.Method == http.MethodPost:
+		case req.URL.Path == "/api/v1/admin/users/88/api-keys" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/88/api-keys" && req.Method == http.MethodPost:
 			upstreamCalls = append(upstreamCalls, "key")
-			if got := req.Header.Get("Authorization"); got != "Bearer upstream-user-token" {
-				t.Fatalf("expected delegated bearer token, got %q", got)
-			}
 			if err := json.NewDecoder(req.Body).Decode(&keyPayload); err != nil {
 				t.Fatalf("decode api key payload: %v", err)
 			}
@@ -1712,8 +1738,8 @@ func TestAdminAssignPackageGrantsStandardGroupAndCreatesKey(t *testing.T) {
 	if keyPayload.GroupID != 88 {
 		t.Fatalf("expected auto key in group 88, got %+v", keyPayload)
 	}
-	if got := strings.Join(upstreamCalls, ","); got != "groups,groups,get-user,grant-group,key" {
-		t.Fatalf("expected upstream call order groups,groups,get-user,grant-group,key; got %s", got)
+	if got := strings.Join(upstreamCalls, ","); got != "groups,groups,get-user,grant-group,list-key,key" {
+		t.Fatalf("expected upstream call order groups,groups,get-user,grant-group,list-key,key; got %s", got)
 	}
 
 	var subCount int64
@@ -1722,6 +1748,103 @@ func TestAdminAssignPackageGrantsStandardGroupAndCreatesKey(t *testing.T) {
 	}
 	if subCount != 1 {
 		t.Fatalf("expected local active subscription record, got %d", subCount)
+	}
+}
+
+func TestPackagePurchaseRenewsExistingSubscriptionAndSkipsExistingAutoKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "pro-monthly", "Pro Monthly")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 29900000, value_type = 'days', value_amount = 30, is_enabled = 1, is_published = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 77)
+
+	var (
+		upstreamCalls []string
+		extendPayload proxy.ExtendAdminSubscriptionRequest
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			upstreamCalls = append(upstreamCalls, "groups")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Pro Subscription","subscription_type":"monthly"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/501/subscriptions" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-subscriptions")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":700,"user_id":501,"group_id":77,"status":"active"}]}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/700/extend" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "extend")
+			if got := req.Header.Get("Idempotency-Key"); got != "idem-renew-package:extend-subscription:77" {
+				t.Fatalf("unexpected extend idempotency key: %q", got)
+			}
+			if err := json.NewDecoder(req.Body).Decode(&extendPayload); err != nil {
+				t.Fatalf("decode extend payload: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":700,"user_id":501,"group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/users/501/api-keys" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[{"id":91,"name":"auto-key","group_id":77,"status":"active"}],"total":1,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/assign":
+			t.Fatalf("repeat purchase should extend existing subscription, not assign a new one")
+		case req.URL.Path == "/api/v1/admin/users/501/api-keys" && req.Method == http.MethodPost:
+			t.Fatalf("existing auto-key should not be created again")
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	localUserID, _ := createUserViaAPI(t, mux, "renew-package-user@example.com", "Renew Package User", "user", "")
+	_, adminSessionToken := createUserViaAPI(t, mux, "renew-package-admin@example.com", "Renew Package Admin", "admin", "test-admin-secret")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 501, "upstream-user-token", "upstream-refresh-token"); err != nil {
+		t.Fatalf("seed sub2api auth token: %v", err)
+	}
+	subscriptionID := insertActiveSubscription(t, ctx, database, localUserID, tierID, "2099-01-01T00:00:00Z")
+	if _, err := database.ExecContext(ctx, `UPDATE als_subscriptions SET expires_at = ? WHERE id = ?;`, "2099-01-31T00:00:00Z", subscriptionID); err != nil {
+		t.Fatalf("seed subscription expiry: %v", err)
+	}
+
+	body := `{"payment_event_id":"evt_renew_package","user_id":` + strconv.FormatInt(localUserID, 10) + `,"tier_code":"pro-monthly","order_id":"cs_renew_package"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
+	req.Header.Set("Idempotency-Key", "idem-renew-package")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rec.Code, rec.Body.String())
+	}
+	if got := strings.Join(upstreamCalls, ","); got != "groups,list-subscriptions,extend,list-key" {
+		t.Fatalf("expected renewal upstream calls groups,list-subscriptions,extend,list-key; got %s", got)
+	}
+	if extendPayload.Days != 30 {
+		t.Fatalf("expected upstream extend days 30, got %+v", extendPayload)
+	}
+
+	var subCount int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_subscriptions WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;`, localUserID).Scan(&subCount); err != nil {
+		t.Fatalf("count local subscriptions: %v", err)
+	}
+	if subCount != 1 {
+		t.Fatalf("expected existing local subscription to be reused, got %d active records", subCount)
+	}
+
+	var expiresAt string
+	if err := database.QueryRowContext(ctx, `SELECT expires_at FROM als_subscriptions WHERE id = ?;`, subscriptionID).Scan(&expiresAt); err != nil {
+		t.Fatalf("query local subscription expiry: %v", err)
+	}
+	if expiresAt != "2099-03-02T00:00:00Z" {
+		t.Fatalf("expected local expiry extended to 2099-03-02T00:00:00Z, got %q", expiresAt)
 	}
 }
 
@@ -2372,6 +2495,102 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	}
 	if upstreamCalls[6].Path != "/api/v1/keys/202" || upstreamCalls[6].Auth != "Bearer upstream-admin-token" {
 		t.Fatalf("unexpected admin detail upstream call: %+v", upstreamCalls[6])
+	}
+}
+
+func TestSubscriptionsSummaryReturnsLocalPackageConfiguration(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "pro-monthly", "Pro Monthly")
+	if _, err := database.ExecContext(ctx, `
+		UPDATE als_tiers
+		SET price_micros = 29900000,
+			value_type = 'days',
+			value_amount = 30,
+			description = 'Configured package description.',
+			features_json = '["Feature A","Feature B"]',
+			is_enabled = 1,
+			is_visible = 1,
+			is_published = 1
+		WHERE id = ?;
+	`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 11)
+	insertTierGroupBinding(t, ctx, database, tierID, 22)
+
+	var upstreamCalls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"active_count":1,"subscriptions":[{"id":9001,"group_id":11,"group_name":"Upstream Group","status":"active"}]}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
+	userID, sessionToken := createUserViaAPI(t, mux, "summary-package-user@example.com", "Summary Package User", "user", "")
+	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01 00:00:00")
+
+	req := httptest.NewRequest(http.MethodGet, "/subscriptions/summary", nil)
+	setBearerAuth(req, sessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("expected local package summary to avoid upstream calls, got %d", upstreamCalls)
+	}
+
+	var payload struct {
+		Data struct {
+			ActiveCount   int `json:"active_count"`
+			Subscriptions []struct {
+				GroupID     string   `json:"group_id"`
+				GroupName   string   `json:"group_name"`
+				PackageCode string   `json:"package_code"`
+				PackageName string   `json:"package_name"`
+				GroupIDs    []int64  `json:"group_ids"`
+				ValueType   string   `json:"value_type"`
+				ValueAmount int64    `json:"value_amount"`
+				ExpiresAt   string   `json:"expires_at"`
+				Features    []string `json:"features"`
+				Source      string   `json:"source"`
+			} `json:"subscriptions"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode subscriptions summary: %v", err)
+	}
+	if payload.Data.ActiveCount != 1 || len(payload.Data.Subscriptions) != 1 {
+		t.Fatalf("unexpected subscription count payload: %+v", payload.Data)
+	}
+	sub := payload.Data.Subscriptions[0]
+	if sub.GroupID != "pro-monthly" || sub.GroupName != "Pro Monthly" || sub.PackageCode != "pro-monthly" || sub.PackageName != "Pro Monthly" {
+		t.Fatalf("expected package identity, got %+v", sub)
+	}
+	if !reflect.DeepEqual(sub.GroupIDs, []int64{11, 22}) {
+		t.Fatalf("expected package group ids [11 22], got %+v", sub.GroupIDs)
+	}
+	if sub.ValueType != "days" || sub.ValueAmount != 30 {
+		t.Fatalf("expected package duration days/30, got %s/%d", sub.ValueType, sub.ValueAmount)
+	}
+	if sub.ExpiresAt != "2026-01-31T00:00:00Z" {
+		t.Fatalf("expected expires_at 2026-01-31T00:00:00Z, got %q", sub.ExpiresAt)
+	}
+	if !reflect.DeepEqual(sub.Features, []string{"Feature A", "Feature B"}) {
+		t.Fatalf("expected package features, got %+v", sub.Features)
+	}
+	if sub.Source != "package" {
+		t.Fatalf("expected source package, got %q", sub.Source)
 	}
 }
 

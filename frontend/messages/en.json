@@ -194,6 +194,7 @@
     "loadingPlans": "Loading plans...",
     "noPlans": "No plans available at this time.",
     "buyWithStripe": "Buy with Stripe",
+    "noPurchaseNeeded": "No purchase needed",
     "openDashboard": "Open Dashboard",
     "packageUnavailable": "Not available",
     "redirecting": "Redirecting...",

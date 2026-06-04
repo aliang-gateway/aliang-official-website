@@ -194,6 +194,7 @@
     "loadingPlans": "加载方案中...",
     "noPlans": "目前暂无可用方案。",
     "buyWithStripe": "通过 Stripe 购买",
+    "noPurchaseNeeded": "无需购买",
     "openDashboard": "打开控制台",
     "packageUnavailable": "暂未上架",
     "redirecting": "正在跳转...",

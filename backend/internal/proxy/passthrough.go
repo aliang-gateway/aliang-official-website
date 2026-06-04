@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -98,6 +99,10 @@ type AssignAdminSubscriptionRequest struct {
 	Notes        string `json:"notes,omitempty"`
 }
 
+type ExtendAdminSubscriptionRequest struct {
+	Days int `json:"days"`
+}
+
 type AdminUser struct {
 	ID            int64   `json:"id"`
 	Balance       float64 `json:"balance"`
@@ -144,6 +149,71 @@ type ResponseEnvelope[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    T      `json:"data"`
+}
+
+type ListResponseEnvelope[T any] struct {
+	Code       int        `json:"code"`
+	Message    string     `json:"message"`
+	Data       []T        `json:"data"`
+	Pagination Pagination `json:"pagination,omitempty"`
+}
+
+func (e *ListResponseEnvelope[T]) UnmarshalJSON(body []byte) error {
+	if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+		return json.Unmarshal(body, &e.Data)
+	}
+
+	type rawEnvelope struct {
+		Code       int             `json:"code"`
+		Message    string          `json:"message"`
+		Data       json.RawMessage `json:"data"`
+		Pagination Pagination      `json:"pagination,omitempty"`
+	}
+
+	var raw rawEnvelope
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return err
+	}
+	e.Code = raw.Code
+	e.Message = raw.Message
+	e.Pagination = raw.Pagination
+	if len(bytes.TrimSpace(raw.Data)) == 0 || bytes.Equal(bytes.TrimSpace(raw.Data), []byte("null")) {
+		e.Data = nil
+		return nil
+	}
+
+	if bytes.HasPrefix(bytes.TrimSpace(raw.Data), []byte("[")) {
+		return json.Unmarshal(raw.Data, &e.Data)
+	}
+
+	var nested map[string]json.RawMessage
+	if err := json.Unmarshal(raw.Data, &nested); err != nil {
+		return err
+	}
+	for _, key := range []string{"data", "items"} {
+		itemsRaw, ok := nested[key]
+		if !ok || len(bytes.TrimSpace(itemsRaw)) == 0 || bytes.Equal(bytes.TrimSpace(itemsRaw), []byte("null")) {
+			continue
+		}
+		if err := json.Unmarshal(itemsRaw, &e.Data); err != nil {
+			return err
+		}
+		break
+	}
+	if paginationRaw, ok := nested["pagination"]; ok {
+		_ = json.Unmarshal(paginationRaw, &e.Pagination)
+	}
+	if totalRaw, ok := nested["total"]; ok && e.Pagination.Total == 0 {
+		_ = json.Unmarshal(totalRaw, &e.Pagination.Total)
+	}
+	return nil
+}
+
+type Pagination struct {
+	Total    int `json:"total,omitempty"`
+	Page     int `json:"page,omitempty"`
+	PageSize int `json:"page_size,omitempty"`
+	Pages    int `json:"pages,omitempty"`
 }
 
 type CreateAndRedeemData struct {
@@ -423,6 +493,72 @@ func (c *Client) AssignAdminSubscription(ctx context.Context, req AssignAdminSub
 	return &resp, nil
 }
 
+func (c *Client) ExtendAdminSubscription(ctx context.Context, subscriptionID int64, req ExtendAdminSubscriptionRequest, idempotencyKey string) (*ResponseEnvelope[AdminSubscription], error) {
+	if err := validateExtendAdminSubscriptionRequest(subscriptionID, req, idempotencyKey); err != nil {
+		return nil, err
+	}
+	var resp ResponseEnvelope[AdminSubscription]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method:         http.MethodPost,
+		Path:           fmt.Sprintf("/api/v1/admin/subscriptions/%d/extend", subscriptionID),
+		Body:           req,
+		IdempotencyKey: idempotencyKey,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) ListAdminUserSubscriptions(ctx context.Context, userID int64) (*ListResponseEnvelope[AdminSubscription], error) {
+	if userID <= 0 {
+		return nil, errors.New("user id must be greater than 0")
+	}
+	var resp ListResponseEnvelope[AdminSubscription]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method: http.MethodGet,
+		Path:   fmt.Sprintf("/api/v1/admin/users/%d/subscriptions", userID),
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) EnsureAdminSubscriptionInGroup(ctx context.Context, userID int64, groupID int64, validityDays int, notes string, parentIdempotencyKey string) error {
+	if userID <= 0 {
+		return errors.New("user id must be greater than 0")
+	}
+	if groupID <= 0 {
+		return errors.New("group_id must be greater than 0")
+	}
+	if validityDays <= 0 {
+		return errors.New("validity_days must be greater than 0")
+	}
+
+	subscriptions, err := c.ListAdminUserSubscriptions(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, subscription := range subscriptions.Data {
+		if subscription.ID <= 0 || subscription.GroupID != groupID {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(subscription.Status), "active") {
+			childKey := strings.TrimSpace(parentIdempotencyKey) + ":extend-subscription:" + strconv.FormatInt(groupID, 10)
+			_, err := c.ExtendAdminSubscription(ctx, subscription.ID, ExtendAdminSubscriptionRequest{Days: validityDays}, childKey)
+			return err
+		}
+	}
+
+	childKey := strings.TrimSpace(parentIdempotencyKey) + ":assign-subscription:" + strconv.FormatInt(groupID, 10)
+	_, err = c.AssignAdminSubscription(ctx, AssignAdminSubscriptionRequest{
+		UserID:       userID,
+		GroupID:      groupID,
+		ValidityDays: validityDays,
+		Notes:        notes,
+	}, childKey)
+	return err
+}
+
 func (c *Client) GetAdminUser(ctx context.Context, userID int64) (*ResponseEnvelope[AdminUser], error) {
 	if userID <= 0 {
 		return nil, errors.New("user id must be greater than 0")
@@ -480,6 +616,73 @@ func (c *Client) GrantUserGroup(ctx context.Context, userID int64, groupID int64
 		}
 	}
 	return c.UpdateAdminUserAllowedGroups(ctx, userID, merged, idempotencyKey)
+}
+
+func (c *Client) ListAdminUserAPIKeys(ctx context.Context, userID int64, groupID int64, search string) (*ListResponseEnvelope[APIKey], error) {
+	if userID <= 0 {
+		return nil, errors.New("user id must be greater than 0")
+	}
+	query := url.Values{}
+	query.Set("page", "1")
+	query.Set("per_page", "100")
+	if groupID > 0 {
+		query.Set("group_id", strconv.FormatInt(groupID, 10))
+	}
+	if strings.TrimSpace(search) != "" {
+		query.Set("search", strings.TrimSpace(search))
+	}
+	path := fmt.Sprintf("/api/v1/admin/users/%d/api-keys", userID)
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var resp ListResponseEnvelope[APIKey]
+	if err := c.DoAdminJSON(ctx, AdminRequest{Method: http.MethodGet, Path: path}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) CreateAdminUserAPIKey(ctx context.Context, userID int64, req CreateUserAPIKeyRequest, idempotencyKey string) (*ResponseEnvelope[APIKey], error) {
+	if err := validateCreateAdminUserAPIKeyRequest(userID, req, idempotencyKey); err != nil {
+		return nil, err
+	}
+
+	var resp ResponseEnvelope[APIKey]
+	if err := c.DoAdminJSON(ctx, AdminRequest{
+		Method:         http.MethodPost,
+		Path:           fmt.Sprintf("/api/v1/admin/users/%d/api-keys", userID),
+		Body:           req,
+		IdempotencyKey: idempotencyKey,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) EnsureAdminUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
+	keys, err := c.ListAdminUserAPIKeys(ctx, userID, groupID, "auto-key")
+	if err != nil {
+		return err
+	}
+	for _, key := range keys.Data {
+		if key.GroupID == groupID && strings.TrimSpace(key.Name) == "auto-key" {
+			return nil
+		}
+	}
+
+	childKey := strings.TrimSpace(parentIdempotencyKey) + ":ensure-key:" + strconv.FormatInt(groupID, 10)
+	_, createErr := c.CreateAdminUserAPIKey(ctx, userID, CreateUserAPIKeyRequest{
+		Name:    "auto-key",
+		GroupID: groupID,
+	}, childKey)
+	if createErr == nil {
+		return nil
+	}
+	var apiErr *APIError
+	if errors.As(createErr, &apiErr) && apiErr.IsConflict() {
+		return nil
+	}
+	return createErr
 }
 
 func (c *Client) CreateUserAPIKey(ctx context.Context, bearerToken string, req CreateUserAPIKeyRequest, idempotencyKey string) (*ResponseEnvelope[APIKey], error) {
@@ -864,6 +1067,22 @@ func validateAssignAdminSubscriptionRequest(req AssignAdminSubscriptionRequest, 
 	return nil
 }
 
+func validateExtendAdminSubscriptionRequest(subscriptionID int64, req ExtendAdminSubscriptionRequest, idempotencyKey string) error {
+	if subscriptionID <= 0 {
+		return errors.New("subscription id must be greater than 0")
+	}
+	if strings.TrimSpace(idempotencyKey) == "" {
+		return errors.New("idempotency key is required")
+	}
+	if req.Days == 0 {
+		return errors.New("days must not be zero")
+	}
+	if req.Days < -36500 || req.Days > 36500 {
+		return errors.New("days must be between -36500 and 36500")
+	}
+	return nil
+}
+
 func validateAllowedGroupsUpdate(userID int64, allowedGroups []int64) error {
 	if userID <= 0 {
 		return errors.New("user id must be greater than 0")
@@ -906,6 +1125,17 @@ func validateCreateUserAPIKeyRequest(req CreateUserAPIKeyRequest, bearerToken, i
 	if strings.TrimSpace(bearerToken) == "" {
 		return errors.New("bearer token is required")
 	}
+	return validateCreateAPIKeyRequest(req, idempotencyKey)
+}
+
+func validateCreateAdminUserAPIKeyRequest(userID int64, req CreateUserAPIKeyRequest, idempotencyKey string) error {
+	if userID <= 0 {
+		return errors.New("user id must be greater than 0")
+	}
+	return validateCreateAPIKeyRequest(req, idempotencyKey)
+}
+
+func validateCreateAPIKeyRequest(req CreateUserAPIKeyRequest, idempotencyKey string) error {
 	if strings.TrimSpace(idempotencyKey) == "" {
 		return errors.New("idempotency key is required")
 	}

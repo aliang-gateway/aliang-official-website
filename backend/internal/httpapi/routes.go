@@ -1462,6 +1462,24 @@ func (r *routes) handleAdminDeletePackage(w http.ResponseWriter, req *http.Reque
 }
 
 func (r *routes) handleSubscriptionsSummaryPassthrough(w http.ResponseWriter, req *http.Request) {
+	localSessionToken, err := extractBearerToken(req.Header.Get("Authorization"))
+	if err == nil {
+		userID, found, err := r.findLocalUserIDBySessionToken(req.Context(), localSessionToken)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve local session")
+			return
+		}
+		if found {
+			payload, err := r.loadLocalPackageSubscriptionsSummary(req.Context(), userID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to load package subscriptions")
+				return
+			}
+			writeJSON(w, http.StatusOK, payload)
+			return
+		}
+	}
+
 	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions/summary")
 }
 
@@ -1471,6 +1489,162 @@ func (r *routes) handleSubscriptionsActivePassthrough(w http.ResponseWriter, req
 
 func (r *routes) handleSubscriptionsAllPassthrough(w http.ResponseWriter, req *http.Request) {
 	r.handleDashboardPassthrough(w, req, "/api/v1/subscriptions")
+}
+
+func (r *routes) loadLocalPackageSubscriptionsSummary(ctx context.Context, userID int64) (map[string]any, error) {
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			s.id,
+			s.status,
+			s.started_at,
+			s.expires_at,
+			t.code,
+			t.name,
+			t.price_micros,
+			t.value_type,
+			t.value_amount,
+			t.description,
+			t.features_json,
+			tgb.group_id
+		FROM als_subscriptions s
+		JOIN als_tiers t ON t.id = s.tier_id
+		LEFT JOIN als_tier_group_bindings tgb ON tgb.tier_id = t.id
+		WHERE s.user_id = ?
+			AND s.status = 'active'
+			AND s.ended_at IS NULL
+		ORDER BY s.started_at DESC, s.id DESC, tgb.group_id ASC;
+	`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type packageSubscription struct {
+		ID          int64
+		Status      string
+		StartedAt   string
+		ExpiresAt   string
+		PackageCode string
+		PackageName string
+		PriceMicros int64
+		ValueType   string
+		ValueAmount int64
+		Description string
+		Features    []string
+		GroupIDs    []int64
+	}
+
+	subscriptions := make([]packageSubscription, 0)
+	indexBySubscriptionID := make(map[int64]int)
+	for rows.Next() {
+		var (
+			subscriptionID int64
+			status         string
+			startedAt      string
+			expiresAt      sql.NullString
+			packageCode    string
+			packageName    string
+			priceMicros    int64
+			valueType      string
+			valueAmount    int64
+			description    string
+			featuresJSON   string
+			groupID        sql.NullInt64
+		)
+		if err := rows.Scan(&subscriptionID, &status, &startedAt, &expiresAt, &packageCode, &packageName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &groupID); err != nil {
+			return nil, err
+		}
+
+		expiresAtValue := ""
+		if expiresAt.Valid {
+			expiresAtValue = expiresAt.String
+		}
+
+		idx, found := indexBySubscriptionID[subscriptionID]
+		if !found {
+			idx = len(subscriptions)
+			indexBySubscriptionID[subscriptionID] = idx
+			subscriptions = append(subscriptions, packageSubscription{
+				ID:          subscriptionID,
+				Status:      status,
+				StartedAt:   startedAt,
+				ExpiresAt:   expiresAtValue,
+				PackageCode: packageCode,
+				PackageName: packageName,
+				PriceMicros: priceMicros,
+				ValueType:   valueType,
+				ValueAmount: valueAmount,
+				Description: description,
+				Features:    parseFeaturesJSON(featuresJSON),
+				GroupIDs:    []int64{},
+			})
+		}
+		if groupID.Valid {
+			subscriptions[idx].GroupIDs = append(subscriptions[idx].GroupIDs, groupID.Int64)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]any, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		items = append(items, map[string]any{
+			"id":           subscription.ID,
+			"group_id":     subscription.PackageCode,
+			"group_name":   subscription.PackageName,
+			"tier_code":    subscription.PackageCode,
+			"tier_name":    subscription.PackageName,
+			"package_code": subscription.PackageCode,
+			"package_name": subscription.PackageName,
+			"group_ids":    subscription.GroupIDs,
+			"status":       subscription.Status,
+			"started_at":   subscription.StartedAt,
+			"expires_at":   packageSubscriptionExpiresAt(subscription.StartedAt, subscription.ExpiresAt, subscription.ValueType, subscription.ValueAmount),
+			"price_micros": subscription.PriceMicros,
+			"value_type":   subscription.ValueType,
+			"value_amount": subscription.ValueAmount,
+			"description":  subscription.Description,
+			"features":     subscription.Features,
+			"source":       "package",
+		})
+	}
+
+	return map[string]any{
+		"data": map[string]any{
+			"active_count":   len(items),
+			"total_used_usd": 0,
+			"subscriptions":  items,
+		},
+	}, nil
+}
+
+func packageSubscriptionExpiresAt(startedAt string, expiresAt string, valueType string, valueAmount int64) string {
+	if parsed, ok := parseSubscriptionTime(expiresAt); ok {
+		return parsed.UTC().Format(time.RFC3339)
+	}
+	if strings.TrimSpace(valueType) != "days" || valueAmount <= 0 {
+		return ""
+	}
+
+	if parsed, ok := parseSubscriptionTime(startedAt); ok {
+		return parsed.UTC().AddDate(0, 0, int(valueAmount)).Format(time.RFC3339)
+	}
+	return ""
+}
+
+func parseSubscriptionTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05Z"} {
+		parsed, err := time.Parse(layout, raw)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func (r *routes) handleRedeemHistoryPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -4636,14 +4810,6 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		return nil
 	}
 
-	if _, _, err := r.ensureActiveSubscriptionForUser(ctx, payload.UserID, pkg.Code); err != nil {
-		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
-		if applyErr != nil {
-			return applyErr
-		}
-		return nil
-	}
-
 	upstreamUserID, err := r.resolveSub2APIUserID(ctx, payload.UserID)
 	if err != nil {
 		_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, err)
@@ -4681,7 +4847,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			if fulfillmentErr != nil {
 				break
 			}
-			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+			if ensureErr := r.proxyClient.EnsureAdminUserKeyInGroup(ctx, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
 				fulfillmentErr = ensureErr
 				break
 			}
@@ -4690,23 +4856,32 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			break
 		}
 		for _, groupID := range classifiedGroups.SubscriptionGroupIDs {
-			childKey := parentIdempotencyKey + ":assign-subscription:" + strconv.FormatInt(groupID, 10)
-			_, fulfillmentErr = r.proxyClient.AssignAdminSubscription(ctx, proxy.AssignAdminSubscriptionRequest{
-				UserID:       upstreamUserID,
-				GroupID:      groupID,
-				ValidityDays: validityDays,
-				Notes:        fmt.Sprintf("stripe package purchase %s", pkg.Code),
-			}, childKey)
+			fulfillmentErr = r.proxyClient.EnsureAdminSubscriptionInGroup(
+				ctx,
+				upstreamUserID,
+				groupID,
+				validityDays,
+				fmt.Sprintf("stripe package purchase %s", pkg.Code),
+				parentIdempotencyKey,
+			)
 			if fulfillmentErr != nil {
 				break
 			}
-			if ensureErr := r.sub2api.EnsureUserKeyInGroup(ctx, payload.UserID, groupID, parentIdempotencyKey); ensureErr != nil {
+			if ensureErr := r.proxyClient.EnsureAdminUserKeyInGroup(ctx, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
 				fulfillmentErr = ensureErr
 				break
 			}
 		}
 	default:
 		fulfillmentErr = errors.New("package value_type is not supported for fulfillment")
+	}
+	if fulfillmentErr == nil {
+		var subscriptionID int64
+		var existed bool
+		subscriptionID, _, existed, fulfillmentErr = r.ensureActiveSubscriptionForUser(ctx, payload.UserID, pkg.Code)
+		if fulfillmentErr == nil {
+			fulfillmentErr = r.updateLocalPackageSubscriptionExpiry(ctx, subscriptionID, pkg, existed)
+		}
 	}
 
 	_, applyErr := r.fulfillmentSvc.ApplyPackageFulfillmentResult(ctx, job.ID, fulfillmentErr)
@@ -4926,7 +5101,7 @@ func (r *routes) createOrReplaceSubscription(ctx context.Context, userID int64, 
 	return subscriptionID, tierID, tierName, quotas, nil
 }
 
-func (r *routes) ensureActiveSubscriptionForUser(ctx context.Context, userID int64, tierCode string) (int64, string, error) {
+func (r *routes) ensureActiveSubscriptionForUser(ctx context.Context, userID int64, tierCode string) (int64, string, bool, error) {
 	current, found, err := r.loadActiveSubscription(ctx, userID)
 	if err == nil && found && current.TierCode == tierCode {
 		var subscriptionID int64
@@ -4938,15 +5113,63 @@ func (r *routes) ensureActiveSubscriptionForUser(ctx context.Context, userID int
 			LIMIT 1;
 		`), userID).Scan(&subscriptionID)
 		if err == nil {
-			return subscriptionID, current.TierName, nil
+			return subscriptionID, current.TierName, true, nil
 		}
 	}
 
 	subscriptionID, _, tierName, _, err := r.createOrReplaceSubscription(ctx, userID, createSubscriptionRequest{TierCode: tierCode})
 	if err != nil {
-		return 0, "", err
+		return 0, "", false, err
 	}
-	return subscriptionID, tierName, nil
+	return subscriptionID, tierName, false, nil
+}
+
+func (r *routes) updateLocalPackageSubscriptionExpiry(ctx context.Context, subscriptionID int64, pkg adminPackageResponse, extend bool) error {
+	if strings.TrimSpace(pkg.ValueType) != "days" || pkg.ValueAmount <= 0 {
+		return nil
+	}
+
+	var (
+		startedAtRaw string
+		expiresAtRaw sql.NullString
+	)
+	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT started_at, expires_at
+		FROM als_subscriptions
+		WHERE id = ?
+		LIMIT 1;
+	`), subscriptionID).Scan(&startedAtRaw, &expiresAtRaw); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	base := now
+	if startedAt, ok := parseSubscriptionTime(startedAtRaw); ok {
+		base = startedAt.UTC()
+	}
+	if extend {
+		if expiresAtRaw.Valid {
+			if expiresAt, ok := parseSubscriptionTime(expiresAtRaw.String); ok && expiresAt.After(base) {
+				base = expiresAt.UTC()
+			}
+		} else if startedAt, ok := parseSubscriptionTime(startedAtRaw); ok {
+			calculatedExpiry := startedAt.UTC().AddDate(0, 0, int(pkg.ValueAmount))
+			if calculatedExpiry.After(base) {
+				base = calculatedExpiry
+			}
+		}
+		if now.After(base) {
+			base = now
+		}
+	}
+
+	newExpiresAt := base.AddDate(0, 0, int(pkg.ValueAmount)).UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		UPDATE als_subscriptions
+		SET expires_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?;
+	`), newExpiresAt, subscriptionID)
+	return err
 }
 
 func (r *routes) handleGetSubscription(w http.ResponseWriter, req *http.Request) {
