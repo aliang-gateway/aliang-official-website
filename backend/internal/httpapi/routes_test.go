@@ -1603,6 +1603,124 @@ func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
 	}
 }
 
+func TestAdminAssignPackageImportsExistingUpstreamUserID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "imported-pro", "Imported Pro")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 19900000, value_type = 'days', value_amount = 30, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 77)
+
+	var (
+		assignedUserID int64
+		keyPayload     proxy.CreateUserAPIKeyRequest
+		upstreamCalls  []string
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/api/v1/admin/users/40" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "get-user")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":40,"email":"external-user@example.com","username":"External User","allowed_groups":[]}}`))
+		case req.URL.Path == "/api/v1/admin/groups/all":
+			upstreamCalls = append(upstreamCalls, "groups")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":77,"name":"Imported Subscription","subscription_type":"monthly"}]}`))
+		case req.URL.Path == "/api/v1/admin/users/40/subscriptions" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "list-subscriptions")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[]}`))
+		case req.URL.Path == "/api/v1/admin/subscriptions/assign" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "assign")
+			var payload proxy.AssignAdminSubscriptionRequest
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode assign subscription payload: %v", err)
+			}
+			assignedUserID = payload.UserID
+			if payload.UserID != 40 || payload.GroupID != 77 || payload.ValidityDays != 30 {
+				t.Fatalf("unexpected assign subscription payload: %+v", payload)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":1,"user_id":40,"group_id":77,"status":"active"}}`))
+		case req.URL.Path == "/api/v1/admin/users/40/api-keys" && req.Method == http.MethodGet:
+			upstreamCalls = append(upstreamCalls, "admin-list-key")
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+		case req.URL.Path == "/api/v1/admin/users/40/api-keys" && req.Method == http.MethodPost:
+			upstreamCalls = append(upstreamCalls, "admin-key")
+			if err := json.NewDecoder(req.Body).Decode(&keyPayload); err != nil {
+				t.Fatalf("decode api key payload: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":91,"name":"auto-key","key":"sk-test-auto","group_id":77,"user_id":40,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	_, adminSessionToken := createUserViaAPI(t, mux, "assign-import-admin@example.com", "Assign Import Admin", "admin", "test-admin-secret")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/assign-package", bytes.NewReader([]byte(`{"user_id":40,"tier_code":"imported-pro"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, adminSessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if assignedUserID != 40 {
+		t.Fatalf("expected upstream assign user id 40, got %d", assignedUserID)
+	}
+	if keyPayload.Name != "auto-key" || keyPayload.GroupID != 77 {
+		t.Fatalf("expected admin-created auto key in group 77, got %+v", keyPayload)
+	}
+	if got := strings.Join(upstreamCalls, ","); got != "get-user,groups,groups,list-subscriptions,assign,admin-list-key,admin-key" {
+		t.Fatalf("unexpected upstream call order: %s", got)
+	}
+
+	var (
+		localUserID      int64
+		importedEmail    string
+		upstreamUserID   int64
+		storedAccess     string
+		localSubCount    int64
+		localWalletCount int64
+	)
+	if err := database.QueryRowContext(ctx, `
+		SELECT u.id, u.email, tok.upstream_user_id, tok.access_token
+		FROM als_users u
+		JOIN als_sub2api_auth_tokens tok ON tok.user_id = u.id
+		WHERE u.email = 'external-user@example.com';
+	`).Scan(&localUserID, &importedEmail, &upstreamUserID, &storedAccess); err != nil {
+		t.Fatalf("query imported local user: %v", err)
+	}
+	if importedEmail != "external-user@example.com" || upstreamUserID != 40 {
+		t.Fatalf("unexpected imported mapping local=%d email=%q upstream=%d", localUserID, importedEmail, upstreamUserID)
+	}
+	if storedAccess != "" {
+		t.Fatalf("expected imported user to have no user access token, got %q", storedAccess)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_subscriptions WHERE user_id = ? AND status = 'active' AND ended_at IS NULL;`, localUserID).Scan(&localSubCount); err != nil {
+		t.Fatalf("count local subscriptions: %v", err)
+	}
+	if localSubCount != 1 {
+		t.Fatalf("expected one local subscription for imported user, got %d", localSubCount)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM als_user_wallets WHERE user_id = ?;`, localUserID).Scan(&localWalletCount); err != nil {
+		t.Fatalf("count local wallet rows: %v", err)
+	}
+	if localWalletCount != 1 {
+		t.Fatalf("expected wallet for imported user, got %d", localWalletCount)
+	}
+}
+
 func TestAdminAssignPackageReturnsErrorWhenFulfillmentFails(t *testing.T) {
 	t.Parallel()
 

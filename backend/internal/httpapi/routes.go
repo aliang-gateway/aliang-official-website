@@ -4280,6 +4280,13 @@ func (r *routes) resolveAdminPackageUserIDs(ctx context.Context, requestedUserID
 
 	var exists int64
 	err = r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT 1 FROM als_users WHERE id = ?`), requestedUserID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		localUserID, importErr := r.importSub2APIUserForAdminPackage(ctx, requestedUserID)
+		if importErr != nil {
+			return 0, 0, importErr
+		}
+		return localUserID, requestedUserID, nil
+	}
 	if err != nil {
 		return 0, 0, err
 	}
@@ -4289,6 +4296,100 @@ func (r *routes) resolveAdminPackageUserIDs(ctx context.Context, requestedUserID
 		return 0, 0, err
 	}
 	return requestedUserID, upstreamUserID, nil
+}
+
+func (r *routes) importSub2APIUserForAdminPackage(ctx context.Context, upstreamUserID int64) (int64, error) {
+	if upstreamUserID <= 0 {
+		return 0, errors.New("upstream user id must be positive")
+	}
+	if r.proxyClient == nil {
+		return 0, errors.New("sub2api proxy client is not configured")
+	}
+
+	resp, err := r.proxyClient.GetAdminUser(ctx, upstreamUserID)
+	if err != nil {
+		var apiErr *proxy.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return 0, sql.ErrNoRows
+		}
+		return 0, fmt.Errorf("load upstream user %d: %w", upstreamUserID, err)
+	}
+
+	upstreamUser := resp.Data
+	if upstreamUser.ID > 0 {
+		upstreamUserID = upstreamUser.ID
+	}
+
+	email := strings.TrimSpace(strings.ToLower(upstreamUser.Email))
+	if email == "" {
+		email = fmt.Sprintf("sub2api-user-%d@imported.local", upstreamUserID)
+	}
+	name := strings.TrimSpace(upstreamUser.Name)
+	if name == "" {
+		name = strings.TrimSpace(upstreamUser.Username)
+	}
+	if name == "" {
+		name = strings.TrimSpace(strings.Split(email, "@")[0])
+	}
+	if name == "" {
+		name = fmt.Sprintf("Sub2API User %d", upstreamUserID)
+	}
+
+	localUserID, found, err := r.findLocalUserIDByEmail(ctx, email)
+	if err != nil {
+		return 0, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin upstream user import tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if !found {
+		localUserID, err = db.InsertID(ctx, r.sqlDialect, tx, `
+			INSERT INTO als_users(email, name, role, email_verified)
+			VALUES (?, ?, 'user', TRUE)
+		`, "id", email, name)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unique") {
+				return 0, sql.ErrNoRows
+			}
+			return 0, fmt.Errorf("create local user for upstream user: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_user_wallets(user_id, balance_micros, currency)
+		VALUES (?, 0, 'CNY')
+		ON CONFLICT(user_id) DO NOTHING
+	`), localUserID); err != nil {
+		return 0, fmt.Errorf("create imported user wallet: %w", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_sub2api_auth_tokens(
+			user_id,
+			upstream_user_id,
+			access_token,
+			refresh_token,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, '', NULL, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			upstream_user_id = excluded.upstream_user_id,
+			updated_at = excluded.updated_at
+	`), localUserID, upstreamUserID, now, now); err != nil {
+		return 0, fmt.Errorf("bind imported upstream user id: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit upstream user import: %w", err)
+	}
+
+	return localUserID, nil
 }
 
 func formatUpstreamRegisterError(status int, body []byte) string {
