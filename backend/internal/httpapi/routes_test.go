@@ -3137,6 +3137,55 @@ func TestDistributorCanListBoundUserStatsAndAssignPackage(t *testing.T) {
 	if assignmentCount != 1 {
 		t.Fatalf("expected one distributor assignment, got %d", assignmentCount)
 	}
+	var assignmentPriceMicros int64
+	if err := database.QueryRowContext(ctx, `SELECT price_micros FROM als_distributor_package_assignments WHERE distributor_user_id = ? AND target_user_id = ?;`, distributorID, targetUserID).Scan(&assignmentPriceMicros); err != nil {
+		t.Fatalf("query distributor assignment price: %v", err)
+	}
+	if assignmentPriceMicros != 1000000 {
+		t.Fatalf("expected distributor assignment price snapshot 1000000, got %d", assignmentPriceMicros)
+	}
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/distributor/stats", nil)
+	setBearerAuth(statsReq, distributorSessionToken)
+	statsRec := httptest.NewRecorder()
+	mux.ServeHTTP(statsRec, statsReq)
+	if statsRec.Code != http.StatusOK {
+		t.Fatalf("expected distributor stats status %d, got %d body=%s", http.StatusOK, statsRec.Code, statsRec.Body.String())
+	}
+	var statsPayload distributorAssignmentStatsResponse
+	if err := json.NewDecoder(statsRec.Body).Decode(&statsPayload); err != nil {
+		t.Fatalf("decode distributor stats: %v", err)
+	}
+	if statsPayload.Totals.AssignmentCount != 1 || statsPayload.Totals.UniqueUserCount != 1 || statsPayload.Totals.TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected distributor stats totals: %+v", statsPayload.Totals)
+	}
+	if len(statsPayload.Daily) != 1 || statsPayload.Daily[0].AssignmentCount != 1 || statsPayload.Daily[0].TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected distributor daily stats: %+v", statsPayload.Daily)
+	}
+	if len(statsPayload.Packages) != 1 || statsPayload.Packages[0].TierCode != "distributor-package" || statsPayload.Packages[0].TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected distributor package stats: %+v", statsPayload.Packages)
+	}
+	if len(statsPayload.Users) != 1 || statsPayload.Users[0].UserID != targetUserID || statsPayload.Users[0].TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected distributor user stats: %+v", statsPayload.Users)
+	}
+
+	adminStatsReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/distributor/stats?distributor_user_id=%d", distributorID), nil)
+	setBearerAuth(adminStatsReq, adminSessionToken)
+	adminStatsRec := httptest.NewRecorder()
+	mux.ServeHTTP(adminStatsRec, adminStatsReq)
+	if adminStatsRec.Code != http.StatusOK {
+		t.Fatalf("expected admin distributor stats status %d, got %d body=%s", http.StatusOK, adminStatsRec.Code, adminStatsRec.Body.String())
+	}
+	var adminStatsPayload distributorAssignmentStatsResponse
+	if err := json.NewDecoder(adminStatsRec.Body).Decode(&adminStatsPayload); err != nil {
+		t.Fatalf("decode admin distributor stats: %v", err)
+	}
+	if adminStatsPayload.Totals.AssignmentCount != 1 || adminStatsPayload.Totals.DistributorCount != 1 || adminStatsPayload.Totals.TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected admin distributor stats totals: %+v", adminStatsPayload.Totals)
+	}
+	if len(adminStatsPayload.Distributors) != 1 || adminStatsPayload.Distributors[0].DistributorUserID != distributorID || adminStatsPayload.Distributors[0].TotalPriceMicros != 1000000 {
+		t.Fatalf("unexpected admin distributor breakdown: %+v", adminStatsPayload.Distributors)
+	}
 
 	forbiddenReq := httptest.NewRequest(http.MethodPost, "/distributor/assign-package", bytes.NewReader([]byte(`{"email":"other-distributor-user@example.com","tier_code":"distributor-package"}`)))
 	forbiddenReq.Header.Set("Content-Type", "application/json")

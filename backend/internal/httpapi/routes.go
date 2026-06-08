@@ -161,6 +161,54 @@ type adminAssignPackageResponse struct {
 	FulfillmentJob *fulfillmentJobResponse `json:"fulfillment_job,omitempty"`
 }
 
+type distributorAssignmentStatsTotalsResponse struct {
+	AssignmentCount  int64 `json:"assignment_count"`
+	UniqueUserCount  int64 `json:"unique_user_count"`
+	DistributorCount int64 `json:"distributor_count,omitempty"`
+	TotalPriceMicros int64 `json:"total_price_micros"`
+}
+
+type distributorAssignmentDailyStatsResponse struct {
+	Date             string `json:"date"`
+	AssignmentCount  int64  `json:"assignment_count"`
+	TotalPriceMicros int64  `json:"total_price_micros"`
+}
+
+type distributorAssignmentPackageStatsResponse struct {
+	TierCode         string `json:"tier_code"`
+	PackageName      string `json:"package_name"`
+	AssignmentCount  int64  `json:"assignment_count"`
+	TotalPriceMicros int64  `json:"total_price_micros"`
+	LatestAssignedAt string `json:"latest_assigned_at,omitempty"`
+}
+
+type distributorAssignmentUserStatsResponse struct {
+	UserID           int64  `json:"user_id"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	AssignmentCount  int64  `json:"assignment_count"`
+	TotalPriceMicros int64  `json:"total_price_micros"`
+	LatestAssignedAt string `json:"latest_assigned_at,omitempty"`
+}
+
+type distributorAssignmentDistributorStatsResponse struct {
+	DistributorUserID int64  `json:"distributor_user_id"`
+	DistributorEmail  string `json:"distributor_email"`
+	DistributorName   string `json:"distributor_name"`
+	AssignmentCount   int64  `json:"assignment_count"`
+	UniqueUserCount   int64  `json:"unique_user_count"`
+	TotalPriceMicros  int64  `json:"total_price_micros"`
+	LatestAssignedAt  string `json:"latest_assigned_at,omitempty"`
+}
+
+type distributorAssignmentStatsResponse struct {
+	Totals       distributorAssignmentStatsTotalsResponse        `json:"totals"`
+	Daily        []distributorAssignmentDailyStatsResponse       `json:"daily"`
+	Packages     []distributorAssignmentPackageStatsResponse     `json:"packages"`
+	Users        []distributorAssignmentUserStatsResponse        `json:"users"`
+	Distributors []distributorAssignmentDistributorStatsResponse `json:"distributors,omitempty"`
+}
+
 type adminBindDistributorUserRequest struct {
 	DistributorUserID int64  `json:"distributor_user_id,omitempty"`
 	DistributorEmail  string `json:"distributor_email,omitempty"`
@@ -792,11 +840,13 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("PUT /admin/users/role", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateUserRole))))
 	mux.Handle("GET /admin/distributor/users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListDistributorInvitations))))
 	mux.Handle("POST /admin/distributor/users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminBindDistributorUser))))
+	mux.Handle("GET /admin/distributor/stats", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDistributorAssignmentStats))))
 	mux.Handle("POST /admin/users/assign-package", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminAssignPackage))))
 	mux.Handle("POST /distributor/users/quick-create", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorQuickCreateUser))))
 	mux.Handle("GET /distributor/users", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListUsers))))
 	mux.Handle("GET /distributor/invitations", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListInvitations))))
 	mux.Handle("GET /distributor/packages", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListPackages))))
+	mux.Handle("GET /distributor/stats", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorAssignmentStats))))
 	mux.Handle("POST /distributor/assign-package", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleAdminAssignPackage))))
 	mux.Handle("GET /admin/fulfillment/jobs/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetFulfillmentJob))))
 	mux.Handle("POST /admin/fulfillment/jobs/{id}/replay", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminReplayFulfillmentJob))))
@@ -4510,6 +4560,26 @@ func (r *routes) handleAdminListDistributorInvitations(w http.ResponseWriter, re
 	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations})
 }
 
+func (r *routes) handleAdminDistributorAssignmentStats(w http.ResponseWriter, req *http.Request) {
+	distributorUserID, err := parseOptionalPositiveInt64(req.URL.Query().Get("distributor_user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "distributor_user_id must be a positive integer")
+		return
+	}
+	from, to, err := parseStatsDateRange(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	stats, err := r.loadDistributorAssignmentStats(req.Context(), distributorUserID, from, to, true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load distributor assignment stats")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 func (r *routes) handleDistributorListUsers(w http.ResponseWriter, req *http.Request) {
 	user, ok := auth.UserFromContext(req.Context())
 	if !ok {
@@ -4548,6 +4618,26 @@ func (r *routes) handleDistributorListPackages(w http.ResponseWriter, req *http.
 	}
 	packages = filterDistributorAssignablePackages(packages)
 	writeJSON(w, http.StatusOK, listAdminPackagesResponse{Packages: packages})
+}
+
+func (r *routes) handleDistributorAssignmentStats(w http.ResponseWriter, req *http.Request) {
+	user, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	from, to, err := parseStatsDateRange(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	stats, err := r.loadDistributorAssignmentStats(req.Context(), user.ID, from, to, false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load distributor assignment stats")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }
 
 func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Request) {
@@ -4671,7 +4761,7 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 				fulfillmentJobID = &job.ID
 			}
 		}
-		_ = r.recordDistributorPackageAssignment(req.Context(), authUser.ID, localUserID, payload.TierCode, fulfillmentJobID, status)
+		_ = r.recordDistributorPackageAssignment(req.Context(), authUser.ID, localUserID, payload.TierCode, pkg.PriceMicros, fulfillmentJobID, status)
 	}
 
 	var jobResp *fulfillmentJobResponse
@@ -4968,16 +5058,313 @@ func (r *routes) isUserBoundToDistributor(ctx context.Context, distributorUserID
 	return true, nil
 }
 
-func (r *routes) recordDistributorPackageAssignment(ctx context.Context, distributorUserID, targetUserID int64, tierCode string, fulfillmentJobID *int64, status string) error {
+func (r *routes) recordDistributorPackageAssignment(ctx context.Context, distributorUserID, targetUserID int64, tierCode string, priceMicros int64, fulfillmentJobID *int64, status string) error {
 	var jobArg any
 	if fulfillmentJobID != nil {
 		jobArg = *fulfillmentJobID
 	}
 	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
-		INSERT INTO als_distributor_package_assignments(distributor_user_id, target_user_id, tier_code, fulfillment_job_id, status)
-		VALUES (?, ?, ?, ?, ?);
-	`), distributorUserID, targetUserID, tierCode, jobArg, strings.TrimSpace(status))
+		INSERT INTO als_distributor_package_assignments(distributor_user_id, target_user_id, tier_code, price_micros, fulfillment_job_id, status)
+		VALUES (?, ?, ?, ?, ?, ?);
+	`), distributorUserID, targetUserID, tierCode, priceMicros, jobArg, strings.TrimSpace(status))
 	return err
+}
+
+func parseOptionalPositiveInt64(value string) (int64, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || parsed <= 0 {
+		return 0, errors.New("invalid positive integer")
+	}
+	return parsed, nil
+}
+
+func parseStatsDateRange(req *http.Request) (*time.Time, *time.Time, error) {
+	parseDate := func(name string) (*time.Time, error) {
+		value := strings.TrimSpace(req.URL.Query().Get(name))
+		if value == "" {
+			return nil, nil
+		}
+		parsed, err := time.Parse("2006-01-02", value)
+		if err != nil {
+			return nil, fmt.Errorf("%s must use YYYY-MM-DD", name)
+		}
+		return &parsed, nil
+	}
+
+	from, err := parseDate("from")
+	if err != nil {
+		return nil, nil, err
+	}
+	to, err := parseDate("to")
+	if err != nil {
+		return nil, nil, err
+	}
+	if from != nil && to != nil && from.After(*to) {
+		return nil, nil, errors.New("from must be before or equal to to")
+	}
+	return from, to, nil
+}
+
+func assignmentDateExpr(dialect string) string {
+	if dialect == "postgres" {
+		return "DATE(dpa.created_at)::text"
+	}
+	return "DATE(dpa.created_at)"
+}
+
+func assignmentLatestExpr(dialect string) string {
+	if dialect == "postgres" {
+		return "MAX(dpa.created_at)::text"
+	}
+	return "MAX(dpa.created_at)"
+}
+
+func assignmentPriceExpr() string {
+	return "COALESCE(NULLIF(dpa.price_micros, 0), t.price_micros, 0)"
+}
+
+func addAssignmentStatsFilters(args []any, distributorUserID int64, from, to *time.Time) (string, []any) {
+	clauses := []string{"1 = 1"}
+	if distributorUserID > 0 {
+		clauses = append(clauses, "dpa.distributor_user_id = ?")
+		args = append(args, distributorUserID)
+	}
+	if from != nil {
+		clauses = append(clauses, "dpa.created_at >= ?")
+		args = append(args, *from)
+	}
+	if to != nil {
+		clauses = append(clauses, "dpa.created_at < ?")
+		args = append(args, to.AddDate(0, 0, 1))
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func (r *routes) loadDistributorAssignmentStats(ctx context.Context, distributorUserID int64, from, to *time.Time, includeDistributorBreakdown bool) (distributorAssignmentStatsResponse, error) {
+	var response distributorAssignmentStatsResponse
+	whereSQL, args := addAssignmentStatsFilters(nil, distributorUserID, from, to)
+	priceExpr := assignmentPriceExpr()
+
+	totalsQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(*),
+			COUNT(DISTINCT dpa.target_user_id),
+			COUNT(DISTINCT dpa.distributor_user_id),
+			COALESCE(SUM(%s), 0)
+		FROM als_distributor_package_assignments dpa
+		LEFT JOIN als_tiers t ON t.code = dpa.tier_code
+		%s;
+	`, priceExpr, whereSQL)
+	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, totalsQuery), args...).Scan(
+		&response.Totals.AssignmentCount,
+		&response.Totals.UniqueUserCount,
+		&response.Totals.DistributorCount,
+		&response.Totals.TotalPriceMicros,
+	); err != nil {
+		return distributorAssignmentStatsResponse{}, err
+	}
+
+	daily, err := r.loadDistributorAssignmentDailyStats(ctx, whereSQL, args, priceExpr)
+	if err != nil {
+		return distributorAssignmentStatsResponse{}, err
+	}
+	response.Daily = daily
+
+	packages, err := r.loadDistributorAssignmentPackageStats(ctx, whereSQL, args, priceExpr)
+	if err != nil {
+		return distributorAssignmentStatsResponse{}, err
+	}
+	response.Packages = packages
+
+	users, err := r.loadDistributorAssignmentUserStats(ctx, whereSQL, args, priceExpr)
+	if err != nil {
+		return distributorAssignmentStatsResponse{}, err
+	}
+	response.Users = users
+
+	if includeDistributorBreakdown {
+		distributors, err := r.loadDistributorAssignmentDistributorStats(ctx, whereSQL, args, priceExpr)
+		if err != nil {
+			return distributorAssignmentStatsResponse{}, err
+		}
+		response.Distributors = distributors
+	}
+	return response, nil
+}
+
+func (r *routes) loadDistributorAssignmentDailyStats(ctx context.Context, whereSQL string, args []any, priceExpr string) ([]distributorAssignmentDailyStatsResponse, error) {
+	dateExpr := assignmentDateExpr(r.sqlDialect)
+	query := fmt.Sprintf(`
+		SELECT
+			%s AS assigned_date,
+			COUNT(*),
+			COALESCE(SUM(%s), 0)
+		FROM als_distributor_package_assignments dpa
+		LEFT JOIN als_tiers t ON t.code = dpa.tier_code
+		%s
+		GROUP BY assigned_date
+		ORDER BY assigned_date DESC
+		LIMIT 90;
+	`, dateExpr, priceExpr, whereSQL)
+
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]distributorAssignmentDailyStatsResponse, 0)
+	for rows.Next() {
+		var item distributorAssignmentDailyStatsResponse
+		if err := rows.Scan(&item.Date, &item.AssignmentCount, &item.TotalPriceMicros); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *routes) loadDistributorAssignmentPackageStats(ctx context.Context, whereSQL string, args []any, priceExpr string) ([]distributorAssignmentPackageStatsResponse, error) {
+	latestExpr := assignmentLatestExpr(r.sqlDialect)
+	query := fmt.Sprintf(`
+		SELECT
+			dpa.tier_code,
+			COALESCE(MAX(t.name), ''),
+			COUNT(*),
+			COALESCE(SUM(%s), 0),
+			%s
+		FROM als_distributor_package_assignments dpa
+		LEFT JOIN als_tiers t ON t.code = dpa.tier_code
+		%s
+		GROUP BY dpa.tier_code
+		ORDER BY COUNT(*) DESC, dpa.tier_code ASC
+		LIMIT 100;
+	`, priceExpr, latestExpr, whereSQL)
+
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]distributorAssignmentPackageStatsResponse, 0)
+	for rows.Next() {
+		var item distributorAssignmentPackageStatsResponse
+		var latest sql.NullString
+		if err := rows.Scan(&item.TierCode, &item.PackageName, &item.AssignmentCount, &item.TotalPriceMicros, &latest); err != nil {
+			return nil, err
+		}
+		if latest.Valid {
+			item.LatestAssignedAt = latest.String
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *routes) loadDistributorAssignmentUserStats(ctx context.Context, whereSQL string, args []any, priceExpr string) ([]distributorAssignmentUserStatsResponse, error) {
+	latestExpr := assignmentLatestExpr(r.sqlDialect)
+	query := fmt.Sprintf(`
+		SELECT
+			u.id,
+			u.email,
+			u.name,
+			COUNT(*),
+			COALESCE(SUM(%s), 0),
+			%s
+		FROM als_distributor_package_assignments dpa
+		JOIN als_users u ON u.id = dpa.target_user_id
+		LEFT JOIN als_tiers t ON t.code = dpa.tier_code
+		%s
+		GROUP BY u.id, u.email, u.name
+		ORDER BY COUNT(*) DESC, u.id ASC
+		LIMIT 100;
+	`, priceExpr, latestExpr, whereSQL)
+
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]distributorAssignmentUserStatsResponse, 0)
+	for rows.Next() {
+		var item distributorAssignmentUserStatsResponse
+		var latest sql.NullString
+		if err := rows.Scan(&item.UserID, &item.Email, &item.Name, &item.AssignmentCount, &item.TotalPriceMicros, &latest); err != nil {
+			return nil, err
+		}
+		if latest.Valid {
+			item.LatestAssignedAt = latest.String
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *routes) loadDistributorAssignmentDistributorStats(ctx context.Context, whereSQL string, args []any, priceExpr string) ([]distributorAssignmentDistributorStatsResponse, error) {
+	latestExpr := assignmentLatestExpr(r.sqlDialect)
+	query := fmt.Sprintf(`
+		SELECT
+			du.id,
+			du.email,
+			du.name,
+			COUNT(*),
+			COUNT(DISTINCT dpa.target_user_id),
+			COALESCE(SUM(%s), 0),
+			%s
+		FROM als_distributor_package_assignments dpa
+		JOIN als_users du ON du.id = dpa.distributor_user_id
+		LEFT JOIN als_tiers t ON t.code = dpa.tier_code
+		%s
+		GROUP BY du.id, du.email, du.name
+		ORDER BY COUNT(*) DESC, du.id ASC
+		LIMIT 100;
+	`, priceExpr, latestExpr, whereSQL)
+
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]distributorAssignmentDistributorStatsResponse, 0)
+	for rows.Next() {
+		var item distributorAssignmentDistributorStatsResponse
+		var latest sql.NullString
+		if err := rows.Scan(
+			&item.DistributorUserID,
+			&item.DistributorEmail,
+			&item.DistributorName,
+			&item.AssignmentCount,
+			&item.UniqueUserCount,
+			&item.TotalPriceMicros,
+			&latest,
+		); err != nil {
+			return nil, err
+		}
+		if latest.Valid {
+			item.LatestAssignedAt = latest.String
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (r *routes) listDistributorInvitations(ctx context.Context, distributorUserID int64) ([]distributorInvitationResponse, error) {

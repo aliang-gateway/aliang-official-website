@@ -67,6 +67,49 @@ type DistributorBinding = {
   updated_at?: string;
 };
 
+type AssignmentStats = {
+  totals?: {
+    assignment_count?: number;
+    unique_user_count?: number;
+    distributor_count?: number;
+    total_price_micros?: number;
+  };
+  daily?: Array<{
+    date: string;
+    assignment_count: number;
+    total_price_micros: number;
+  }>;
+  packages?: Array<{
+    tier_code: string;
+    package_name?: string;
+    assignment_count: number;
+    total_price_micros: number;
+  }>;
+  users?: Array<{
+    user_id: number;
+    email: string;
+    name?: string;
+    assignment_count: number;
+    total_price_micros: number;
+  }>;
+  distributors?: Array<{
+    distributor_user_id: number;
+    distributor_email?: string;
+    distributor_name?: string;
+    assignment_count: number;
+    unique_user_count: number;
+    total_price_micros: number;
+  }>;
+};
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US").format(value || 0);
+}
+
+function formatMoneyMicros(value: number) {
+  return `¥${((value || 0) / 1000000).toFixed(2)}`;
+}
+
 function formatDateTime(value?: string) {
   if (!value) return "--";
   const date = new Date(value);
@@ -78,6 +121,34 @@ function formatDateTime(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function StatsTable({ headers, rows, emptyLabel }: { headers: string[]; rows: string[][]; emptyLabel: string }) {
+  if (rows.length === 0) {
+    return <p className="rounded-lg border border-[var(--portal-line)] p-3 text-sm text-[var(--portal-muted)]">{emptyLabel}</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[var(--portal-line)]">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
+          <tr>
+            {headers.map((header) => (
+              <th key={header} className="px-3 py-2">{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--portal-line)]">
+          {rows.map((row, rowIndex) => (
+            <tr key={`${row[0]}-${rowIndex}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${cell}-${cellIndex}`} className="px-3 py-2 text-[var(--portal-ink)]">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function AdminUsersPage() {
@@ -119,6 +190,11 @@ export default function AdminUsersPage() {
   const [bindResult, setBindResult] = useState<BindDistributorResult | null>(null);
   const [distributorBindings, setDistributorBindings] = useState<DistributorBinding[]>([]);
   const [isLoadingDistributorBindings, setIsLoadingDistributorBindings] = useState(false);
+  const [assignmentStats, setAssignmentStats] = useState<AssignmentStats | null>(null);
+  const [isLoadingAssignmentStats, setIsLoadingAssignmentStats] = useState(false);
+  const [statsDistributorUserId, setStatsDistributorUserId] = useState("");
+  const [statsFrom, setStatsFrom] = useState("");
+  const [statsTo, setStatsTo] = useState("");
 
   useEffect(() => {
     setIsHydrated(true);
@@ -191,6 +267,34 @@ export default function AdminUsersPage() {
     }
   }, [buildHeaders, handleAuthFailure, sessionToken, t]);
 
+  const loadDistributorStats = useCallback(async (filters?: { distributorUserId?: string; from?: string; to?: string }) => {
+    if (!sessionToken) return;
+    setIsLoadingAssignmentStats(true);
+    try {
+      const query = new URLSearchParams();
+      const distributorID = filters?.distributorUserId?.trim() ?? "";
+      if (distributorID) query.set("distributor_user_id", distributorID);
+      if (filters?.from) query.set("from", filters.from);
+      if (filters?.to) query.set("to", filters.to);
+      const response = await fetch(`/api/admin/distributor/stats${query.size > 0 ? `?${query.toString()}` : ""}`, {
+        method: "GET",
+        headers: buildHeaders(),
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = payload?.error ?? t("loadDistributorStatsFailed");
+        if (handleAuthFailure(response.status, message)) return;
+        throw new Error(message);
+      }
+      setAssignmentStats(payload ?? null);
+    } catch {
+      // keep admin user workflows usable if stats cannot load
+    } finally {
+      setIsLoadingAssignmentStats(false);
+    }
+  }, [buildHeaders, handleAuthFailure, sessionToken, t]);
+
   const loadCurrentRole = useCallback(async () => {
     if (!sessionToken) return;
     try {
@@ -215,8 +319,8 @@ export default function AdminUsersPage() {
   }, [isHydrated, loadCurrentRole, loadPackages]);
 
   useEffect(() => {
-    if (isHydrated && currentRole === "admin") void loadDistributorBindings();
-  }, [currentRole, isHydrated, loadDistributorBindings]);
+    if (isHydrated && currentRole === "admin") void Promise.all([loadDistributorBindings(), loadDistributorStats()]);
+  }, [currentRole, isHydrated, loadDistributorBindings, loadDistributorStats]);
 
   const handleQuickCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -549,6 +653,104 @@ export default function AdminUsersPage() {
               {t("bindResult", { email: bindResult.email, id: bindResult.distributor_user_id })}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {currentRole === "admin" ? (
+        <div className="block-card overflow-hidden">
+          <div className="border-b border-[var(--portal-line)] p-4">
+            <h2 className="text-lg font-semibold text-[var(--portal-ink)]">{t("assignmentStats")}</h2>
+            <p className="mt-1 text-sm text-[var(--portal-muted)]">{t("assignmentStatsDescription")}</p>
+          </div>
+          <form className="grid gap-3 border-b border-[var(--portal-line)] p-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end" onSubmit={(event) => {
+            event.preventDefault();
+            void loadDistributorStats({
+              distributorUserId: statsDistributorUserId,
+              from: statsFrom,
+              to: statsTo,
+            });
+          }}>
+            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+              <span>{t("distributorId")}</span>
+              <input
+                className="field font-mono"
+                type="number"
+                min="1"
+                placeholder={t("allDistributors")}
+                value={statsDistributorUserId}
+                onChange={(e) => setStatsDistributorUserId(e.target.value)}
+                disabled={isBlocked || isLoadingAssignmentStats}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+              <span>{t("fromDate")}</span>
+              <input className="field" type="date" value={statsFrom} onChange={(e) => setStatsFrom(e.target.value)} disabled={isBlocked || isLoadingAssignmentStats} />
+            </label>
+            <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+              <span>{t("toDate")}</span>
+              <input className="field" type="date" value={statsTo} onChange={(e) => setStatsTo(e.target.value)} disabled={isBlocked || isLoadingAssignmentStats} />
+            </label>
+            <button className="btn-primary" type="submit" disabled={isBlocked || isLoadingAssignmentStats}>
+              {isLoadingAssignmentStats ? t("loadingStats") : t("queryStats")}
+            </button>
+          </form>
+          <div className="grid gap-4 p-4 md:grid-cols-4">
+            <div className="rounded-lg border border-[var(--portal-line)] p-3">
+              <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignedPackages")}</p>
+              <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatNumber(assignmentStats?.totals?.assignment_count ?? 0)}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--portal-line)] p-3">
+              <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignedUsers")}</p>
+              <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatNumber(assignmentStats?.totals?.unique_user_count ?? 0)}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--portal-line)] p-3">
+              <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("distributorCount")}</p>
+              <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatNumber(assignmentStats?.totals?.distributor_count ?? 0)}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--portal-line)] p-3">
+              <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignmentRevenue")}</p>
+              <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatMoneyMicros(assignmentStats?.totals?.total_price_micros ?? 0)}</p>
+            </div>
+          </div>
+          <div className="grid gap-4 border-t border-[var(--portal-line)] p-4 lg:grid-cols-2">
+            <StatsTable
+              emptyLabel={t("emptyStats")}
+              headers={[t("distributor"), t("count"), t("users"), t("amount")]}
+              rows={(assignmentStats?.distributors ?? []).slice(0, 10).map((item) => [
+                item.distributor_name || item.distributor_email || `#${item.distributor_user_id}`,
+                formatNumber(item.assignment_count),
+                formatNumber(item.unique_user_count),
+                formatMoneyMicros(item.total_price_micros),
+              ])}
+            />
+            <StatsTable
+              emptyLabel={t("emptyStats")}
+              headers={[t("date"), t("count"), t("amount")]}
+              rows={(assignmentStats?.daily ?? []).slice(0, 10).map((item) => [
+                item.date,
+                formatNumber(item.assignment_count),
+                formatMoneyMicros(item.total_price_micros),
+              ])}
+            />
+            <StatsTable
+              emptyLabel={t("emptyStats")}
+              headers={[t("package"), t("count"), t("amount")]}
+              rows={(assignmentStats?.packages ?? []).slice(0, 10).map((item) => [
+                item.package_name || item.tier_code,
+                formatNumber(item.assignment_count),
+                formatMoneyMicros(item.total_price_micros),
+              ])}
+            />
+            <StatsTable
+              emptyLabel={t("emptyStats")}
+              headers={[t("user"), t("count"), t("amount")]}
+              rows={(assignmentStats?.users ?? []).slice(0, 10).map((item) => [
+                item.name || item.email || `#${item.user_id}`,
+                formatNumber(item.assignment_count),
+                formatMoneyMicros(item.total_price_micros),
+              ])}
+            />
+          </div>
         </div>
       ) : null}
 

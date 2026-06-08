@@ -58,6 +58,34 @@ type QuickCreateResult = {
   created_at: string;
 };
 
+type AssignmentStats = {
+  totals?: {
+    assignment_count?: number;
+    unique_user_count?: number;
+    total_price_micros?: number;
+  };
+  daily?: Array<{
+    date: string;
+    assignment_count: number;
+    total_price_micros: number;
+  }>;
+  packages?: Array<{
+    tier_code: string;
+    package_name?: string;
+    assignment_count: number;
+    total_price_micros: number;
+    latest_assigned_at?: string;
+  }>;
+  users?: Array<{
+    user_id: number;
+    email: string;
+    name?: string;
+    assignment_count: number;
+    total_price_micros: number;
+    latest_assigned_at?: string;
+  }>;
+};
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value || 0);
 }
@@ -79,6 +107,34 @@ function formatDateTime(value?: string) {
   }).format(date);
 }
 
+function StatsTable({ headers, rows, emptyLabel }: { headers: string[]; rows: string[][]; emptyLabel: string }) {
+  if (rows.length === 0) {
+    return <p className="rounded-lg border border-[var(--portal-line)] p-3 text-sm text-[var(--portal-muted)]">{emptyLabel}</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[var(--portal-line)]">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
+          <tr>
+            {headers.map((header) => (
+              <th key={header} className="px-3 py-2">{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--portal-line)]">
+          {rows.map((row, rowIndex) => (
+            <tr key={`${row[0]}-${rowIndex}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${cell}-${cellIndex}`} className="px-3 py-2 text-[var(--portal-ink)]">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DistributorPage() {
   const t = useTranslations("distributor");
   const router = useRouter();
@@ -96,6 +152,10 @@ export default function DistributorPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [assignResult, setAssignResult] = useState<AssignResult | null>(null);
+  const [assignmentStats, setAssignmentStats] = useState<AssignmentStats | null>(null);
+  const [isLoadingAssignmentStats, setIsLoadingAssignmentStats] = useState(false);
+  const [statsFrom, setStatsFrom] = useState("");
+  const [statsTo, setStatsTo] = useState("");
 
   const headers = useMemo(() => ({
     "content-type": "application/json",
@@ -112,6 +172,26 @@ export default function DistributorPage() {
     }),
     { users: 0, tokens: 0, activeDays: 0, costMicros: 0 },
   ), [users]);
+
+  const loadAssignmentStats = useCallback(async (token: string, filters?: { from?: string; to?: string }) => {
+    setIsLoadingAssignmentStats(true);
+    try {
+      const query = new URLSearchParams();
+      if (filters?.from) query.set("from", filters.from);
+      if (filters?.to) query.set("to", filters.to);
+      const response = await fetch(`/api/distributor/stats${query.size > 0 ? `?${query.toString()}` : ""}`, {
+        headers: { accept: "application/json", Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? t("loadStatsFailed"));
+      }
+      setAssignmentStats(payload ?? null);
+    } finally {
+      setIsLoadingAssignmentStats(false);
+    }
+  }, [t]);
 
   const loadData = useCallback(async (token: string) => {
     setIsLoading(true);
@@ -147,12 +227,13 @@ export default function DistributorPage() {
       setUsers(Array.isArray(usersPayload?.users) ? usersPayload.users : []);
       setInvitations(Array.isArray(invitationsPayload?.invitations) ? invitationsPayload.invitations : []);
       setPackages(Array.isArray(packagesPayload?.packages) ? packagesPayload.packages : []);
+      await loadAssignmentStats(token);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("loadDashboardFailed"));
     } finally {
       setIsLoading(false);
     }
-  }, [router, t]);
+  }, [loadAssignmentStats, router, t]);
 
   useEffect(() => {
     const token = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "";
@@ -360,6 +441,73 @@ export default function DistributorPage() {
         <div className="block-card p-4">
           <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("spend")}</p>
           <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatMoneyMicros(totals.costMicros)}</p>
+        </div>
+      </div>
+
+      <div className="block-card overflow-hidden">
+        <div className="border-b border-[var(--portal-line)] p-4">
+          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">{t("assignmentStats")}</h2>
+          <p className="mt-1 text-sm text-[var(--portal-muted)]">{t("assignmentStatsDescription")}</p>
+        </div>
+        <form className="grid gap-3 border-b border-[var(--portal-line)] p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(event) => {
+          event.preventDefault();
+          if (!sessionToken) return;
+          void loadAssignmentStats(sessionToken, { from: statsFrom, to: statsTo });
+        }}>
+          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+            <span>{t("fromDate")}</span>
+            <input className="field" type="date" value={statsFrom} onChange={(event) => setStatsFrom(event.target.value)} disabled={isLoadingAssignmentStats} />
+          </label>
+          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+            <span>{t("toDate")}</span>
+            <input className="field" type="date" value={statsTo} onChange={(event) => setStatsTo(event.target.value)} disabled={isLoadingAssignmentStats} />
+          </label>
+          <button className="btn-primary" type="submit" disabled={isLoadingAssignmentStats}>
+            {isLoadingAssignmentStats ? t("loadingStats") : t("queryStats")}
+          </button>
+        </form>
+        <div className="grid gap-4 p-4 md:grid-cols-3">
+          <div className="rounded-lg border border-[var(--portal-line)] p-3">
+            <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignedPackages")}</p>
+            <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatNumber(assignmentStats?.totals?.assignment_count ?? 0)}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--portal-line)] p-3">
+            <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignedUsers")}</p>
+            <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatNumber(assignmentStats?.totals?.unique_user_count ?? 0)}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--portal-line)] p-3">
+            <p className="text-xs font-semibold uppercase text-[var(--portal-muted)]">{t("assignmentRevenue")}</p>
+            <p className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{formatMoneyMicros(assignmentStats?.totals?.total_price_micros ?? 0)}</p>
+          </div>
+        </div>
+        <div className="grid gap-4 border-t border-[var(--portal-line)] p-4 lg:grid-cols-3">
+          <StatsTable
+            emptyLabel={t("emptyStats")}
+            headers={[t("date"), t("count"), t("amount")]}
+            rows={(assignmentStats?.daily ?? []).slice(0, 10).map((item) => [
+              item.date,
+              formatNumber(item.assignment_count),
+              formatMoneyMicros(item.total_price_micros),
+            ])}
+          />
+          <StatsTable
+            emptyLabel={t("emptyStats")}
+            headers={[t("package"), t("count"), t("amount")]}
+            rows={(assignmentStats?.packages ?? []).slice(0, 10).map((item) => [
+              item.package_name || item.tier_code,
+              formatNumber(item.assignment_count),
+              formatMoneyMicros(item.total_price_micros),
+            ])}
+          />
+          <StatsTable
+            emptyLabel={t("emptyStats")}
+            headers={[t("user"), t("count"), t("amount")]}
+            rows={(assignmentStats?.users ?? []).slice(0, 10).map((item) => [
+              item.name || item.email || `#${item.user_id}`,
+              formatNumber(item.assignment_count),
+              formatMoneyMicros(item.total_price_micros),
+            ])}
+          />
         </div>
       </div>
 
