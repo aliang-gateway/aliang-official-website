@@ -25,7 +25,7 @@ func createUserViaAPI(t *testing.T, mux *http.ServeMux, email, name, role, admin
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewReader(body))
-	if role == "admin" && adminBootstrapSecret != "" {
+	if (role == "admin" || role == "distributor") && adminBootstrapSecret != "" {
 		req.Header.Set("X-Admin-Bootstrap-Secret", adminBootstrapSecret)
 	}
 	rec := httptest.NewRecorder()

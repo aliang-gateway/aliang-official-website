@@ -286,6 +286,16 @@ function DashboardDetailsPageContent() {
   }, []);
 
   useEffect(() => {
+    if (!isHydrated || sessionToken) {
+      return;
+    }
+
+    const query = searchParams.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+    router.replace(`/login?next=${encodeURIComponent(next)}`);
+  }, [isHydrated, pathname, router, searchParams, sessionToken]);
+
+  useEffect(() => {
     if (!isHydrated) {
       return;
     }
@@ -440,7 +450,7 @@ function DashboardDetailsPageContent() {
   const tokenPoints = details?.token_trend.points ?? [];
   const frequencyPoints = details?.api_frequency_trend.points ?? [];
 
-  if (!isHydrated || loading) {
+  if (!isHydrated || !sessionToken || loading) {
     return (
       <section className="portal-shell space-y-6 py-8">
         <div className="portal-header clay-panel p-5">
@@ -454,47 +464,6 @@ function DashboardDetailsPageContent() {
 
         <div className="block-card p-5">
           <p className="text-sm text-[var(--portal-muted)]">{t("loadingDetails")}</p>
-        </div>
-      </section>
-    );
-  }
-
-  if (!sessionToken) {
-    return (
-      <section className="portal-shell space-y-6 py-8">
-        <div className="portal-header clay-panel p-5">
-          <div className="min-w-0 space-y-3">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center text-sm text-[var(--portal-muted)] transition-colors hover:text-[var(--portal-ink)]"
-            >
-              <svg aria-hidden="true" className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              {t("backToDashboard")}
-            </Link>
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--portal-muted)]">{t("detailsTitle")}</p>
-              <h1 className="section-title">
-                <span className="gradient-text">{t("requestRecords")}</span>
-              </h1>
-              <p className="section-subtitle max-w-2xl">
-                {t("detailsSignInPrompt")}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="block-card space-y-4">
-          <p className="notice">{t("detailsTokenMissing")}</p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/dashboard" className="btn-ghost inline-flex items-center justify-center no-underline">
-              {t("backToDashboard")}
-            </Link>
-            <Link href="/login" className="btn-primary inline-flex items-center justify-center no-underline">
-              {t("goToLogin")}
-            </Link>
-          </div>
         </div>
       </section>
     );

@@ -94,33 +94,15 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse yaml config: %w", err)
 	}
 
-	if envBaseURL, ok := os.LookupEnv("SUB2API_BASE_URL"); ok {
-		cfg.Sub2APIBaseURL = envBaseURL
-	}
-	if envAdminKey, ok := os.LookupEnv("SUB2API_ADMIN_KEY"); ok {
-		cfg.Sub2APIAdminKey = envAdminKey
-	}
-	if value, ok := os.LookupEnv("STRIPE_SECRET_KEY"); ok {
-		cfg.Stripe.SecretKey = value
-	}
-	if value, ok := os.LookupEnv("STRIPE_PUBLISHABLE_KEY"); ok {
-		cfg.Stripe.PublishableKey = value
-	}
-	if value, ok := os.LookupEnv("STRIPE_WEBHOOK_SECRET"); ok {
-		cfg.Stripe.WebhookSecret = value
-	}
-	if value, ok := os.LookupEnv("STRIPE_CURRENCY"); ok {
-		cfg.Stripe.Currency = value
-	}
-	if value, ok := os.LookupEnv("STRIPE_SUCCESS_URL"); ok {
-		cfg.Stripe.SuccessURL = value
-	}
-	if value, ok := os.LookupEnv("STRIPE_CANCEL_URL"); ok {
-		cfg.Stripe.CancelURL = value
-	}
-	if value, ok := os.LookupEnv("LOG_LEVEL"); ok {
-		cfg.LogLevel = value
-	}
+	applyEnvString(&cfg.Sub2APIBaseURL, "SUB2API_BASE_URL")
+	applyEnvString(&cfg.Sub2APIAdminKey, "SUB2API_ADMIN_KEY")
+	applyEnvString(&cfg.Stripe.SecretKey, "STRIPE_SECRET_KEY")
+	applyEnvString(&cfg.Stripe.PublishableKey, "STRIPE_PUBLISHABLE_KEY")
+	applyEnvString(&cfg.Stripe.WebhookSecret, "STRIPE_WEBHOOK_SECRET")
+	applyEnvString(&cfg.Stripe.Currency, "STRIPE_CURRENCY")
+	applyEnvString(&cfg.Stripe.SuccessURL, "STRIPE_SUCCESS_URL")
+	applyEnvString(&cfg.Stripe.CancelURL, "STRIPE_CANCEL_URL")
+	applyEnvString(&cfg.LogLevel, "LOG_LEVEL")
 
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -175,7 +157,7 @@ func (c *Config) validate() error {
 		return fmt.Errorf("database.dsn is required for postgres")
 	}
 	if c.Sub2APIBaseURL == "" {
-		return fmt.Errorf("SUB2API_BASE_URL is required")
+		return fmt.Errorf("sub2api_base_url is required (set in config file or SUB2API_BASE_URL env)")
 	}
 	if c.Stripe.SecretKey != "" || c.Stripe.WebhookSecret != "" || c.Stripe.SuccessURL != "" || c.Stripe.CancelURL != "" {
 		if c.Stripe.SecretKey == "" || c.Stripe.WebhookSecret == "" || c.Stripe.SuccessURL == "" || c.Stripe.CancelURL == "" {
@@ -190,4 +172,12 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+func applyEnvString(target *string, key string) {
+	value, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		return
+	}
+	*target = value
 }

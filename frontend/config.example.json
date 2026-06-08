@@ -1,0 +1,4 @@
+{
+  "api_base_url": "http://localhost:8081",
+  "stripe_currency": "cny"
+}

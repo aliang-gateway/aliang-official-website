@@ -17,6 +17,10 @@ type Service struct {
 	db *sql.DB
 }
 
+const ProtectedAPIKeyName = "auto-key"
+
+var ErrProtectedAPIKey = errors.New("protected api key cannot be revoked")
+
 type CreateResult struct {
 	ID        int64     `json:"id"`
 	Label     string    `json:"label"`
@@ -45,6 +49,10 @@ func GenerateAPIKey() (string, error) {
 func HashAPIKey(plaintext string) string {
 	sum := sha256.Sum256([]byte(plaintext))
 	return hex.EncodeToString(sum[:])
+}
+
+func IsProtectedAPIKeyName(name string) bool {
+	return strings.TrimSpace(name) == ProtectedAPIKeyName
 }
 
 func (s *Service) CreateKey(ctx context.Context, userID int64, label string) (CreateResult, error) {
@@ -84,17 +92,35 @@ func (s *Service) RevokeKey(ctx context.Context, keyID int64, requesterID int64,
 		return false, errors.New("invalid revoke request")
 	}
 
+	adminFlag := 0
+	if isAdmin {
+		adminFlag = 1
+	}
+
+	var label string
+	const lookupQuery = `
+SELECT label
+FROM als_api_keys
+WHERE id = ?
+  AND revoked_at IS NULL
+  AND (user_id = ? OR ? = 1);`
+	err := s.db.QueryRowContext(ctx, lookupQuery, keyID, requesterID, adminFlag).Scan(&label)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lookup api key: %w", err)
+	}
+	if IsProtectedAPIKeyName(label) {
+		return false, ErrProtectedAPIKey
+	}
+
 	const query = `
 UPDATE als_api_keys
 SET revoked_at = ?
 WHERE id = ?
   AND revoked_at IS NULL
   AND (user_id = ? OR ? = 1);`
-
-	adminFlag := 0
-	if isAdmin {
-		adminFlag = 1
-	}
 
 	result, err := s.db.ExecContext(ctx, query, time.Now().UTC(), keyID, requesterID, adminFlag)
 	if err != nil {

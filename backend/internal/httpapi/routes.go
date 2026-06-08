@@ -125,16 +125,32 @@ type adminQuickCreateUserRequest struct {
 }
 
 type adminQuickCreateUserResponse struct {
-	ID        int64  `json:"id"`
-	LocalID   int64  `json:"local_id,omitempty"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Password  string `json:"password"`
-	CreatedAt string `json:"created_at"`
+	ID                   int64  `json:"id"`
+	DistributorBindingID int64  `json:"distributor_binding_id,omitempty"`
+	Email                string `json:"email"`
+	Name                 string `json:"name"`
+	Password             string `json:"password"`
+	CreatedAt            string `json:"created_at"`
+}
+
+type adminUpdateUserRoleRequest struct {
+	UserID int64  `json:"user_id,omitempty"`
+	Email  string `json:"email,omitempty"`
+	Role   string `json:"role"`
+}
+
+type adminUpdateUserRoleResponse struct {
+	ID            int64  `json:"id"`
+	Sub2APIUserID *int64 `json:"sub2api_user_id,omitempty"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	Role          string `json:"role"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type adminAssignPackageRequest struct {
 	UserID   int64  `json:"user_id"`
+	Email    string `json:"email,omitempty"`
 	TierCode string `json:"tier_code"`
 	Password string `json:"password,omitempty"`
 }
@@ -143,6 +159,58 @@ type adminAssignPackageResponse struct {
 	PaymentEventID string                  `json:"payment_event_id"`
 	TierCode       string                  `json:"tier_code"`
 	FulfillmentJob *fulfillmentJobResponse `json:"fulfillment_job,omitempty"`
+}
+
+type adminBindDistributorUserRequest struct {
+	DistributorUserID int64  `json:"distributor_user_id,omitempty"`
+	DistributorEmail  string `json:"distributor_email,omitempty"`
+	UserID            int64  `json:"user_id,omitempty"`
+	Email             string `json:"email,omitempty"`
+	Source            string `json:"source,omitempty"`
+}
+
+type distributorUserBindingResponse struct {
+	ID                int64  `json:"id"`
+	DistributorUserID int64  `json:"distributor_user_id"`
+	UserID            int64  `json:"user_id"`
+	Email             string `json:"email"`
+	Name              string `json:"name"`
+	Source            string `json:"source"`
+	CreatedAt         string `json:"created_at"`
+}
+
+type distributorInvitationResponse struct {
+	ID                int64  `json:"id"`
+	DistributorUserID int64  `json:"distributor_user_id"`
+	DistributorEmail  string `json:"distributor_email,omitempty"`
+	DistributorName   string `json:"distributor_name,omitempty"`
+	UserID            int64  `json:"user_id"`
+	Email             string `json:"email"`
+	Name              string `json:"name"`
+	Source            string `json:"source"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at,omitempty"`
+}
+
+type distributorUserSummaryResponse struct {
+	UserID             int64  `json:"user_id"`
+	Email              string `json:"email"`
+	Name               string `json:"name"`
+	PackageCode        string `json:"package_code,omitempty"`
+	PackageName        string `json:"package_name,omitempty"`
+	SubscriptionStatus string `json:"subscription_status,omitempty"`
+	TotalTokens        int64  `json:"total_tokens"`
+	ActiveDays         int64  `json:"active_days"`
+	ActualCostMicros   int64  `json:"actual_cost_micros"`
+	LastActiveDate     string `json:"last_active_date,omitempty"`
+}
+
+type listDistributorUsersResponse struct {
+	Users []distributorUserSummaryResponse `json:"users"`
+}
+
+type listDistributorInvitationsResponse struct {
+	Invitations []distributorInvitationResponse `json:"invitations"`
 }
 
 type createPackageCheckoutSessionRequest struct {
@@ -217,6 +285,7 @@ type adminAvailableGroupsResponse struct {
 type adminPackageRequest struct {
 	Code         string  `json:"code,omitempty"`
 	Name         string  `json:"name"`
+	Level        string  `json:"level,omitempty"`
 	GroupIDs     []int64 `json:"group_ids"`
 	PriceMicros  int64   `json:"price_micros"`
 	ValueType    string  `json:"value_type"`
@@ -231,6 +300,7 @@ type adminPackageRequest struct {
 type adminPackageResponse struct {
 	Code        string   `json:"code"`
 	Name        string   `json:"name"`
+	Level       string   `json:"level"`
 	GroupIDs    []int64  `json:"group_ids"`
 	PriceMicros int64    `json:"price_micros"`
 	ValueType   string   `json:"value_type"`
@@ -511,6 +581,8 @@ const (
 	adminArticleStatusPublished = "published"
 	maxArticleSlugLength        = 128
 	adminDocSlugLength          = 128
+	packageLevelAdmin           = "admin"
+	packageLevelDistributor     = "distributor"
 )
 
 // ── Doc DTO DTO────────────────────────────────────
@@ -717,7 +789,15 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("DELETE /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeactivateUnitPrice))))
 	mux.Handle("POST /admin/fulfillment/payment-success", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminPaymentSuccess))))
 	mux.Handle("POST /admin/users/quick-create", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminQuickCreateUser))))
+	mux.Handle("PUT /admin/users/role", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateUserRole))))
+	mux.Handle("GET /admin/distributor/users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListDistributorInvitations))))
+	mux.Handle("POST /admin/distributor/users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminBindDistributorUser))))
 	mux.Handle("POST /admin/users/assign-package", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminAssignPackage))))
+	mux.Handle("POST /distributor/users/quick-create", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorQuickCreateUser))))
+	mux.Handle("GET /distributor/users", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListUsers))))
+	mux.Handle("GET /distributor/invitations", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListInvitations))))
+	mux.Handle("GET /distributor/packages", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleDistributorListPackages))))
+	mux.Handle("POST /distributor/assign-package", authenticated(auth.RequireDistributor(http.HandlerFunc(r.handleAdminAssignPackage))))
 	mux.Handle("GET /admin/fulfillment/jobs/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetFulfillmentJob))))
 	mux.Handle("POST /admin/fulfillment/jobs/{id}/replay", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminReplayFulfillmentJob))))
 	mux.Handle("GET /admin/groups/available", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListAvailableGroups))))
@@ -809,12 +889,12 @@ func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	if payload.Role == "" {
 		payload.Role = "user"
 	}
-	if payload.Role != "user" && payload.Role != "admin" {
-		writeError(w, http.StatusBadRequest, "role must be user or admin")
+	if payload.Role != "user" && payload.Role != "admin" && payload.Role != "distributor" {
+		writeError(w, http.StatusBadRequest, "role must be user, admin, or distributor")
 		return
 	}
 
-	if payload.Role == "admin" {
+	if payload.Role == "admin" || payload.Role == "distributor" {
 		expectedSecret := r.adminBootstrapSecret
 		providedSecret := strings.TrimSpace(req.Header.Get("X-Admin-Bootstrap-Secret"))
 		if expectedSecret == "" || providedSecret == "" || providedSecret != expectedSecret {
@@ -994,17 +1074,7 @@ func (r *routes) resolveLocalAuthMeProfile(ctx context.Context, authHeader strin
 		return nil, false, nil
 	}
 
-	if r.sub2api.IsConfigured() {
-		hasToken, err := r.sub2api.HasUpstreamToken(ctx, userID)
-		if err != nil {
-			return nil, false, err
-		}
-		if hasToken {
-			return nil, false, nil
-		}
-	}
-
-	profile, err := r.userSvc.GetProfile(ctx, userID)
+	profile, err := r.loadLocalUserProfile(ctx, userID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1027,7 +1097,7 @@ func (r *routes) handleAPIKeysListPassthrough(w http.ResponseWriter, req *http.R
 }
 
 func (r *routes) handleAPIKeysCreatePassthrough(w http.ResponseWriter, req *http.Request) {
-	r.handleDashboardPassthrough(w, req, "/api/v1/keys")
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
 }
 
 func (r *routes) handleAPIKeyDetailPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -1097,7 +1167,7 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 	if user.Role == "admin" {
-		r.handleDashboardPassthrough(w, req, "/api/v1/keys")
+		r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
 		return
 	}
 
@@ -1125,7 +1195,7 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		return
 	}
 
-	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/keys", func(payload any) (any, error) {
+	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/api-keys", func(payload any) (any, error) {
 		return filterAPIKeyListPayload(payload, authorizedGroupIDs)
 	})
 	if err != nil {
@@ -1180,7 +1250,11 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 	if user.Role == "admin" {
-		r.handleDashboardPassthrough(w, req, "/api/v1/keys/"+req.PathValue("id"))
+		upstreamPath := "/api/v1/api-keys/" + req.PathValue("id")
+		if req.Method == http.MethodDelete && r.rejectProtectedAPIKeyDelete(w, req, upstreamPath) {
+			return
+		}
+		r.handleDashboardPassthrough(w, req, upstreamPath)
 		return
 	}
 
@@ -1207,7 +1281,39 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 
-	upstreamPath := "/api/v1/keys/" + req.PathValue("id")
+	upstreamPath := "/api/v1/api-keys/" + req.PathValue("id")
+	if req.Method == http.MethodDelete {
+		payload, err := r.loadUpstreamJSONPayload(req, upstreamPath)
+		if err != nil {
+			if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+				writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+				return
+			}
+			writeError(w, http.StatusBadGateway, "failed to fetch api key")
+			return
+		}
+		allowed, err := isAPIKeyPayloadAuthorized(payload, authorizedGroupIDs)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "failed to fetch api key")
+			return
+		}
+		if !allowed {
+			writeError(w, http.StatusForbidden, "group access forbidden")
+			return
+		}
+		protected, err := isProtectedAPIKeyPayload(payload)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "failed to fetch api key")
+			return
+		}
+		if protected {
+			writeError(w, http.StatusForbidden, "auto-key cannot be deleted")
+			return
+		}
+		r.handleDashboardPassthrough(w, req, upstreamPath)
+		return
+	}
+
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, upstreamPath, func(payload any) (any, error) {
 		allowed, filterErr := isAPIKeyPayloadAuthorized(payload, authorizedGroupIDs)
 		if filterErr != nil {
@@ -1230,6 +1336,28 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		return
 	}
 	writeForwardedJSON(w, statusCode, headers, filteredPayload)
+}
+
+func (r *routes) rejectProtectedAPIKeyDelete(w http.ResponseWriter, req *http.Request, upstreamPath string) bool {
+	payload, err := r.loadUpstreamJSONPayload(req, upstreamPath)
+	if err != nil {
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+			return true
+		}
+		writeError(w, http.StatusBadGateway, "failed to fetch api key")
+		return true
+	}
+	protected, err := isProtectedAPIKeyPayload(payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to fetch api key")
+		return true
+	}
+	if protected {
+		writeError(w, http.StatusForbidden, "auto-key cannot be deleted")
+		return true
+	}
+	return false
 }
 
 func (r *routes) handleAdminListAvailableGroups(w http.ResponseWriter, req *http.Request) {
@@ -1274,6 +1402,12 @@ func (r *routes) handleAdminListPackages(w http.ResponseWriter, req *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to list packages")
 		return
 	}
+	if authUser, ok := auth.UserFromContext(req.Context()); ok {
+		switch authUser.Role {
+		case "distributor":
+			packages = filterAdminPackagesByLevel(packages, packageLevelDistributor)
+		}
+	}
 	writeJSON(w, http.StatusOK, listAdminPackagesResponse{Packages: packages})
 }
 
@@ -1301,6 +1435,12 @@ func (r *routes) handleAdminGetPackage(w http.ResponseWriter, req *http.Request)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load package")
 		return
+	}
+	if authUser, ok := auth.UserFromContext(req.Context()); ok {
+		if authUser.Role == "distributor" && pkg.Level != packageLevelDistributor {
+			writeError(w, http.StatusForbidden, "this role can only access distributor-level packages")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, pkg)
@@ -1330,9 +1470,9 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tierID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO als_tiers(code, name, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "id", normalized.Code, normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublished, isVisible, isPublished, now, now)
+		INSERT INTO als_tiers(code, name, level, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "id", normalized.Code, normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublished, isVisible, isPublished, now, now)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create package: %v", err))
 		return
@@ -1392,6 +1532,9 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to load package")
 		return
 	}
+	if normalized.Level == "" {
+		normalized.Level = currentPkg.Level
+	}
 	isVisibleVal, isPublishedVal := packageFlagsForUpdate(normalized, currentPkg)
 
 	tx, err := r.db.BeginTx(req.Context(), nil)
@@ -1402,7 +1545,7 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, is_visible = ?, is_published = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublishedVal, isVisibleVal, isPublishedVal, now, tierID)
+	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, level = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, is_visible = ?, is_published = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublishedVal, isVisibleVal, isPublishedVal, now, tierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
 		return
@@ -1734,7 +1877,13 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 				return
 			}
 			slog.Info("local session created", "user_id", localUserID, "email", requestEmail)
-			responseBody, err = injectSessionTokenIntoAuthResponse(responseBody, sessionToken)
+			localProfile, profileErr := r.loadLocalUserProfile(req.Context(), localUserID)
+			if profileErr != nil {
+				slog.Error("failed to load local profile after login", "user_id", localUserID, "error", profileErr)
+				writeError(w, http.StatusInternalServerError, "failed to load local profile")
+				return
+			}
+			responseBody, err = injectLocalSessionIntoAuthResponse(responseBody, sessionToken, localProfile)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to finalize login response")
 				return
@@ -1765,7 +1914,10 @@ func (r *routes) captureSub2APITokens(ctx context.Context, req *http.Request, re
 	}
 
 	authIdentity := extractAuthIdentityFromResponse(responseBody)
-	localUserID, found, err := r.resolveLocalUserIDForAuthTokens(ctx, authIdentity.Email, requestEmail, req.Header.Get("Authorization"), requestRefreshToken, refreshToken)
+	if upstreamUserID != nil && *upstreamUserID > 0 {
+		authIdentity.ID = *upstreamUserID
+	}
+	localUserID, found, err := r.resolveLocalUserIDForAuthTokens(ctx, upstreamUserID, authIdentity.Email, requestEmail, req.Header.Get("Authorization"), requestRefreshToken, refreshToken)
 	if err != nil {
 		return 0, false, err
 	}
@@ -1791,7 +1943,20 @@ func (r *routes) captureSub2APITokens(ctx context.Context, req *http.Request, re
 	return localUserID, true, nil
 }
 
-func (r *routes) resolveLocalUserIDForAuthTokens(ctx context.Context, responseEmail, requestEmail, authHeader, requestRefreshToken string, refreshToken *string) (int64, bool, error) {
+func (r *routes) resolveLocalUserIDForAuthTokens(ctx context.Context, upstreamUserID *int64, responseEmail, requestEmail, authHeader, requestRefreshToken string, refreshToken *string) (int64, bool, error) {
+	if upstreamUserID != nil && *upstreamUserID > 0 {
+		if userID, found, err := r.findLocalUserIDByUpstreamUserID(ctx, *upstreamUserID); err != nil {
+			return 0, false, err
+		} else if found {
+			return userID, true, nil
+		}
+		if _, err := r.loadLocalUserProfile(ctx, *upstreamUserID); err == nil {
+			return *upstreamUserID, true, nil
+		} else if !errors.Is(err, user.ErrUserNotFound) {
+			return 0, false, err
+		}
+	}
+
 	for _, email := range []string{responseEmail, requestEmail} {
 		if strings.TrimSpace(email) == "" {
 			continue
@@ -1801,6 +1966,9 @@ func (r *routes) resolveLocalUserIDForAuthTokens(ctx context.Context, responseEm
 			return 0, false, err
 		}
 		if found {
+			if upstreamUserID != nil && *upstreamUserID > 0 && userID != *upstreamUserID {
+				return 0, false, fmt.Errorf("local user id %d does not match sub2api user id %d for %s", userID, *upstreamUserID, strings.TrimSpace(email))
+			}
 			return userID, true, nil
 		}
 	}
@@ -1860,6 +2028,73 @@ func (r *routes) findLocalUserIDByEmail(ctx context.Context, email string) (int6
 	}
 
 	return userID, true, nil
+}
+
+func (r *routes) loadLocalUserProfile(ctx context.Context, userID int64) (*user.UserProfile, error) {
+	var profile user.UserProfile
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT id, email, name, role, created_at, updated_at
+		FROM als_users
+		WHERE id = ?
+		LIMIT 1;
+	`), userID).Scan(&profile.ID, &profile.Email, &profile.Name, &profile.Role, &profile.CreatedAt, &profile.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, user.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query local user profile: %w", err)
+	}
+	return &profile, nil
+}
+
+func (r *routes) loadLocalUserForRoleUpdate(ctx context.Context, userID int64, email string) (localUserRoleTarget, error) {
+	var target localUserRoleTarget
+	if userID > 0 {
+		err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+			SELECT id, email, name, role
+			FROM als_users
+			WHERE id = ?
+			LIMIT 1;
+		`), userID).Scan(&target.ID, &target.Email, &target.Name, &target.Role)
+		if err != nil {
+			return localUserRoleTarget{}, err
+		}
+		return target, nil
+	}
+
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT id, email, name, role
+		FROM als_users
+		WHERE LOWER(email) = LOWER(?)
+		LIMIT 1;
+	`), strings.TrimSpace(email)).Scan(&target.ID, &target.Email, &target.Name, &target.Role)
+	if err != nil {
+		return localUserRoleTarget{}, err
+	}
+	return target, nil
+}
+
+func (r *routes) hasOtherLocalAdmin(ctx context.Context, userID int64) (bool, error) {
+	var count int64
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT COUNT(*)
+		FROM als_users
+		WHERE role = 'admin'
+			AND id != ?;
+	`), userID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func isSupportedLocalRole(role string) bool {
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case "user", "admin", "distributor":
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *routes) findLocalUserIDByStoredAccessToken(ctx context.Context, accessToken string) (int64, bool, error) {
@@ -2035,9 +2270,18 @@ func extractSub2APITokensFromAuthResponse(body []byte) (string, *string, string,
 }
 
 type authIdentity struct {
+	ID    int64
 	Email string
 	Name  string
 	Role  string
+}
+
+type localUserRoleTarget struct {
+	ID             int64
+	UpstreamUserID *int64
+	Email          string
+	Name           string
+	Role           string
 }
 
 func extractAuthIdentityFromResponse(body []byte) authIdentity {
@@ -2058,6 +2302,9 @@ func extractAuthIdentityFromResponse(body []byte) authIdentity {
 			Role:  strings.TrimSpace(stringFromAny(candidate["role"])),
 		}
 		if userObj, ok := candidate["user"].(map[string]any); ok {
+			if id, ok := int64FromAny(userObj["id"]); ok {
+				identity.ID = id
+			}
 			if identity.Email == "" {
 				identity.Email = strings.TrimSpace(stringFromAny(userObj["email"]))
 			}
@@ -2066,6 +2313,11 @@ func extractAuthIdentityFromResponse(body []byte) authIdentity {
 			}
 			if identity.Role == "" {
 				identity.Role = strings.TrimSpace(stringFromAny(userObj["role"]))
+			}
+		}
+		if identity.ID <= 0 {
+			if id, ok := int64FromAny(candidate["id"]); ok {
+				identity.ID = id
 			}
 		}
 		if identity.Email != "" {
@@ -2167,6 +2419,9 @@ func (r *routes) ensureLocalUser(ctx context.Context, identity authIdentity) (in
 		return 0, false, err
 	}
 	if found {
+		if identity.ID > 0 && userID != identity.ID {
+			return 0, false, fmt.Errorf("local user id %d does not match sub2api user id %d for %s", userID, identity.ID, email)
+		}
 		return userID, true, nil
 	}
 
@@ -2177,12 +2432,16 @@ func (r *routes) ensureLocalUser(ctx context.Context, identity authIdentity) (in
 			name = email
 		}
 	}
-	role := strings.TrimSpace(identity.Role)
-	if role == "" {
-		role = "user"
-	}
-	if role != "user" && role != "admin" {
-		role = "user"
+	role := "user"
+
+	if identity.ID > 0 {
+		if _, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+			INSERT INTO als_users(id, email, name, role)
+			VALUES (?, ?, ?, ?);
+		`), identity.ID, email, name, role); err != nil {
+			return 0, false, fmt.Errorf("create local auth user: %w", err)
+		}
+		return identity.ID, true, nil
 	}
 
 	userID, err = db.InsertID(ctx, r.sqlDialect, r.db, `INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, "id", email, name, role)
@@ -2225,19 +2484,42 @@ func (r *routes) extendLocalSessionExpiry(ctx context.Context, userID int64) err
 	return nil
 }
 
-func injectSessionTokenIntoAuthResponse(body []byte, sessionToken string) ([]byte, error) {
+func injectLocalSessionIntoAuthResponse(body []byte, sessionToken string, profile *user.UserProfile) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
 	payload["session_token"] = sessionToken
 	payload["access_token"] = sessionToken
+	overlayLocalProfile(payload, profile)
 	if data, ok := payload["data"].(map[string]any); ok {
 		data["session_token"] = sessionToken
 		data["access_token"] = sessionToken
+		overlayLocalProfile(data, profile)
 		payload["data"] = data
 	}
 	return json.Marshal(payload)
+}
+
+func overlayLocalProfile(target map[string]any, profile *user.UserProfile) {
+	if target == nil || profile == nil {
+		return
+	}
+
+	target["id"] = profile.ID
+	target["email"] = profile.Email
+	target["name"] = profile.Name
+	target["role"] = profile.Role
+
+	userObj, _ := target["user"].(map[string]any)
+	if userObj == nil {
+		userObj = make(map[string]any)
+	}
+	userObj["id"] = profile.ID
+	userObj["email"] = profile.Email
+	userObj["name"] = profile.Name
+	userObj["role"] = profile.Role
+	target["user"] = userObj
 }
 
 func (r *routes) findLocalUserIDBySessionToken(ctx context.Context, sessionToken string) (int64, bool, error) {
@@ -2738,6 +3020,10 @@ func (r *routes) handleRevokeAPIKey(w http.ResponseWriter, req *http.Request) {
 
 	revoked, err := r.apiKey.RevokeKey(req.Context(), keyID, user.ID, user.Role == "admin")
 	if err != nil {
+		if errors.Is(err, apikey.ErrProtectedAPIKey) {
+			writeError(w, http.StatusForbidden, "auto-key cannot be deleted")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to revoke api key")
 		return
 	}
@@ -3206,8 +3492,9 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 		SELECT code, name, price_micros, value_type, value_amount, description, features_json, is_published
 		FROM als_tiers
 		WHERE is_visible = ?
+			AND level = ?
 		ORDER BY price_micros ASC;
-	`), true)
+	`), true, packageLevelAdmin)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list packages")
 		return
@@ -3679,6 +3966,10 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		writeError(w, http.StatusBadRequest, "package is not published")
 		return
 	}
+	if pkg.Level != packageLevelAdmin {
+		writeError(w, http.StatusForbidden, "package is not available for public checkout")
+		return
+	}
 	amountMinor, err := microsToCurrencyMinor(pkg.PriceMicros)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -3895,6 +4186,19 @@ func (r *routes) handleAdminPaymentSuccess(w http.ResponseWriter, req *http.Requ
 }
 
 func (r *routes) handleAdminQuickCreateUser(w http.ResponseWriter, req *http.Request) {
+	r.handleQuickCreateUser(w, req, 0)
+}
+
+func (r *routes) handleDistributorQuickCreateUser(w http.ResponseWriter, req *http.Request) {
+	authUser, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	r.handleQuickCreateUser(w, req, authUser.ID)
+}
+
+func (r *routes) handleQuickCreateUser(w http.ResponseWriter, req *http.Request, distributorUserID int64) {
 	if r.proxyClient == nil {
 		writeError(w, http.StatusInternalServerError, "auth proxy is not configured")
 		return
@@ -3968,11 +4272,11 @@ func (r *routes) handleAdminQuickCreateUser(w http.ResponseWriter, req *http.Req
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
-	userID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO als_users(email, name, role, password_hash, email_verified)
-		VALUES (?, ?, 'user', ?, TRUE)
-	`, "id", payload.Email, name, hash)
-	if err != nil {
+	userID := *upstreamUserID
+	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+		INSERT INTO als_users(id, email, name, role, password_hash, email_verified)
+		VALUES (?, ?, ?, 'user', ?, TRUE);
+	`), userID, payload.Email, name, hash); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeError(w, http.StatusConflict, "email already exists")
 			return
@@ -4014,19 +4318,236 @@ func (r *routes) handleAdminQuickCreateUser(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	var bindingID int64
+	if distributorUserID > 0 {
+		if r.sqlDialect == "postgres" {
+			if err := tx.QueryRowContext(req.Context(), db.Rebind(r.sqlDialect, `
+				INSERT INTO als_distributor_user_bindings(distributor_user_id, user_id, source, created_at, updated_at)
+				VALUES (?, ?, 'distributor_quick_create', ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					distributor_user_id = excluded.distributor_user_id,
+					source = excluded.source,
+					updated_at = excluded.updated_at
+				RETURNING id;
+			`), distributorUserID, userID, now, now).Scan(&bindingID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to bind distributor user")
+				return
+			}
+		} else {
+			if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+				INSERT INTO als_distributor_user_bindings(distributor_user_id, user_id, source, created_at, updated_at)
+				VALUES (?, ?, 'distributor_quick_create', ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					distributor_user_id = excluded.distributor_user_id,
+					source = excluded.source,
+					updated_at = excluded.updated_at;
+			`), distributorUserID, userID, now, now); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to bind distributor user")
+				return
+			}
+			if err := tx.QueryRowContext(req.Context(), db.Rebind(r.sqlDialect, `SELECT id FROM als_distributor_user_bindings WHERE user_id = ?;`), userID).Scan(&bindingID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to bind distributor user")
+				return
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit transaction")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, adminQuickCreateUserResponse{
-		ID:        *upstreamUserID,
-		LocalID:   userID,
-		Email:     payload.Email,
-		Name:      name,
-		Password:  password,
-		CreatedAt: now.Format(time.RFC3339),
+		ID:                   *upstreamUserID,
+		DistributorBindingID: bindingID,
+		Email:                payload.Email,
+		Name:                 name,
+		Password:             password,
+		CreatedAt:            now.Format(time.RFC3339),
 	})
+}
+
+func (r *routes) handleAdminUpdateUserRole(w http.ResponseWriter, req *http.Request) {
+	var payload adminUpdateUserRoleRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.Email = strings.TrimSpace(strings.ToLower(payload.Email))
+	payload.Role = strings.TrimSpace(strings.ToLower(payload.Role))
+	if !isSupportedLocalRole(payload.Role) {
+		writeError(w, http.StatusBadRequest, "role must be user, admin, or distributor")
+		return
+	}
+	if payload.UserID <= 0 && payload.Email == "" {
+		writeError(w, http.StatusBadRequest, "user_id or email is required")
+		return
+	}
+
+	target, err := r.resolveLocalUserForRoleUpdate(req.Context(), payload.UserID, payload.Email)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load user")
+		return
+	}
+
+	if target.Role == "admin" && payload.Role != "admin" {
+		hasOtherAdmin, err := r.hasOtherLocalAdmin(req.Context(), target.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to validate admin role change")
+			return
+		}
+		if !hasOtherAdmin {
+			writeError(w, http.StatusConflict, "cannot remove the last admin role")
+			return
+		}
+	}
+
+	now := time.Now().UTC()
+	result, err := r.db.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+		UPDATE als_users
+		SET role = ?, updated_at = ?
+		WHERE id = ?;
+	`), payload.Role, now, target.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update user role")
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update user role")
+		return
+	}
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	responseID := target.ID
+	if target.UpstreamUserID != nil && *target.UpstreamUserID > 0 {
+		responseID = *target.UpstreamUserID
+	}
+	writeJSON(w, http.StatusOK, adminUpdateUserRoleResponse{
+		ID:            responseID,
+		Sub2APIUserID: target.UpstreamUserID,
+		Email:         target.Email,
+		Name:          target.Name,
+		Role:          payload.Role,
+		UpdatedAt:     now.Format(time.RFC3339),
+	})
+}
+
+func (r *routes) handleAdminBindDistributorUser(w http.ResponseWriter, req *http.Request) {
+	var payload adminBindDistributorUserRequest
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	payload.DistributorEmail = strings.TrimSpace(strings.ToLower(payload.DistributorEmail))
+	payload.Email = strings.TrimSpace(strings.ToLower(payload.Email))
+	payload.Source = strings.TrimSpace(payload.Source)
+	if payload.Source == "" {
+		payload.Source = "manual"
+	}
+
+	distributor, err := r.resolveLocalUserForRoleUpdate(req.Context(), payload.DistributorUserID, payload.DistributorEmail)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "distributor not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load distributor")
+		return
+	}
+	if distributor.Role != "distributor" {
+		writeError(w, http.StatusBadRequest, "target distributor user must have distributor role")
+		return
+	}
+
+	target, err := r.resolveLocalUserForRoleUpdate(req.Context(), payload.UserID, payload.Email)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load user")
+		return
+	}
+	if target.Role == "admin" || target.Role == "distributor" {
+		writeError(w, http.StatusBadRequest, "only normal users can be bound to a distributor")
+		return
+	}
+
+	now := time.Now().UTC()
+	bindingID, err := r.upsertDistributorUserBinding(req.Context(), distributor.ID, target.ID, payload.Source, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to bind distributor user")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, distributorUserBindingResponse{
+		ID:                bindingID,
+		DistributorUserID: distributor.ID,
+		UserID:            target.ID,
+		Email:             target.Email,
+		Name:              target.Name,
+		Source:            payload.Source,
+		CreatedAt:         now.Format(time.RFC3339),
+	})
+}
+
+func (r *routes) handleAdminListDistributorInvitations(w http.ResponseWriter, req *http.Request) {
+	invitations, err := r.listDistributorInvitations(req.Context(), 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list distributor invitations")
+		return
+	}
+	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations})
+}
+
+func (r *routes) handleDistributorListUsers(w http.ResponseWriter, req *http.Request) {
+	user, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	users, err := r.listDistributorUsers(req.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list distributor users")
+		return
+	}
+	writeJSON(w, http.StatusOK, listDistributorUsersResponse{Users: users})
+}
+
+func (r *routes) handleDistributorListInvitations(w http.ResponseWriter, req *http.Request) {
+	user, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	invitations, err := r.listDistributorInvitations(req.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list distributor invitations")
+		return
+	}
+	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations})
+}
+
+func (r *routes) handleDistributorListPackages(w http.ResponseWriter, req *http.Request) {
+	packages, err := r.listAdminPackages(req.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list packages")
+		return
+	}
+	packages = filterDistributorAssignablePackages(packages)
+	writeJSON(w, http.StatusOK, listAdminPackagesResponse{Packages: packages})
 }
 
 func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Request) {
@@ -4041,19 +4562,19 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	if payload.UserID <= 0 {
-		writeError(w, http.StatusBadRequest, "user_id must be positive")
-		return
-	}
-
+	payload.Email = strings.TrimSpace(strings.ToLower(payload.Email))
 	payload.TierCode = strings.TrimSpace(payload.TierCode)
 	payload.Password = strings.TrimSpace(payload.Password)
+	if payload.UserID <= 0 && payload.Email == "" {
+		writeError(w, http.StatusBadRequest, "user_id or email is required")
+		return
+	}
 	if payload.TierCode == "" {
 		writeError(w, http.StatusBadRequest, "tier_code is required")
 		return
 	}
 
-	localUserID, _, err := r.resolveAdminPackageUserIDs(req.Context(), payload.UserID)
+	localUserID, upstreamUserID, err := r.resolveAdminPackageTargetUser(req.Context(), payload.UserID, payload.Email)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
@@ -4061,6 +4582,18 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check user")
 		return
+	}
+	authUser, hasAuthUser := auth.UserFromContext(req.Context())
+	if hasAuthUser && authUser.Role == "distributor" {
+		allowed, err := r.isUserBoundToDistributor(req.Context(), authUser.ID, localUserID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check distributor user")
+			return
+		}
+		if !allowed {
+			writeError(w, http.StatusForbidden, "distributor can only assign packages to bound users")
+			return
+		}
 	}
 	if payload.Password != "" {
 		profile, profileErr := r.userSvc.GetProfile(req.Context(), localUserID)
@@ -4079,6 +4612,12 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("package not found: %v", err))
 		return
 	}
+	if hasAuthUser {
+		if authUser.Role == "distributor" && !isDistributorAssignablePackage(pkg) {
+			writeError(w, http.StatusForbidden, "this role can only assign available distributor packages")
+			return
+		}
+	}
 	if !pkg.IsPublished {
 		writeError(w, http.StatusBadRequest, "package is not published")
 		return
@@ -4092,11 +4631,11 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	paymentEventID := fmt.Sprintf("admin-assign-%d-%d", payload.UserID, time.Now().UTC().UnixMilli())
+	paymentEventID := fmt.Sprintf("admin-assign-%d-%d", upstreamUserID, time.Now().UTC().UnixMilli())
 	orderID := fmt.Sprintf("admin-order-%d", time.Now().UTC().UnixMilli())
-	idempotencyKey := fmt.Sprintf("admin-assign-%s-%d-%d", payload.TierCode, payload.UserID, time.Now().UTC().UnixNano())
+	idempotencyKey := fmt.Sprintf("admin-assign-%s-%d-%d", payload.TierCode, upstreamUserID, time.Now().UTC().UnixNano())
 
-	checkoutSessionID := fmt.Sprintf("cs_admin_%d_%d", payload.UserID, time.Now().UTC().UnixMilli())
+	checkoutSessionID := fmt.Sprintf("cs_admin_%d_%d", upstreamUserID, time.Now().UTC().UnixMilli())
 	if recordErr := r.recordCheckoutSession(req.Context(), "admin", checkoutSessionID, localUserID, pkg, "", pkg.PriceMicros, "cny"); recordErr != nil {
 		writeError(w, http.StatusInternalServerError, "failed to record checkout session")
 		return
@@ -4122,6 +4661,17 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 
 	if job != nil && job.ID > 0 {
 		_ = r.markCheckoutSessionCompleted(req.Context(), "admin", checkoutSessionID, paymentEventID, payload.TierCode, localUserID, "", pkg.PriceMicros, "cny", job.ID, nil)
+	}
+	if hasAuthUser && authUser.Role == "distributor" {
+		status := "created"
+		var fulfillmentJobID *int64
+		if job != nil {
+			status = job.Status
+			if job.ID > 0 {
+				fulfillmentJobID = &job.ID
+			}
+		}
+		_ = r.recordDistributorPackageAssignment(req.Context(), authUser.ID, localUserID, payload.TierCode, fulfillmentJobID, status)
 	}
 
 	var jobResp *fulfillmentJobResponse
@@ -4231,6 +4781,52 @@ func (r *routes) trySyncSub2APIAuthTokensWithPassword(ctx context.Context, userI
 	}
 }
 
+func (r *routes) resolveLocalUserForRoleUpdate(ctx context.Context, upstreamOrLocalUserID int64, email string) (localUserRoleTarget, error) {
+	trimmedEmail := strings.TrimSpace(email)
+	if upstreamOrLocalUserID > 0 {
+		if localUserID, found, err := r.findLocalUserIDByUpstreamUserID(ctx, upstreamOrLocalUserID); err != nil {
+			return localUserRoleTarget{}, err
+		} else if found {
+			target, err := r.loadLocalUserForRoleUpdate(ctx, localUserID, "")
+			if err != nil {
+				return localUserRoleTarget{}, err
+			}
+			target.UpstreamUserID = &upstreamOrLocalUserID
+			return target, nil
+		}
+
+		if r.proxyClient != nil {
+			localUserID, importErr := r.importSub2APIUserForAdminPackage(ctx, upstreamOrLocalUserID)
+			if importErr == nil {
+				target, err := r.loadLocalUserForRoleUpdate(ctx, localUserID, "")
+				if err != nil {
+					return localUserRoleTarget{}, err
+				}
+				target.UpstreamUserID = &upstreamOrLocalUserID
+				return target, nil
+			}
+			if !errors.Is(importErr, sql.ErrNoRows) {
+				return localUserRoleTarget{}, importErr
+			}
+		}
+
+		// Backward-compatible escape hatch for local-only bootstrap/admin users.
+		return r.loadLocalUserForRoleUpdate(ctx, upstreamOrLocalUserID, "")
+	}
+
+	if trimmedEmail == "" {
+		return localUserRoleTarget{}, sql.ErrNoRows
+	}
+	target, err := r.loadLocalUserForRoleUpdate(ctx, 0, trimmedEmail)
+	if err != nil {
+		return localUserRoleTarget{}, err
+	}
+	if upstreamUserID, found, err := r.sub2api.UpstreamUserID(ctx, target.ID); err == nil && found {
+		target.UpstreamUserID = &upstreamUserID
+	}
+	return target, nil
+}
+
 func (r *routes) syncSub2APIAuthTokensWithPassword(ctx context.Context, userID int64, email, password string) error {
 	if r.proxyClient == nil || !r.sub2api.IsConfigured() {
 		return nil
@@ -4298,6 +4894,248 @@ func (r *routes) resolveAdminPackageUserIDs(ctx context.Context, requestedUserID
 	return requestedUserID, upstreamUserID, nil
 }
 
+func (r *routes) resolveAdminPackageTargetUser(ctx context.Context, requestedUserID int64, email string) (int64, int64, error) {
+	if requestedUserID > 0 {
+		return r.resolveAdminPackageUserIDs(ctx, requestedUserID)
+	}
+
+	trimmedEmail := strings.TrimSpace(email)
+	if trimmedEmail == "" {
+		return 0, 0, sql.ErrNoRows
+	}
+
+	localUserID, found, err := r.findLocalUserIDByEmail(ctx, trimmedEmail)
+	if err != nil {
+		return 0, 0, err
+	}
+	if !found {
+		return 0, 0, sql.ErrNoRows
+	}
+
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, localUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return localUserID, upstreamUserID, nil
+}
+
+func (r *routes) upsertDistributorUserBinding(ctx context.Context, distributorUserID, targetUserID int64, source string, now time.Time) (int64, error) {
+	if r.sqlDialect == "postgres" {
+		var id int64
+		err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+			INSERT INTO als_distributor_user_bindings(distributor_user_id, user_id, source, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET
+				distributor_user_id = excluded.distributor_user_id,
+				source = excluded.source,
+				updated_at = excluded.updated_at
+			RETURNING id;
+		`), distributorUserID, targetUserID, source, now, now).Scan(&id)
+		return id, err
+	}
+
+	if _, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_distributor_user_bindings(distributor_user_id, user_id, source, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			distributor_user_id = excluded.distributor_user_id,
+			source = excluded.source,
+			updated_at = excluded.updated_at;
+	`), distributorUserID, targetUserID, source, now, now); err != nil {
+		return 0, err
+	}
+
+	var id int64
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `SELECT id FROM als_distributor_user_bindings WHERE user_id = ?;`), targetUserID).Scan(&id)
+	return id, err
+}
+
+func (r *routes) isUserBoundToDistributor(ctx context.Context, distributorUserID, targetUserID int64) (bool, error) {
+	var exists int
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT 1
+		FROM als_distributor_user_bindings
+		WHERE distributor_user_id = ?
+			AND user_id = ?
+		LIMIT 1;
+	`), distributorUserID, targetUserID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *routes) recordDistributorPackageAssignment(ctx context.Context, distributorUserID, targetUserID int64, tierCode string, fulfillmentJobID *int64, status string) error {
+	var jobArg any
+	if fulfillmentJobID != nil {
+		jobArg = *fulfillmentJobID
+	}
+	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_distributor_package_assignments(distributor_user_id, target_user_id, tier_code, fulfillment_job_id, status)
+		VALUES (?, ?, ?, ?, ?);
+	`), distributorUserID, targetUserID, tierCode, jobArg, strings.TrimSpace(status))
+	return err
+}
+
+func (r *routes) listDistributorInvitations(ctx context.Context, distributorUserID int64) ([]distributorInvitationResponse, error) {
+	query := `
+		SELECT
+			dub.id,
+			dub.distributor_user_id,
+			du.email,
+			du.name,
+			u.id,
+			u.email,
+			u.name,
+			dub.source,
+			dub.created_at,
+			dub.updated_at
+		FROM als_distributor_user_bindings dub
+		JOIN als_users du ON du.id = dub.distributor_user_id
+		JOIN als_users u ON u.id = dub.user_id
+	`
+	args := []any{}
+	if distributorUserID > 0 {
+		query += " WHERE dub.distributor_user_id = ?"
+		args = append(args, distributorUserID)
+	}
+	query += " ORDER BY dub.created_at DESC, dub.id DESC;"
+
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	invitations := make([]distributorInvitationResponse, 0)
+	for rows.Next() {
+		var item distributorInvitationResponse
+		var createdAt time.Time
+		var updatedAt time.Time
+		if err := rows.Scan(
+			&item.ID,
+			&item.DistributorUserID,
+			&item.DistributorEmail,
+			&item.DistributorName,
+			&item.UserID,
+			&item.Email,
+			&item.Name,
+			&item.Source,
+			&createdAt,
+			&updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.CreatedAt = createdAt.Format(time.RFC3339)
+		item.UpdatedAt = updatedAt.Format(time.RFC3339)
+		invitations = append(invitations, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return invitations, nil
+}
+
+func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int64) ([]distributorUserSummaryResponse, error) {
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			u.id,
+			u.email,
+			u.name,
+			COALESCE(t.code, ''),
+			COALESCE(t.name, ''),
+			COALESCE(s.status, '')
+		FROM als_distributor_user_bindings rub
+		JOIN als_users u ON u.id = rub.user_id
+		LEFT JOIN als_subscriptions s ON s.user_id = u.id AND s.status = 'active' AND s.ended_at IS NULL
+		LEFT JOIN als_tiers t ON t.id = s.tier_id
+		WHERE rub.distributor_user_id = ?
+		ORDER BY u.id ASC;
+	`), distributorUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]distributorUserSummaryResponse, 0)
+	for rows.Next() {
+		var item distributorUserSummaryResponse
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Email,
+			&item.Name,
+			&item.PackageCode,
+			&item.PackageName,
+			&item.SubscriptionStatus,
+		); err != nil {
+			return nil, err
+		}
+		usage, err := r.loadDistributorUserUsageSummary(ctx, item.UserID)
+		if err != nil {
+			return nil, err
+		}
+		item.TotalTokens = usage.TotalTokens
+		item.ActiveDays = usage.ActiveDays
+		item.ActualCostMicros = usage.ActualCostMicros
+		item.LastActiveDate = usage.LastActiveDate
+		users = append(users, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (r *routes) loadDistributorUserUsageSummary(ctx context.Context, userID int64) (distributorUserSummaryResponse, error) {
+	var summary distributorUserSummaryResponse
+	var dailyLastActive sql.NullString
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			COALESCE(SUM(total_tokens), 0),
+			COUNT(DISTINCT CASE WHEN request_count > 0 THEN usage_date END),
+			COALESCE(SUM(actual_cost_micros), 0),
+			MAX(usage_date)
+		FROM als_user_usage_daily
+		WHERE user_id = ?;
+	`), userID).Scan(&summary.TotalTokens, &summary.ActiveDays, &summary.ActualCostMicros, &dailyLastActive)
+	if err != nil {
+		return distributorUserSummaryResponse{}, err
+	}
+	if dailyLastActive.Valid {
+		summary.LastActiveDate = dailyLastActive.String
+	}
+
+	usageDayExpr := "DATE(usage_timestamp)"
+	if r.sqlDialect == "postgres" {
+		usageDayExpr = "DATE(usage_timestamp)::text"
+	}
+	rawQuery := fmt.Sprintf(`
+		SELECT
+			COALESCE(SUM(quantity), 0),
+			COUNT(DISTINCT %s),
+			MAX(%s)
+		FROM als_usage_records
+		WHERE user_id = ?;
+	`, usageDayExpr, usageDayExpr)
+
+	var rawTokens int64
+	var rawActiveDays int64
+	var rawLastActive sql.NullString
+	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, rawQuery), userID).Scan(&rawTokens, &rawActiveDays, &rawLastActive); err != nil {
+		return distributorUserSummaryResponse{}, err
+	}
+	summary.TotalTokens += rawTokens
+	summary.ActiveDays += rawActiveDays
+	if rawLastActive.Valid && rawLastActive.String > summary.LastActiveDate {
+		summary.LastActiveDate = rawLastActive.String
+	}
+
+	return summary, nil
+}
+
 func (r *routes) importSub2APIUserForAdminPackage(ctx context.Context, upstreamUserID int64) (int64, error) {
 	if upstreamUserID <= 0 {
 		return 0, errors.New("upstream user id must be positive")
@@ -4347,16 +5185,18 @@ func (r *routes) importSub2APIUserForAdminPackage(ctx context.Context, upstreamU
 	defer func() { _ = tx.Rollback() }()
 
 	if !found {
-		localUserID, err = db.InsertID(ctx, r.sqlDialect, tx, `
-			INSERT INTO als_users(email, name, role, email_verified)
-			VALUES (?, ?, 'user', TRUE)
-		`, "id", email, name)
-		if err != nil {
+		localUserID = upstreamUserID
+		if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+			INSERT INTO als_users(id, email, name, role, email_verified)
+			VALUES (?, ?, ?, 'user', TRUE);
+		`), localUserID, email, name); err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "unique") {
 				return 0, sql.ErrNoRows
 			}
 			return 0, fmt.Errorf("create local user for upstream user: %w", err)
 		}
+	} else if localUserID != upstreamUserID {
+		return 0, fmt.Errorf("local user id %d does not match sub2api user id %d for %s", localUserID, upstreamUserID, email)
 	}
 
 	if _, err := tx.ExecContext(ctx, db.Rebind(r.sqlDialect, `
@@ -4948,7 +5788,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			if fulfillmentErr != nil {
 				break
 			}
-			if ensureErr := r.proxyClient.EnsureAdminUserKeyInGroup(ctx, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
+			if ensureErr := r.ensurePackageUserKeyInGroup(ctx, payload.UserID, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
 				fulfillmentErr = ensureErr
 				break
 			}
@@ -4968,7 +5808,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			if fulfillmentErr != nil {
 				break
 			}
-			if ensureErr := r.proxyClient.EnsureAdminUserKeyInGroup(ctx, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
+			if ensureErr := r.ensurePackageUserKeyInGroup(ctx, payload.UserID, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
 				fulfillmentErr = ensureErr
 				break
 			}
@@ -4990,6 +5830,22 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		return applyErr
 	}
 	return nil
+}
+
+func (r *routes) ensurePackageUserKeyInGroup(ctx context.Context, localUserID, upstreamUserID, groupID int64, parentIdempotencyKey string) error {
+	if r.sub2api.IsConfigured() {
+		hasToken, err := r.sub2api.HasUpstreamToken(ctx, localUserID)
+		if err != nil {
+			return err
+		}
+		if hasToken {
+			return r.sub2api.EnsureUserKeyInGroup(ctx, localUserID, groupID, parentIdempotencyKey)
+		}
+	}
+	if r.proxyClient == nil {
+		return errors.New("proxy client is not configured")
+	}
+	return r.proxyClient.EnsureAdminUserKeyInGroup(ctx, upstreamUserID, groupID, parentIdempotencyKey)
 }
 
 func (r *routes) resolveSub2APIUserID(ctx context.Context, userID int64) (int64, error) {
@@ -5578,6 +6434,7 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			t.id,
 			t.code,
 			t.name,
+			t.level,
 			t.price_micros,
 			t.value_type,
 			t.value_amount,
@@ -5607,6 +6464,7 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			tierID       int64
 			pkgCode      string
 			pkgName      string
+			level        string
 			priceMicros  int64
 			valueType    string
 			valueAmount  int64
@@ -5619,8 +6477,11 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			updatedAt    string
 			groupID      sql.NullInt64
 		)
-		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &isVisible, &isPublished, &createdAt, &updatedAt, &groupID); err != nil {
+		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &level, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &isVisible, &isPublished, &createdAt, &updatedAt, &groupID); err != nil {
 			return nil, err
+		}
+		if strings.TrimSpace(level) == "" {
+			level = packageLevelAdmin
 		}
 
 		idx, found := packageIndex[tierID]
@@ -5630,12 +6491,13 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			packages = append(packages, adminPackageResponse{
 				Code:        pkgCode,
 				Name:        pkgName,
+				Level:       level,
 				PriceMicros: priceMicros,
 				ValueType:   valueType,
 				ValueAmount: valueAmount,
 				Description: description,
 				Features:    parseFeaturesJSON(featuresJSON),
-				IsEnabled:   isPublished,
+				IsEnabled:   isEnabled,
 				IsVisible:   isVisible,
 				IsPublished: isPublished,
 				GroupIDs:    []int64{},
@@ -5678,6 +6540,33 @@ func (r *routes) loadAdminPackageByCode(ctx context.Context, packageCode string)
 		}
 	}
 	return adminPackageResponse{}, sql.ErrNoRows
+}
+
+func filterAdminPackagesByLevel(packages []adminPackageResponse, level string) []adminPackageResponse {
+	filtered := make([]adminPackageResponse, 0, len(packages))
+	for _, pkg := range packages {
+		if pkg.Level == level {
+			filtered = append(filtered, pkg)
+		}
+	}
+	return filtered
+}
+
+func filterDistributorAssignablePackages(packages []adminPackageResponse) []adminPackageResponse {
+	filtered := make([]adminPackageResponse, 0, len(packages))
+	for _, pkg := range packages {
+		if isDistributorAssignablePackage(pkg) {
+			filtered = append(filtered, pkg)
+		}
+	}
+	return filtered
+}
+
+func isDistributorAssignablePackage(pkg adminPackageResponse) bool {
+	if !pkg.IsEnabled || !pkg.IsPublished {
+		return false
+	}
+	return pkg.Level == packageLevelAdmin || pkg.Level == packageLevelDistributor
 }
 
 func (r *routes) loadAuthorizedGroupIDSet(ctx context.Context, userID int64) (map[int64]struct{}, error) {
@@ -5727,6 +6616,10 @@ func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string)
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
+	forwarded.Method = http.MethodGet
+	forwarded.Body = nil
+	forwarded.GetBody = nil
+	forwarded.ContentLength = 0
 	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
 		return nil, err
 	}
@@ -5874,6 +6767,18 @@ func isAPIKeyPayloadAuthorized(payload any, authorizedGroupIDs map[int64]struct{
 	}
 	_, allowed := authorizedGroupIDs[groupID]
 	return allowed, nil
+}
+
+func isProtectedAPIKeyPayload(payload any) (bool, error) {
+	item, ok := unwrapSingleAPIKeyPayload(payload)
+	if !ok {
+		return false, errors.New("api key payload shape is not supported")
+	}
+	name := asString(item["name"])
+	if name == "" {
+		name = asString(item["label"])
+	}
+	return apikey.IsProtectedAPIKeyName(name), nil
 }
 
 func filterGroupItemsByID(groups []any, authorizedGroupIDs map[int64]struct{}) []any {
@@ -6112,6 +7017,7 @@ func buildRedeemCode(orderID, fallback string, groupID int64) string {
 func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool) (adminPackageRequest, error) {
 	payload.Code = strings.TrimSpace(payload.Code)
 	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Level = strings.TrimSpace(strings.ToLower(payload.Level))
 	payload.ValueType = strings.TrimSpace(payload.ValueType)
 	payload.Description = strings.TrimSpace(payload.Description)
 	payload.FeaturesJSON = strings.TrimSpace(payload.FeaturesJSON)
@@ -6121,6 +7027,16 @@ func normalizeAdminPackageRequest(payload adminPackageRequest, requireCode bool)
 	}
 	if payload.Name == "" {
 		return adminPackageRequest{}, errors.New("name is required")
+	}
+	switch payload.Level {
+	case "":
+		if requireCode {
+			payload.Level = packageLevelAdmin
+		}
+	case packageLevelAdmin, packageLevelDistributor:
+		// valid
+	default:
+		return adminPackageRequest{}, errors.New("level must be admin or distributor")
 	}
 	if len(payload.GroupIDs) == 0 {
 		return adminPackageRequest{}, errors.New("group_ids is required")

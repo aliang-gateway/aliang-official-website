@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	_ "ai-api-portal/backend/docs"
@@ -38,7 +39,12 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 // @BasePath /
 
 func main() {
-	configPath := flag.String("config", "./config.yaml", "path to backend YAML config file")
+	defaultConfigPath := "./config.yaml"
+	if envPath := strings.TrimSpace(os.Getenv("CONFIG_PATH")); envPath != "" {
+		defaultConfigPath = envPath
+	}
+
+	configPath := flag.String("config", defaultConfigPath, "path to backend YAML config file")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -51,7 +57,7 @@ func main() {
 	slog.Info("config loaded", "log_level", cfg.LogLevel, "db_driver", cfg.Database.Driver, "port", cfg.Server.Port)
 
 	if cfg.Sub2APIBaseURL == "" {
-		slog.Error("failed to load config: SUB2API_BASE_URL is required")
+		slog.Error("failed to load config: sub2api_base_url is required (set in config file or SUB2API_BASE_URL env)")
 		os.Exit(1)
 	}
 

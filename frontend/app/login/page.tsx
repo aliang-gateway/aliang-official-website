@@ -15,7 +15,7 @@ type LoginResponse = {
     id?: number;
     email?: string;
     name?: string;
-    role?: "user" | "admin";
+    role?: "user" | "admin" | "distributor";
   };
 };
 
@@ -78,7 +78,7 @@ function LoginContent() {
 
       const role = data?.user?.role ?? asRecord(legacyPayload?.user)?.role;
       const safeNextPath = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "";
-      router.replace(safeNextPath || (role === "admin" ? "/admin" : "/dashboard"));
+      router.replace(safeNextPath || (role === "distributor" ? "/distributor" : role === "admin" ? "/admin/users" : "/dashboard"));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Login failed");
     } finally {

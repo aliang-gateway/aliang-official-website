@@ -230,6 +230,74 @@ func TestDo_RetryPolicyByMethodAndStatus(t *testing.T) {
 	}
 }
 
+func TestDo_FallsBackToLegacyAPIKeyRouteOnNotFound(t *testing.T) {
+	t.Parallel()
+
+	seenPaths := make([]string, 0, 2)
+	var seenBody string
+	var seenAuth string
+	var seenIdempotency string
+	var seenQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPaths = append(seenPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/api/v1/api-keys":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("404 page not found"))
+		case "/api/v1/keys":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read fallback body: %v", err)
+			}
+			seenBody = string(body)
+			seenAuth = r.Header.Get("Authorization")
+			seenIdempotency = r.Header.Get("Idempotency-Key")
+			seenQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"id":99}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	client, err := NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	incoming := httptest.NewRequest(http.MethodPost, "http://backend.local/api-keys?group_id=77", strings.NewReader(`{"name":"auto-key"}`))
+	incoming.Header.Set("Authorization", "Bearer user-token")
+	incoming.Header.Set("Content-Type", "application/json")
+	incoming.Header.Set("Idempotency-Key", "idem-create-key")
+	resp, err := client.Do(context.Background(), incoming, "/api/v1/api-keys")
+	if err != nil {
+		t.Fatalf("proxy do: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status 201 from fallback route, got %d", resp.StatusCode)
+	}
+	if !reflect.DeepEqual(seenPaths, []string{"/api/v1/api-keys", "/api/v1/keys"}) {
+		t.Fatalf("expected fallback path order, got %+v", seenPaths)
+	}
+	if seenBody != `{"name":"auto-key"}` {
+		t.Fatalf("expected request body preserved, got %q", seenBody)
+	}
+	if seenAuth != "Bearer user-token" {
+		t.Fatalf("expected auth header preserved, got %q", seenAuth)
+	}
+	if seenIdempotency != "idem-create-key" {
+		t.Fatalf("expected idempotency header preserved, got %q", seenIdempotency)
+	}
+	if seenQuery != "group_id=77" {
+		t.Fatalf("expected query preserved on fallback, got %q", seenQuery)
+	}
+}
+
 func TestDo_MethodRetryMatrixOn503(t *testing.T) {
 	t.Parallel()
 
@@ -468,6 +536,9 @@ func TestDoAdminJSON_MapsAPIErrorAndRetryAfter(t *testing.T) {
 	if apiErr.StatusCode != http.StatusConflict {
 		t.Fatalf("expected status 409, got %d", apiErr.StatusCode)
 	}
+	if apiErr.Method != http.MethodPost || apiErr.Path != "/api/v1/admin/redeem-codes/create-and-redeem" {
+		t.Fatalf("expected request context in api error, got method=%q path=%q", apiErr.Method, apiErr.Path)
+	}
 	if apiErr.Reason != "IDEMPOTENCY_KEY_CONFLICT" {
 		t.Fatalf("expected reason IDEMPOTENCY_KEY_CONFLICT, got %q", apiErr.Reason)
 	}
@@ -476,6 +547,40 @@ func TestDoAdminJSON_MapsAPIErrorAndRetryAfter(t *testing.T) {
 	}
 	if apiErr.RetryAfter <= 0 {
 		t.Fatalf("expected positive retry-after, got %v", apiErr.RetryAfter)
+	}
+}
+
+func TestDoAdminJSON_MapsPlainTextNotFoundWithRequestPath(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("404 page not found"))
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	err = client.DoAdminJSON(context.Background(), AdminRequest{Method: http.MethodGet, Path: "/api/v1/admin/groups/all"}, nil)
+	if err == nil {
+		t.Fatalf("expected api error")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusNotFound || apiErr.Method != http.MethodGet || apiErr.Path != "/api/v1/admin/groups/all" {
+		t.Fatalf("unexpected api error context: %#v", apiErr)
+	}
+	if apiErr.Message != "404 page not found" {
+		t.Fatalf("expected plain-text body message, got %q", apiErr.Message)
+	}
+	if got := apiErr.Error(); got != "sub2api GET /api/v1/admin/groups/all status 404 404 page not found" {
+		t.Fatalf("unexpected api error string: %q", got)
 	}
 }
 
@@ -719,7 +824,7 @@ func TestCreateUserAPIKey_UsesBearerAndGroupBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUserAPIKey() error = %v", err)
 	}
-	if seenPath != "/api/v1/keys" {
+	if seenPath != "/api/v1/api-keys" {
 		t.Fatalf("unexpected path: %s", seenPath)
 	}
 	if seenAuth != "Bearer jwt-123" {
@@ -733,6 +838,105 @@ func TestCreateUserAPIKey_UsesBearerAndGroupBinding(t *testing.T) {
 	}
 	if resp.Data.ID != 91 || resp.Data.GroupID != 77 {
 		t.Fatalf("unexpected api key response: %#v", resp.Data)
+	}
+}
+
+func TestListUserAPIKeys_FallsBackToLegacyKeysRouteOnNotFound(t *testing.T) {
+	t.Parallel()
+
+	seenPaths := make([]string, 0, 2)
+	var seenLegacyQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPaths = append(seenPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/api/v1/api-keys":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("404 page not found"))
+		case "/api/v1/keys":
+			seenLegacyQuery = r.URL.RawQuery
+			if got := r.Header.Get("Authorization"); got != "Bearer jwt-legacy" {
+				t.Fatalf("expected bearer auth on legacy route, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"items":[{"id":42,"name":"auto-key","group_id":77,"status":"active"}],"total":1}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "unused-admin-key"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.ListUserAPIKeys(context.Background(), "jwt-legacy", 77, "auto-key")
+	if err != nil {
+		t.Fatalf("ListUserAPIKeys() error = %v", err)
+	}
+	if !reflect.DeepEqual(seenPaths, []string{"/api/v1/api-keys", "/api/v1/keys"}) {
+		t.Fatalf("expected fallback path order, got %+v", seenPaths)
+	}
+	if !strings.Contains(seenLegacyQuery, "group_id=77") || !strings.Contains(seenLegacyQuery, "search=auto-key") {
+		t.Fatalf("expected query to be preserved on legacy route, got %q", seenLegacyQuery)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].ID != 42 || resp.Data[0].GroupID != 77 {
+		t.Fatalf("unexpected legacy list response: %#v", resp.Data)
+	}
+}
+
+func TestCreateUserAPIKey_FallsBackToLegacyKeysRouteOnNotFound(t *testing.T) {
+	t.Parallel()
+
+	seenPaths := make([]string, 0, 2)
+	var seenAuth string
+	var seenIdempotency string
+	var payload CreateUserAPIKeyRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPaths = append(seenPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/api/v1/api-keys":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("404 page not found"))
+		case "/api/v1/keys":
+			seenAuth = r.Header.Get("Authorization")
+			seenIdempotency = r.Header.Get("Idempotency-Key")
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode legacy payload: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"id":93,"name":"auto-key","key":"sk-legacy","group_id":77,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	client, err := NewClientWithOptions(upstream.URL, &http.Client{Timeout: RequestTimeout}, ClientOptions{AdminAPIKey: "unused-admin-key"})
+	if err != nil {
+		t.Fatalf("new client with options: %v", err)
+	}
+
+	resp, err := client.CreateUserAPIKey(context.Background(), "jwt-legacy", CreateUserAPIKeyRequest{Name: "auto-key", GroupID: 77}, "idem-legacy-key")
+	if err != nil {
+		t.Fatalf("CreateUserAPIKey() error = %v", err)
+	}
+	if !reflect.DeepEqual(seenPaths, []string{"/api/v1/api-keys", "/api/v1/keys"}) {
+		t.Fatalf("expected fallback path order, got %+v", seenPaths)
+	}
+	if seenAuth != "Bearer jwt-legacy" {
+		t.Fatalf("expected bearer auth on legacy route, got %q", seenAuth)
+	}
+	if seenIdempotency != "idem-legacy-key" {
+		t.Fatalf("expected idempotency header on legacy route, got %q", seenIdempotency)
+	}
+	if payload.Name != "auto-key" || payload.GroupID != 77 {
+		t.Fatalf("unexpected legacy payload: %#v", payload)
+	}
+	if resp.Data.ID != 93 || resp.Data.GroupID != 77 {
+		t.Fatalf("unexpected legacy create response: %#v", resp.Data)
 	}
 }
 

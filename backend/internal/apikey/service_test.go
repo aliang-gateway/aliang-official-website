@@ -3,6 +3,7 @@ package apikey
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -106,6 +107,36 @@ func TestRevokeKeyDisablesActiveState(t *testing.T) {
 	}
 	if active {
 		t.Fatalf("expected key to be inactive after revoke")
+	}
+}
+
+func TestRevokeKeyRejectsProtectedAutoKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	service := NewService(database)
+	userID := createUser(t, ctx, database, "u3@example.com", "User Three", "user")
+
+	created, err := service.CreateKey(ctx, userID, ProtectedAPIKeyName)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+
+	revoked, err := service.RevokeKey(ctx, created.ID, userID, false)
+	if !errors.Is(err, ErrProtectedAPIKey) {
+		t.Fatalf("expected ErrProtectedAPIKey, got revoked=%v err=%v", revoked, err)
+	}
+	if revoked {
+		t.Fatalf("expected protected key revoke to report false")
+	}
+
+	active, err := service.IsKeyActive(ctx, created.APIKey)
+	if err != nil {
+		t.Fatalf("IsKeyActive() error = %v", err)
+	}
+	if !active {
+		t.Fatalf("expected protected key to remain active")
 	}
 }
 

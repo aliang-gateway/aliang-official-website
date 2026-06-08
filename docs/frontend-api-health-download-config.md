@@ -10,7 +10,7 @@
 | **Base URL** | `http://<host>:3000` |
 | **Content-Type** | `application/json` |
 | **认证** | 管理 API 需在请求头携带 `Authorization`（透传至后端校验） |
-| **后端地址** | 通过环境变量 `API_BASE_URL` / `NEXT_PUBLIC_API_BASE_URL` 配置 |
+| **后端地址** | 环境变量 `API_BASE_URL` / `NEXT_PUBLIC_API_BASE_URL`，或运行时配置文件 `config.json` / `config.yaml` 中的 `api_base_url`（环境变量优先） |
 | **错误响应** | 所有接口统一格式：`{ "error": "<描述>" }`，HTTP 状态码见各接口 |
 
 ---
@@ -78,7 +78,7 @@ GET /api/runtime-config
 
 ```json
 {
-  "error": "API_BASE_URL or NEXT_PUBLIC_API_BASE_URL is not set"
+  "error": "API base URL is not configured (set API_BASE_URL / NEXT_PUBLIC_API_BASE_URL env, or api_base_url in config.json / config.yaml)"
 }
 ```
 

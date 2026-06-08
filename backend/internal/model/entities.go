@@ -24,6 +24,7 @@ type Tier struct {
 	ID           int64
 	Code         string
 	Name         string
+	Level        string
 	PriceMicros  int64
 	ValueType    string
 	ValueAmount  int64

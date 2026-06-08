@@ -21,14 +21,20 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 
 	ctx := context.Background()
 	database := setupTestDB(t)
-	userID := createUser(t, ctx, database, "token-login@example.com", "Token Login", "user")
+	const userID int64 = 7001
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_users(id, email, name, role)
+		VALUES (?, ?, ?, ?);
+	`, userID, "token-login@example.com", "Token Login", "distributor"); err != nil {
+		t.Fatalf("seed sub2api-aligned local user: %v", err)
+	}
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/api/v1/auth/login" {
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"up-at-1","refresh_token":"up-rt-1","user":{"id":7001,"email":"token-login@example.com"}}}`))
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"up-at-1","refresh_token":"up-rt-1","role":"user","user":{"id":7001,"email":"token-login@example.com","role":"user"}}}`))
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -38,7 +44,7 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 	}
 
 	m := http.NewServeMux()
-	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+	RegisterRoutesWithOptions(m, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"token-login@example.com","password":"secret"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -67,6 +73,16 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 	}
 	if got := data["session_token"]; got == nil || got == "" {
 		t.Fatalf("expected nested session_token to be injected, got %#v", got)
+	}
+	if data["role"] != "distributor" {
+		t.Fatalf("expected data.role to use local distributor role, got %#v", data["role"])
+	}
+	userObj, ok := data["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data.user object, got %#v", data["user"])
+	}
+	if userObj["role"] != "distributor" {
+		t.Fatalf("expected data.user.role to use local distributor role, got %#v", userObj["role"])
 	}
 	if got := rec.Header().Get("Content-Length"); got != "" && got != strconv.Itoa(rec.Body.Len()) {
 		t.Fatalf("expected Content-Length %d, got %q", rec.Body.Len(), got)
@@ -173,18 +189,18 @@ func TestAuthRefreshPassthroughUpdatesStoredSub2APITokens(t *testing.T) {
 	}
 }
 
-func TestAuthMePassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.T) {
+func TestAuthMeReturnsLocalProfileWhenUpstreamTokenExists(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	database := setupTestDB(t)
 
-	var seenAuthorization string
+	upstreamHits := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamHits++
 		if req.URL.Path != "/api/v1/auth/me" {
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
 		}
-		seenAuthorization = req.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":9999,"email":"from-upstream@example.com"}`))
 	}))
@@ -196,9 +212,9 @@ func TestAuthMePassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.T) 
 	}
 
 	m := http.NewServeMux()
-	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+	RegisterRoutesWithOptions(m, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 
-	userID, localSessionToken := createUserViaAPI(t, m, "passthrough-authme@example.com", "Auth Me User", "user", "")
+	userID, localSessionToken := createUserViaAPI(t, m, "passthrough-authme@example.com", "Auth Me User", "distributor", "test-admin-secret")
 
 	_, err = database.ExecContext(ctx, `
 		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
@@ -216,8 +232,18 @@ func TestAuthMePassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.T) 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
-	if seenAuthorization != "Bearer stored-upstream-access" {
-		t.Fatalf("expected upstream Authorization to use stored upstream token, got %q", seenAuthorization)
+	if upstreamHits != 0 {
+		t.Fatalf("expected no upstream /auth/me calls for local session, got %d", upstreamHits)
+	}
+	var payload struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode local auth/me response: %v", err)
+	}
+	if payload.Email != "passthrough-authme@example.com" || payload.Role != "distributor" {
+		t.Fatalf("unexpected local auth/me payload: %+v", payload)
 	}
 }
 
@@ -332,7 +358,7 @@ func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"access_token":"missing-user-access","refresh_token":"missing-user-refresh","user":{"email":"unknown@example.com"}}`))
+		_, _ = w.Write([]byte(`{"access_token":"missing-user-access","refresh_token":"missing-user-refresh","user":{"id":7002,"email":"unknown@example.com"}}`))
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -380,6 +406,19 @@ func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected one stored token row for auto-created local user, got %d", count)
+	}
+
+	var storedUserID int64
+	err = database.QueryRowContext(ctx, `
+		SELECT user_id
+		FROM als_sub2api_auth_tokens
+		WHERE upstream_user_id = ?;
+	`, 7002).Scan(&storedUserID)
+	if err != nil {
+		t.Fatalf("query auto-created sub2api auth token: %v", err)
+	}
+	if storedUserID != 7002 {
+		t.Fatalf("expected auto-created local user id to match sub2api id 7002, got %d", storedUserID)
 	}
 
 	var sessionCount int64

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { formatMetricCurrency } from "@/lib/currency";
 import { asRecord, asString, extractApiError } from "@/lib/api-response";
 
 /* ------------------------------------------------------------------ */
@@ -17,12 +18,21 @@ type UserProfile = {
   balance: number;
 };
 
+type ApiKeyFormatFilter = "all" | "openai" | "anthropic";
+
+type AvailableGroup = {
+  id: number;
+  name: string;
+  platform: string;
+};
+
 type ApiKeyItem = {
   id: number;
   name: string;
   key: string;
   group_id: number;
   group_name: string;
+  group_platform: string;
   status: string;
   quota: number;
   quota_used: number;
@@ -67,6 +77,7 @@ type PaginationInfo = {
 };
 
 const SESSION_TOKEN_KEY = "session_token";
+const PROTECTED_API_KEY_NAME = "auto-key";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                              */
@@ -98,6 +109,35 @@ function maskApiKey(value: string) {
   if (!trimmed) return "***";
   if (trimmed.length <= 10) return `${trimmed.slice(0, 3)}***`;
   return `${trimmed.slice(0, 8)}***${trimmed.slice(-4)}`;
+}
+
+function isProtectedApiKeyName(name: string) {
+  return name.trim() === PROTECTED_API_KEY_NAME;
+}
+
+function normalizeGroupPlatform(platform: string) {
+  return platform.trim().toLowerCase();
+}
+
+function matchesFormatFilter(platform: string, filter: ApiKeyFormatFilter) {
+  const normalized = normalizeGroupPlatform(platform);
+  if (filter === "all") return true;
+  if (filter === "openai") return normalized === "openai";
+  if (filter === "anthropic") return normalized === "anthropic";
+  return false;
+}
+
+function formatFilterLabel(filter: ApiKeyFormatFilter) {
+  if (filter === "openai") return "OpenAI 格式";
+  if (filter === "anthropic") return "Anthropic 格式";
+  return "全部";
+}
+
+function platformBadgeLabel(platform: string) {
+  const normalized = normalizeGroupPlatform(platform);
+  if (normalized === "openai") return "OpenAI";
+  if (normalized === "anthropic") return "Anthropic";
+  return platform || "其他";
 }
 
 function parsePagination(payload: unknown): PaginationInfo {
@@ -132,6 +172,7 @@ function parseApiKeysList(payload: unknown): { keys: ApiKeyItem[]; pagination: P
         key: asString(item.key) || asString(item.api_key),
         group_id: asNumber(item.group_id),
         group_name: asString(group?.name) || asString(item.group_name) || `Group #${item.group_id}`,
+        group_platform: asString(group?.platform) || asString(item.group_platform),
         status: asString(item.status, "active"),
         quota: asNumber(item.quota),
         quota_used: asNumber(item.quota_used),
@@ -141,6 +182,27 @@ function parseApiKeysList(payload: unknown): { keys: ApiKeyItem[]; pagination: P
     });
   const pagination = parsePagination(payload);
   return { keys, pagination };
+}
+
+function parseAvailableGroups(payload: unknown): AvailableGroup[] {
+  const root = asRecord(payload);
+  const inner = asRecord(root?.data) ?? root;
+  const list = Array.isArray(inner?.data)
+    ? inner.data
+    : Array.isArray(inner)
+      ? inner
+      : Array.isArray(root?.data)
+        ? root.data
+        : [];
+  return list
+    .map((item: unknown) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item) => ({
+      id: asNumber(item.id),
+      name: asString(item.name) || `Group #${item.id}`,
+      platform: asString(item.platform),
+    }))
+    .filter((item) => item.id > 0);
 }
 
 function parseSubscriptionSummary(payload: unknown): SubscriptionSummary | null {
@@ -195,6 +257,102 @@ function parseUsageStats(payload: unknown): UsageStats | null {
   };
 }
 
+function ApiKeyRow({
+  apiKey,
+  copiedKeyId,
+  onCopy,
+  onToggle,
+  onDelete,
+}: {
+  apiKey: ApiKeyItem;
+  copiedKeyId: number | null;
+  onCopy: (keyId: number, keyValue: string) => void;
+  onToggle: (keyId: number, status: string) => void;
+  onDelete: (keyId: number) => void;
+}) {
+  const isProtected = isProtectedApiKeyName(apiKey.name);
+
+  return (
+    <li
+      className="group flex items-center justify-between gap-3 rounded-xl border border-[var(--portal-line)] px-4 py-3 transition-colors hover:border-[var(--portal-accent)]/30"
+      style={{ background: "var(--portal-clay-strong, var(--portal-clay))" }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{apiKey.name || `Key #${apiKey.id}`}</p>
+          <span
+            className={`shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+              apiKey.status === "active" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
+            }`}
+          >
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${apiKey.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
+            {apiKey.status}
+          </span>
+          {apiKey.group_platform ? (
+            <span className="shrink-0 rounded-md bg-[var(--portal-accent)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--portal-accent)]">
+              {platformBadgeLabel(apiKey.group_platform)}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--portal-muted)]">
+          <span className="flex items-center gap-1 font-mono">
+            <MaterialIcon name="key" size={12} />
+            {maskApiKey(apiKey.key)}
+          </span>
+          <span className="flex items-center gap-1">
+            <MaterialIcon name="group" size={12} />
+            {apiKey.group_name}
+          </span>
+          <span>ID: {apiKey.id}</span>
+          <span>Created: {apiKey.created_at?.split("T")[0] ?? "\u2014"}</span>
+          {apiKey.quota > 0 && (
+            <span className="font-mono">
+              ${apiKey.quota_used.toFixed(2)} / ${apiKey.quota.toFixed(2)}
+            </span>
+          )}
+          {apiKey.expires_at && <span>Expires: {apiKey.expires_at.split("T")[0]}</span>}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => void onCopy(apiKey.id, apiKey.key)}
+          className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)] disabled:opacity-40"
+          title="Copy API key"
+          disabled={!apiKey.key}
+        >
+          <MaterialIcon
+            name={copiedKeyId === apiKey.id ? "check" : "content_copy"}
+            size={16}
+            className={copiedKeyId === apiKey.id ? "text-emerald-500" : ""}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => void onToggle(apiKey.id, apiKey.status)}
+          className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)]"
+          title={apiKey.status === "active" ? "Disable key" : "Enable key"}
+        >
+          <MaterialIcon
+            name={apiKey.status === "active" ? "toggle_on" : "toggle_off"}
+            size={16}
+            className={apiKey.status === "active" ? "text-emerald-500" : "text-red-400"}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => void onDelete(apiKey.id)}
+          className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--portal-line)] disabled:hover:bg-transparent"
+          title={isProtected ? "auto-key cannot be deleted" : "Delete key"}
+          disabled={isProtected}
+        >
+          <MaterialIcon name={isProtected ? "lock" : "delete_outline"} size={16} />
+        </button>
+      </div>
+    </li>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                            */
 /* ------------------------------------------------------------------ */
@@ -209,10 +367,52 @@ export default function AccountPage() {
 
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<AvailableGroup[]>([]);
+  const [formatFilter, setFormatFilter] = useState<ApiKeyFormatFilter>("all");
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [keyPagination, setKeyPagination] = useState<PaginationInfo>({ page: 1, per_page: 20, total: 0, total_pages: 1, has_next: false, has_prev: false });
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
+
+  const groupPlatformById = useMemo(
+    () => new Map(availableGroups.map((group) => [group.id, group.platform] as const)),
+    [availableGroups],
+  );
+
+  const groupsForFormatFilter = useMemo(() => {
+    if (formatFilter === "all") return availableGroups;
+    return availableGroups.filter((group) => matchesFormatFilter(group.platform, formatFilter));
+  }, [availableGroups, formatFilter]);
+
+  const displayKeys = useMemo(() => {
+    let list = apiKeys.map((key) => ({
+      ...key,
+      group_platform: key.group_platform || groupPlatformById.get(key.group_id) || "",
+    }));
+    if (formatFilter !== "all") {
+      list = list.filter((key) => matchesFormatFilter(key.group_platform, formatFilter));
+    }
+    if (selectedGroupId) {
+      list = list.filter((key) => key.group_id === selectedGroupId);
+    }
+    return list;
+  }, [apiKeys, formatFilter, groupPlatformById, selectedGroupId]);
+
+  const keysByGroup = useMemo(() => {
+    const grouped = new Map<string, ApiKeyItem[]>();
+    for (const key of displayKeys) {
+      const label = key.group_name || `Group #${key.group_id}`;
+      const existing = grouped.get(label) ?? [];
+      existing.push(key);
+      grouped.set(label, existing);
+    }
+    return Array.from(grouped.entries());
+  }, [displayKeys]);
+
+  const useGroupedLayout = formatFilter !== "all";
+  const showServerPagination = formatFilter === "all" && !selectedGroupId;
+  const visibleKeyCount = displayKeys.length;
 
   // Change password
   const [oldPwd, setOldPwd] = useState("");
@@ -264,12 +464,35 @@ export default function AccountPage() {
 
   /* --- API keys ------------------------------------------------ */
 
+  const loadAvailableGroups = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const res = await fetch("/api/groups/available", {
+        headers: authHeaders(sessionToken),
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const payload = await res.json();
+      setAvailableGroups(parseAvailableGroups(payload));
+    } catch {
+      // ignore
+    }
+  }, [sessionToken]);
+
   const loadApiKeys = useCallback(async (page = 1) => {
     if (!sessionToken) return;
     setApiKeyLoading(true);
     setApiKeyError(null);
     try {
-      const res = await fetch(`/api-keys?page=${page}&per_page=20`, {
+      const perPage = showServerPagination ? 20 : 100;
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+      });
+      if (selectedGroupId) {
+        params.set("group_id", String(selectedGroupId));
+      }
+      const res = await fetch(`/api-keys?${params.toString()}`, {
         headers: authHeaders(sessionToken),
         cache: "no-store",
       });
@@ -280,20 +503,34 @@ export default function AccountPage() {
       }
       const payload = await res.json();
       const { keys, pagination } = parseApiKeysList(payload);
-      setApiKeys(keys);
+      const enrichedKeys = keys.map((key) => ({
+        ...key,
+        group_platform: key.group_platform || groupPlatformById.get(key.group_id) || "",
+      }));
+      setApiKeys(enrichedKeys);
       setKeyPagination(pagination);
     } catch {
       setApiKeyError("Failed to load API keys");
     } finally {
       setApiKeyLoading(false);
     }
-  }, [sessionToken]);
+  }, [groupPlatformById, selectedGroupId, sessionToken, showServerPagination]);
+
+  useEffect(() => {
+    setSelectedGroupId(null);
+  }, [formatFilter]);
+
+  useEffect(() => {
+    if (isReady && sessionToken) {
+      void loadAvailableGroups();
+    }
+  }, [isReady, sessionToken, loadAvailableGroups]);
 
   useEffect(() => {
     if (isReady && sessionToken) {
       void loadApiKeys(1);
     }
-  }, [isReady, sessionToken, loadApiKeys]);
+  }, [formatFilter, isReady, loadApiKeys, selectedGroupId, sessionToken]);
 
   const handleToggleApiKey = async (keyId: number, currentStatus: string) => {
     setApiKeyError(null);
@@ -317,6 +554,12 @@ export default function AccountPage() {
 
   const handleDeleteApiKey = async (keyId: number) => {
     setApiKeyError(null);
+    const targetKey = apiKeys.find((key) => key.id === keyId);
+    if (targetKey && isProtectedApiKeyName(targetKey.name)) {
+      setApiKeyError("auto-key cannot be deleted");
+      return;
+    }
+
     try {
       const res = await fetch(`/api-keys/${keyId}`, {
         method: "DELETE",
@@ -478,7 +721,7 @@ export default function AccountPage() {
               <MetricBox label="Email" value={profile?.email || "\u2014"} />
               <MetricBox
                 label="Balance"
-                value={typeof profile?.balance === "number" ? `$${profile.balance.toFixed(2)}` : "\u2014"}
+                value={typeof profile?.balance === "number" ? formatMetricCurrency(profile.balance) : "\u2014"}
                 highlight
               />
             </div>
@@ -493,10 +736,55 @@ export default function AccountPage() {
             <MaterialIcon name="vpn_key" size={14} className="text-white" />
           </span>
           API Keys
-          {!apiKeyLoading && keyPagination.total > 0 && (
-            <span className="ml-2 text-sm font-normal text-[var(--portal-muted)]">({keyPagination.total})</span>
+          {!apiKeyLoading && visibleKeyCount > 0 && (
+            <span className="ml-2 text-sm font-normal text-[var(--portal-muted)]">({visibleKeyCount})</span>
           )}
         </h3>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {(["all", "openai", "anthropic"] as const).map((filter) => {
+              const isActive = formatFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setFormatFilter(filter)}
+                  disabled={apiKeyLoading}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    isActive
+                      ? "border-[var(--portal-accent)] bg-[var(--portal-accent)]/10 text-[var(--portal-accent)]"
+                      : "border-[var(--portal-line)] text-[var(--portal-muted)] hover:border-[var(--portal-accent)]/30 hover:text-[var(--portal-ink)]"
+                  }`}
+                >
+                  {formatFilterLabel(filter)}
+                </button>
+              );
+            })}
+          </div>
+
+          {formatFilter !== "all" && groupsForFormatFilter.length > 0 ? (
+            <label className="grid max-w-md gap-1 text-sm text-[var(--portal-muted)]">
+              <span>分组</span>
+              <select
+                className="field"
+                value={selectedGroupId ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedGroupId(value ? Number(value) : null);
+                }}
+                disabled={apiKeyLoading}
+              >
+                <option value="">该格式下的全部分组</option>
+                {groupsForFormatFilter.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
 
         {apiKeyError && <p className="rounded-lg bg-red-500/5 px-4 py-2.5 text-sm text-red-500">{apiKeyError}</p>}
 
@@ -513,73 +801,58 @@ export default function AccountPage() {
             </div>
             <p className="text-sm text-[var(--portal-muted)]">No visible API keys were returned for this account.</p>
           </div>
+        ) : displayKeys.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--portal-accent)]/5">
+              <MaterialIcon name="filter_alt_off" size={22} className="text-[var(--portal-muted)]" />
+            </div>
+            <p className="text-sm text-[var(--portal-muted)]">
+              当前筛选条件下没有匹配的 API Key，请切换格式或分组后重试。
+            </p>
+          </div>
         ) : (
           <>
-            <ul className="space-y-2">
-              {apiKeys.map((key) => (
-                <li key={key.id} className="group flex items-center justify-between gap-3 rounded-xl border border-[var(--portal-line)] px-4 py-3 transition-colors hover:border-[var(--portal-accent)]/30" style={{ background: "var(--portal-clay-strong, var(--portal-clay))" }}>
-                  <div className="min-w-0 flex-1">
+            {useGroupedLayout ? (
+              <div className="space-y-5">
+                {keysByGroup.map(([groupName, keys]) => (
+                  <div key={groupName} className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-[var(--portal-ink)]">{key.name || `Key #${key.id}`}</p>
-                      <span className={`shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                        key.status === "active"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : "bg-red-500/10 text-red-500"
-                      }`}>
-                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${key.status === "active" ? "bg-emerald-500" : "bg-red-500"}`} />
-                        {key.status}
-                      </span>
+                      <MaterialIcon name="folder" size={16} className="text-[var(--portal-accent)]" />
+                      <h4 className="text-sm font-semibold text-[var(--portal-ink)]">{groupName}</h4>
+                      <span className="text-xs text-[var(--portal-muted)]">({keys.length})</span>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--portal-muted)]">
-                      <span className="flex items-center gap-1 font-mono">
-                        <MaterialIcon name="key" size={12} />
-                        {maskApiKey(key.key)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MaterialIcon name="group" size={12} />
-                        {key.group_name}
-                      </span>
-                      <span>ID: {key.id}</span>
-                      <span>Created: {key.created_at?.split("T")[0] ?? "\u2014"}</span>
-                      {key.quota > 0 && (
-                        <span className="font-mono">${key.quota_used.toFixed(2)} / ${key.quota.toFixed(2)}</span>
-                      )}
-                      {key.expires_at && <span>Expires: {key.expires_at.split("T")[0]}</span>}
-                    </div>
+                    <ul className="space-y-2">
+                      {keys.map((key) => (
+                        <ApiKeyRow
+                          key={key.id}
+                          apiKey={key}
+                          copiedKeyId={copiedKeyId}
+                          onCopy={handleCopyApiKey}
+                          onToggle={handleToggleApiKey}
+                          onDelete={handleDeleteApiKey}
+                        />
+                      ))}
+                    </ul>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyApiKey(key.id, key.key)}
-                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)] disabled:opacity-40"
-                      title="Copy API key"
-                      disabled={!key.key}
-                    >
-                      <MaterialIcon name={copiedKeyId === key.id ? "check" : "content_copy"} size={16} className={copiedKeyId === key.id ? "text-emerald-500" : ""} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleApiKey(key.id, key.status)}
-                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)]"
-                      title={key.status === "active" ? "Disable key" : "Enable key"}
-                    >
-                      <MaterialIcon name={key.status === "active" ? "toggle_on" : "toggle_off"} size={16} className={key.status === "active" ? "text-emerald-500" : "text-red-400"} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteApiKey(key.id)}
-                      className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/5"
-                      title="Delete key"
-                    >
-                      <MaterialIcon name="delete_outline" size={16} />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                ))}
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {displayKeys.map((key) => (
+                  <ApiKeyRow
+                    key={key.id}
+                    apiKey={key}
+                    copiedKeyId={copiedKeyId}
+                    onCopy={handleCopyApiKey}
+                    onToggle={handleToggleApiKey}
+                    onDelete={handleDeleteApiKey}
+                  />
+                ))}
+              </ul>
+            )}
 
             {/* Pagination */}
-            {keyPagination.total_pages > 1 && (
+            {showServerPagination && keyPagination.total_pages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">
                 <button
                   type="button"

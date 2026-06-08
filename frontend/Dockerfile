@@ -10,7 +10,9 @@ FROM node:25-alpine3.22 AS builder
 WORKDIR /app
 
 ARG CDN_URL=""
+ARG STRIPE_CURRENCY=cny
 ENV NEXT_PUBLIC_CDN_URL=$CDN_URL
+ENV NEXT_PUBLIC_STRIPE_CURRENCY=$STRIPE_CURRENCY
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -23,8 +25,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Runtime server code reads API_BASE_URL directly. Keep NEXT_PUBLIC_API_BASE_URL as
-# a compatibility fallback for older env wiring.
+# Runtime server code resolves API base URL from (in order):
+# 1. API_BASE_URL / NEXT_PUBLIC_API_BASE_URL env
+# 2. FRONTEND_CONFIG_PATH or ./config.json / ./config.yaml
 ARG API_BASE_URL="http://aliang-website-backend:8081"
 ENV API_BASE_URL=$API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$API_BASE_URL

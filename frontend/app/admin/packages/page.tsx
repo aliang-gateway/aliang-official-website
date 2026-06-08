@@ -18,6 +18,7 @@ type AdminGroup = {
 type AdminPackage = {
   code: string;
   name: string;
+  level?: "admin" | "distributor";
   group_ids: number[];
   price_micros: number;
   value_type: string;
@@ -42,6 +43,7 @@ type GroupsResponse = {
 type PackageFormState = {
   code: string;
   name: string;
+  level: "admin" | "distributor";
   groupIds: number[];
   priceMicros: number;
   valueType: string;
@@ -55,6 +57,7 @@ type PackageFormState = {
 const defaultFormState: PackageFormState = {
   code: "",
   name: "",
+  level: "admin",
   groupIds: [],
   priceMicros: 0,
   valueType: "",
@@ -301,6 +304,9 @@ export default function AdminPackagesPage() {
         if (key === "isVisible" || key === "isPublished") {
           return { ...prev, [key]: value as boolean };
         }
+        if (key === "level") {
+          return { ...prev, level: value === "distributor" ? value : "admin" };
+        }
         if (key === "priceMicros" || key === "valueAmount") {
           return { ...prev, [key]: Math.max(0, parseInt(String(value), 10) || 0) };
         }
@@ -378,6 +384,7 @@ export default function AdminPackagesPage() {
       setFormState({
         code: pkg.code,
         name: pkg.name,
+        level: pkg.level === "distributor" ? pkg.level : "admin",
         groupIds: Array.isArray(pkg.group_ids) ? pkg.group_ids.map((id: number) => Number(id)).filter((id: number) => id > 0) : [],
         priceMicros: Number(pkg.price_micros) || 0,
         valueType: String(pkg.value_type ?? ""),
@@ -430,6 +437,7 @@ export default function AdminPackagesPage() {
     const payload = editingCode
       ? {
           name: trimmedName,
+          level: formState.level,
           group_ids: uniqueGroupIDs,
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
@@ -443,6 +451,7 @@ export default function AdminPackagesPage() {
       : {
           code: normalizedCode,
           name: trimmedName,
+          level: formState.level,
           group_ids: uniqueGroupIDs,
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
@@ -613,6 +622,7 @@ export default function AdminPackagesPage() {
                 <tr className="text-left text-[var(--portal-muted)]">
                   <th className="px-2 py-1">Code</th>
                   <th className="px-2 py-1">Name</th>
+                  <th className="px-2 py-1">Level</th>
                   <th className="px-2 py-1">Price</th>
                   <th className="px-2 py-1">Value</th>
                   <th className="px-2 py-1">Visible</th>
@@ -629,6 +639,15 @@ export default function AdminPackagesPage() {
                     <tr key={pkg.code} className="rounded-lg bg-[var(--portal-clay)] align-top">
                       <td className="px-2 py-2 font-mono text-xs text-[var(--portal-muted)]">{pkg.code}</td>
                       <td className="px-2 py-2 font-medium text-[var(--portal-ink)]">{pkg.name}</td>
+                      <td className="px-2 py-2">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          pkg.level === "distributor"
+                            ? "bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                            : "bg-slate-500/10 text-slate-600 dark:text-slate-300"
+                        }`}>
+                          {pkg.level === "distributor" ? "Distributor" : "Admin"}
+                        </span>
+                      </td>
                       <td className="px-2 py-2 text-sm text-[var(--portal-ink)]">
                         {pkg.price_micros > 0 ? `¥${(pkg.price_micros / 1000000).toFixed(2)}` : "Free"}
                       </td>
@@ -757,6 +776,22 @@ export default function AdminPackagesPage() {
                     required
                   />
                 </label>
+
+                <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                  <span>Package level</span>
+                  <select
+                    className="field"
+                    value={formState.level}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => handleFormChange("level", event.target.value)}
+                    disabled={isBlocked || isSubmittingForm}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="distributor">Distributor</option>
+                  </select>
+                </label>
+                <p className="-mt-2 text-xs text-[var(--portal-muted)]">
+                  Admin packages stay available to the normal public/admin flow. Distributor packages are only assignable by distributors.
+                </p>
 
                 {/* Value Type */}
                 <label className="grid gap-1 text-sm text-[var(--portal-muted)]">

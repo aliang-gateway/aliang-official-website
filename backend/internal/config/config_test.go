@@ -9,6 +9,7 @@ import (
 
 func TestLoad_RequiresSub2APIBaseURL(t *testing.T) {
 	t.Setenv("SUB2API_BASE_URL", "")
+	t.Setenv("SUB2API_ADMIN_KEY", "")
 
 	path := writeConfigFile(t, `
 server:
@@ -19,10 +20,44 @@ database:
 
 	_, err := Load(path)
 	if err == nil {
-		t.Fatalf("expected error when SUB2API_BASE_URL is missing")
+		t.Fatalf("expected error when sub2api_base_url is missing")
 	}
-	if !strings.Contains(err.Error(), "SUB2API_BASE_URL is required") {
-		t.Fatalf("expected SUB2API_BASE_URL required error, got %v", err)
+	if !strings.Contains(err.Error(), "sub2api_base_url is required") {
+		t.Fatalf("expected sub2api_base_url required error, got %v", err)
+	}
+}
+
+func TestLoad_UsesYamlSub2APIBaseURLWithoutEnv(t *testing.T) {
+	t.Setenv("SUB2API_BASE_URL", "")
+	t.Setenv("SUB2API_ADMIN_KEY", "")
+
+	path := writeConfigFile(t, `
+server:
+  port: "8081"
+database:
+  path: "./test.db"
+sub2api_base_url: "https://sub2api.yaml.example.com///"
+sub2api_admin_key: "yaml-admin-key"
+stripe:
+  secret_key: "sk_yaml"
+  webhook_secret: "whsec_yaml"
+  success_url: "https://portal.example.com/success"
+  cancel_url: "https://portal.example.com/cancel"
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Sub2APIBaseURL != "https://sub2api.yaml.example.com" {
+		t.Fatalf("expected yaml sub2api base url, got %q", cfg.Sub2APIBaseURL)
+	}
+	if cfg.Sub2APIAdminKey != "yaml-admin-key" {
+		t.Fatalf("expected yaml sub2api admin key, got %q", cfg.Sub2APIAdminKey)
+	}
+	if cfg.Stripe.SecretKey != "sk_yaml" {
+		t.Fatalf("expected yaml stripe secret key, got %q", cfg.Stripe.SecretKey)
 	}
 }
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { useTranslations } from "next-intl";
+import { formatPriceWithSymbol } from "@/lib/currency";
 
 type DownloadItem = {
   id: number;
@@ -170,13 +171,24 @@ function DownloadButton({ items, t }: { items: DownloadItem[]; t: ReturnType<typ
 }
 
 export default function ServicesPage() {
+  return (
+    <Suspense>
+      <ServicesPageContent />
+    </Suspense>
+  );
+}
+
+function ServicesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useTranslations("services");
   const [packages, setPackages] = useState<DynamicPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionToken, setSessionToken] = useState("");
   const [checkoutPendingCode, setCheckoutPendingCode] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const autoCheckoutAttempted = useRef(false);
+  const pendingPackageCode = searchParams.get("package")?.trim() ?? "";
 
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [downloadsLoading, setDownloadsLoading] = useState(true);
@@ -291,6 +303,21 @@ export default function ServicesPage() {
       setCheckoutPendingCode(null);
     }
   };
+
+  useEffect(() => {
+    if (!pendingPackageCode || isLoading || !sessionToken || autoCheckoutAttempted.current) {
+      return;
+    }
+
+    const pkg = packages.find((item) => item.code === pendingPackageCode);
+    if (!pkg || pkg.is_published === false) {
+      return;
+    }
+
+    autoCheckoutAttempted.current = true;
+    router.replace("/services", { scroll: false });
+    void handlePackageCheckout(pkg);
+  }, [isLoading, packages, pendingPackageCode, router, sessionToken]);
 
   const grouped = new Map<string, DownloadItem[]>();
   for (const dl of downloads) {
@@ -420,6 +447,8 @@ export default function ServicesPage() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
               {packages.map((pkg) => {
                 const isPublished = pkg.is_published !== false;
+                const isFreeTier = pkg.price_micros <= 0;
+                const canPurchase = isPublished && !isFreeTier;
                 return (
                   <div
                     key={pkg.code}
@@ -430,7 +459,7 @@ export default function ServicesPage() {
                         {pkg.name}
                       </h3>
                       <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-black text-[var(--stitch-text)]">¥{formatPrice(pkg.price_micros)}</span>
+                        <span className="text-4xl font-black text-[var(--stitch-text)]">{formatPriceWithSymbol(formatPrice(pkg.price_micros))}</span>
                         {pkg.value_type === "days" ? <span className="text-sm text-[var(--stitch-text-muted)]">/ {pkg.value_amount}d</span> : null}
                       </div>
                       {pkg.description ? <p className="mt-4 text-sm text-[var(--stitch-text-muted)]">{pkg.description}</p> : null}
@@ -457,9 +486,9 @@ export default function ServicesPage() {
                         ? t("packageUnavailable")
                         : checkoutPendingCode === pkg.code
                         ? t("redirecting")
-                        : pkg.price_micros > 0
+                        : canPurchase
                         ? t("buyWithStripe")
-                        : t("noPurchaseNeeded")}
+                        : t("openDashboard")}
                     </button>
                   </div>
                 );

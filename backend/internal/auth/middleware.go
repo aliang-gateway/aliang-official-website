@@ -109,6 +109,23 @@ func RequireAdmin(next http.Handler) http.Handler {
 	})
 }
 
+func RequireDistributor(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := UserFromContext(r.Context())
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+
+		if user.Role != "distributor" {
+			writeError(w, http.StatusForbidden, "distributor role required")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

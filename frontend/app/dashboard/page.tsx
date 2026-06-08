@@ -826,6 +826,16 @@ function DashboardPageContent() {
   }, []);
 
   useEffect(() => {
+    if (!isHydrated || sessionToken) {
+      return;
+    }
+
+    const query = searchParams.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+    router.replace(`/login?next=${encodeURIComponent(next)}`);
+  }, [isHydrated, pathname, router, searchParams, sessionToken]);
+
+  useEffect(() => {
     if (!isHydrated) {
       return;
     }
@@ -1296,36 +1306,11 @@ function DashboardPageContent() {
         ? "text-emerald-500 dark:text-emerald-400"
         : "text-[var(--portal-muted)]";
 
-  if (!isHydrated || loading) {
+  if (!isHydrated || !sessionToken || loading) {
     return (
       <section className="portal-shell py-8">
         <div className="clay-panel p-5">
           <p className="text-sm text-[var(--portal-muted)]">{t("loading")}</p>
-        </div>
-      </section>
-    );
-  }
-
-  if (!sessionToken) {
-    return (
-      <section className="portal-shell space-y-6 py-8">
-        <div className="clay-panel space-y-2 p-5">
-          <h1 className="section-title">
-            <span className="gradient-text">{t("title")}</span>
-          </h1>
-          <p className="section-subtitle">{t("signInPrompt")}</p>
-        </div>
-
-        <div className="block-card space-y-4">
-          <p className="notice">{t("tokenMissing")}</p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/login" className="btn-primary inline-flex items-center justify-center no-underline">
-              {t("goToLogin")}
-            </Link>
-            <Link href="/services" className="btn-ghost inline-flex items-center justify-center no-underline">
-              {t("viewPackages")}
-            </Link>
-          </div>
         </div>
       </section>
     );

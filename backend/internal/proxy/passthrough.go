@@ -17,6 +17,8 @@ import (
 
 type APIError struct {
 	StatusCode int
+	Method     string
+	Path       string
 	Code       int
 	Message    string
 	Reason     string
@@ -39,7 +41,14 @@ func (e *APIError) Error() string {
 	if e == nil {
 		return "sub2api api error"
 	}
-	parts := []string{fmt.Sprintf("sub2api status %d", e.StatusCode)}
+	parts := []string{"sub2api"}
+	if strings.TrimSpace(e.Method) != "" {
+		parts = append(parts, strings.ToUpper(strings.TrimSpace(e.Method)))
+	}
+	if strings.TrimSpace(e.Path) != "" {
+		parts = append(parts, strings.TrimSpace(e.Path))
+	}
+	parts = append(parts, fmt.Sprintf("status %d", e.StatusCode))
 	if strings.TrimSpace(e.Reason) != "" {
 		parts = append(parts, "reason="+strings.TrimSpace(e.Reason))
 	}
@@ -249,6 +258,8 @@ const (
 	maxRetries     = 1
 )
 
+var userAPIKeyPaths = []string{"/api/v1/api-keys", "/api/v1/keys"}
+
 var (
 	requestHeaderAllowlist = []string{
 		http.CanonicalHeaderKey("Authorization"),
@@ -312,11 +323,6 @@ func (c *Client) Do(ctx context.Context, incoming *http.Request, upstreamPath st
 		return nil, errors.New("incoming request is nil")
 	}
 
-	upstreamURL, err := BuildUpstreamURL(c.baseURL, upstreamPath, incoming.URL.RawQuery)
-	if err != nil {
-		return nil, err
-	}
-
 	bodyBytes := []byte{}
 	if incoming.Body != nil {
 		readBody, readErr := io.ReadAll(incoming.Body)
@@ -328,39 +334,52 @@ func (c *Client) Do(ctx context.Context, incoming *http.Request, upstreamPath st
 	}
 
 	retryableMethod := incoming.Method == http.MethodGet || incoming.Method == http.MethodHead
+	upstreamPaths := upstreamPathsWithUserAPIKeyFallback(upstreamPath)
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		reqCtx, cancel := context.WithTimeout(ctx, RequestTimeout)
-		upstreamReq, buildErr := http.NewRequestWithContext(reqCtx, incoming.Method, upstreamURL.String(), bytes.NewReader(bodyBytes))
-		if buildErr != nil {
-			cancel()
-			return nil, fmt.Errorf("build upstream request: %w", buildErr)
-		}
-		if len(bodyBytes) > 0 {
-			upstreamReq.ContentLength = int64(len(bodyBytes))
+	for pathIndex, candidatePath := range upstreamPaths {
+		upstreamURL, err := BuildUpstreamURL(c.baseURL, candidatePath, incoming.URL.RawQuery)
+		if err != nil {
+			return nil, err
 		}
 
-		copyAllowedRequestHeaders(upstreamReq.Header, incoming)
-		setForwardedHeaders(upstreamReq.Header, incoming)
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			reqCtx, cancel := context.WithTimeout(ctx, RequestTimeout)
+			upstreamReq, buildErr := http.NewRequestWithContext(reqCtx, incoming.Method, upstreamURL.String(), bytes.NewReader(bodyBytes))
+			if buildErr != nil {
+				cancel()
+				return nil, fmt.Errorf("build upstream request: %w", buildErr)
+			}
+			if len(bodyBytes) > 0 {
+				upstreamReq.ContentLength = int64(len(bodyBytes))
+			}
 
-		resp, doErr := c.httpClient.Do(upstreamReq)
-		if doErr != nil {
-			cancel()
-			if retryableMethod && attempt < maxRetries && isRetryableNetworkError(doErr) {
+			copyAllowedRequestHeaders(upstreamReq.Header, incoming)
+			setForwardedHeaders(upstreamReq.Header, incoming)
+
+			resp, doErr := c.httpClient.Do(upstreamReq)
+			if doErr != nil {
+				cancel()
+				if retryableMethod && attempt < maxRetries && isRetryableNetworkError(doErr) {
+					continue
+				}
+				return nil, doErr
+			}
+
+			stripHopByHopHeaders(resp.Header)
+			if retryableMethod && attempt < maxRetries && isRetryableStatus(resp.StatusCode) {
+				cancel()
+				drainAndClose(resp.Body)
 				continue
 			}
-			return nil, doErr
-		}
+			if resp.StatusCode == http.StatusNotFound && pathIndex < len(upstreamPaths)-1 {
+				cancel()
+				drainAndClose(resp.Body)
+				break
+			}
+			resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
 
-		stripHopByHopHeaders(resp.Header)
-		if retryableMethod && attempt < maxRetries && isRetryableStatus(resp.StatusCode) {
-			cancel()
-			drainAndClose(resp.Body)
-			continue
+			return resp, nil
 		}
-		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
-
-		return resp, nil
 	}
 
 	return nil, errors.New("upstream request failed")
@@ -434,7 +453,7 @@ func (c *Client) DoAdminJSON(ctx context.Context, req AdminRequest, out any) err
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return parseAPIError(resp, body)
+		return parseAPIError(resp, body, method, req.Path)
 	}
 	if out == nil || len(bytes.TrimSpace(body)) == 0 {
 		return nil
@@ -685,6 +704,76 @@ func (c *Client) EnsureAdminUserKeyInGroup(ctx context.Context, userID int64, gr
 	return createErr
 }
 
+func (c *Client) ListUserAPIKeys(ctx context.Context, bearerToken string, groupID int64, search string) (*ListResponseEnvelope[APIKey], error) {
+	if strings.TrimSpace(bearerToken) == "" {
+		return nil, errors.New("bearer token is required")
+	}
+	query := url.Values{}
+	query.Set("page", "1")
+	query.Set("per_page", "100")
+	if groupID > 0 {
+		query.Set("group_id", strconv.FormatInt(groupID, 10))
+	}
+	if strings.TrimSpace(search) != "" {
+		query.Set("search", strings.TrimSpace(search))
+	}
+	encodedQuery := query.Encode()
+	var lastErr error
+	for _, basePath := range userAPIKeyPaths {
+		requestPath := basePath
+		if encodedQuery != "" {
+			requestPath += "?" + encodedQuery
+		}
+		resp, err := c.listUserAPIKeysAtPath(ctx, bearerToken, requestPath)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if isNotFoundAPIError(err) {
+			continue
+		}
+		return nil, err
+	}
+	return nil, lastErr
+}
+
+func (c *Client) listUserAPIKeysAtPath(ctx context.Context, bearerToken, path string) (*ListResponseEnvelope[APIKey], error) {
+	upstreamURL, err := BuildUpstreamURL(c.baseURL, path, "")
+	if err != nil {
+		return nil, err
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, RequestTimeout)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodGet, upstreamURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build api key list request: %w", err)
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(bearerToken))
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read api key list response body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, parseAPIError(resp, body, http.MethodGet, path)
+	}
+
+	var decoded ListResponseEnvelope[APIKey]
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, fmt.Errorf("decode api key list response: %w", err)
+	}
+	return &decoded, nil
+}
+
 func (c *Client) CreateUserAPIKey(ctx context.Context, bearerToken string, req CreateUserAPIKeyRequest, idempotencyKey string) (*ResponseEnvelope[APIKey], error) {
 	if err := validateCreateUserAPIKeyRequest(req, bearerToken, idempotencyKey); err != nil {
 		return nil, err
@@ -695,7 +784,23 @@ func (c *Client) CreateUserAPIKey(ctx context.Context, bearerToken string, req C
 		return nil, fmt.Errorf("marshal api key request body: %w", err)
 	}
 
-	upstreamURL, err := BuildUpstreamURL(c.baseURL, "/api/v1/keys", "")
+	var lastErr error
+	for _, path := range userAPIKeyPaths {
+		resp, err := c.createUserAPIKeyAtPath(ctx, bearerToken, path, bodyBytes, idempotencyKey)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if isNotFoundAPIError(err) {
+			continue
+		}
+		return nil, err
+	}
+	return nil, lastErr
+}
+
+func (c *Client) createUserAPIKeyAtPath(ctx context.Context, bearerToken, path string, bodyBytes []byte, idempotencyKey string) (*ResponseEnvelope[APIKey], error) {
+	upstreamURL, err := BuildUpstreamURL(c.baseURL, path, "")
 	if err != nil {
 		return nil, err
 	}
@@ -724,7 +829,7 @@ func (c *Client) CreateUserAPIKey(ctx context.Context, bearerToken string, req C
 		return nil, fmt.Errorf("read api key response body: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, parseAPIError(resp, body)
+		return nil, parseAPIError(resp, body, http.MethodPost, path)
 	}
 
 	var decoded ResponseEnvelope[APIKey]
@@ -790,6 +895,26 @@ func BuildUpstreamURL(baseURL *url.URL, upstreamPath, rawQuery string) (*url.URL
 	finalURL.Path = joinedPath
 	finalURL.RawQuery = queryValues.Encode()
 	return &finalURL, nil
+}
+
+func upstreamPathsWithUserAPIKeyFallback(upstreamPath string) []string {
+	trimmed := strings.TrimSpace(upstreamPath)
+	if trimmed == "" {
+		return []string{upstreamPath}
+	}
+
+	relativeURL, err := url.Parse(trimmed)
+	if err != nil || relativeURL.IsAbs() || relativeURL.Host != "" || strings.HasPrefix(trimmed, "//") {
+		return []string{upstreamPath}
+	}
+	if relativeURL.Path != "/api/v1/api-keys" && !strings.HasPrefix(relativeURL.Path, "/api/v1/api-keys/") {
+		return []string{upstreamPath}
+	}
+
+	legacyURL := *relativeURL
+	legacyURL.Path = "/api/v1/keys" + strings.TrimPrefix(relativeURL.Path, "/api/v1/api-keys")
+	legacyURL.RawPath = ""
+	return []string{upstreamPath, legacyURL.String()}
 }
 
 func CopyResponse(w http.ResponseWriter, resp *http.Response) error {
@@ -956,7 +1081,7 @@ func connectionHeaderTokens(headers http.Header) map[string]struct{} {
 	return blocked
 }
 
-func parseAPIError(resp *http.Response, body []byte) error {
+func parseAPIError(resp *http.Response, body []byte, method, path string) error {
 	if resp == nil {
 		return errors.New("upstream response is nil")
 	}
@@ -969,8 +1094,18 @@ func parseAPIError(resp *http.Response, body []byte) error {
 
 	apiErr := &APIError{
 		StatusCode: resp.StatusCode,
+		Method:     strings.TrimSpace(method),
+		Path:       strings.TrimSpace(path),
 		RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
 		Body:       append([]byte(nil), body...),
+	}
+	if resp.Request != nil {
+		if apiErr.Method == "" {
+			apiErr.Method = strings.TrimSpace(resp.Request.Method)
+		}
+		if apiErr.Path == "" && resp.Request.URL != nil {
+			apiErr.Path = strings.TrimSpace(resp.Request.URL.RequestURI())
+		}
 	}
 	var envelope apiErrorEnvelope
 	if len(bytes.TrimSpace(body)) > 0 && json.Unmarshal(body, &envelope) == nil {
@@ -982,6 +1117,11 @@ func parseAPIError(resp *http.Response, body []byte) error {
 		apiErr.Message = string(bytes.TrimSpace(body))
 	}
 	return apiErr
+}
+
+func isNotFoundAPIError(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
 }
 
 func parseRetryAfter(raw string) time.Duration {

@@ -18,6 +18,15 @@ type UserProfile = {
   role: string;
 };
 
+function hasAdminAccess(role: string) {
+  return role === "admin" || role === "distributor";
+}
+
+function adminEntryHref(role: string) {
+  if (role === "distributor") return "/distributor";
+  return "/admin";
+}
+
 function buildAvatarLabel(user: UserProfile | null) {
   if (!user) {
     return "??";
@@ -49,6 +58,9 @@ export function SiteHeader() {
   const primaryCta = isLoggedIn
     ? { href: "/dashboard", label: t("dashboard") }
     : { href: "/login", label: t("login") };
+  const adminCta = user && hasAdminAccess(user.role)
+    ? { href: adminEntryHref(user.role), label: user.role === "distributor" ? t("distributor") : t("admin") }
+    : undefined;
 
   const navLinks = [
     { href: "/blog", label: t("blog") },
@@ -206,14 +218,14 @@ export function SiteHeader() {
                     <p className="text-sm font-semibold text-[var(--stitch-text)] truncate">{user.name || user.email}</p>
                     <p className="text-xs text-[var(--stitch-text-muted)] truncate">{user.email}</p>
                   </div>
-                  {user.role === "admin" && (
+                  {hasAdminAccess(user.role) && (
                     <Link
-                      href="/admin"
+                      href={adminEntryHref(user.role)}
                       onClick={() => setAvatarMenuOpen(false)}
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg)]"
                     >
                       <MaterialIcon name="admin_panel_settings" size={18} />
-                      {t("admin")}
+                      {user.role === "distributor" ? t("distributor") : t("admin")}
                     </Link>
                   )}
                   <Link
@@ -268,6 +280,7 @@ export function SiteHeader() {
         activePath={activePath}
         links={navLinks}
         primaryAction={primaryCta}
+        secondaryAction={adminCta}
       />
     </>
   );

@@ -3,25 +3,29 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 const adminNavItems = [
-  { href: "/admin", label: "Overview", icon: "dashboard" },
-  { href: "/admin/users", label: "Users", icon: "people" },
-  { href: "/admin/packages", label: "Packages", icon: "inventory_2" },
-  { href: "/admin/payments", label: "Payments", icon: "receipt_long" },
-  { href: "/admin/articles", label: "Articles", icon: "article" },
-  { href: "/admin/docs", label: "Docs", icon: "description" },
-  { href: "/admin/config-center", label: "Config Center", icon: "settings" },
-  { href: "/admin/download-center", label: "Downloads", icon: "cloud_download" },
+  { href: "/admin", labelKey: "overview", icon: "dashboard" },
+  { href: "/admin/users", labelKey: "users", icon: "people" },
+  { href: "/admin/packages", labelKey: "packages", icon: "inventory_2" },
+  { href: "/admin/payments", labelKey: "payments", icon: "receipt_long" },
+  { href: "/admin/articles", labelKey: "articles", icon: "article" },
+  { href: "/admin/docs", labelKey: "docs", icon: "description" },
+  { href: "/admin/config-center", labelKey: "configCenter", icon: "settings" },
+  { href: "/admin/download-center", labelKey: "downloads", icon: "cloud_download" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("adminLayout");
   const pathname = usePathname();
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState<"admin" | null>(null);
 
   useEffect(() => {
     const check = async () => {
@@ -48,10 +52,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }
         const payload = await res.json();
         const role = payload?.data?.role ?? payload?.role;
+        if (role === "distributor") {
+          router.replace("/distributor");
+          return;
+        }
         if (role !== "admin") {
           router.replace("/account");
           return;
         }
+        setRole(role);
         setAuthed(true);
       } catch {
         router.replace("/login");
@@ -63,7 +72,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!authed) {
     return (
       <section className="portal-shell py-8">
-        <p className="text-sm text-[var(--stitch-text-muted)]">Checking admin session...</p>
+        <p className="text-sm text-[var(--stitch-text-muted)]">{t("checking")}</p>
       </section>
     );
   }
@@ -75,9 +84,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <h1 className="section-title">
-              <span className="gradient-text">Admin Console</span>
+              <span className="gradient-text">{t("title")}</span>
             </h1>
           </div>
+          <LanguageSwitcher />
         </div>
         <nav className="flex flex-wrap gap-2">
           {adminNavItems.map((item) => {
@@ -92,7 +102,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 className={`nav-pill ${isActive ? "!bg-[var(--portal-accent)] !text-white" : ""}`}
               >
                 <MaterialIcon name={item.icon} size={16} className="mr-1" />
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}

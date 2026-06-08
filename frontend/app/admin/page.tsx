@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { extractApiError, unwrapData, asRecord } from "@/lib/api-response";
 
@@ -10,26 +11,27 @@ type AuthMeResponse = {
   id: number;
   email: string;
   name: string;
-  role: "user" | "admin";
+  role: "user" | "admin" | "distributor";
   created_at: string;
   updated_at: string;
 };
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
-const quickLinks = [
-  { href: "/admin/packages", icon: "inventory_2", label: "Packages", desc: "Manage subscription packages & tiers" },
-  { href: "/admin/payments", icon: "receipt_long", label: "Payments", desc: "View payment records & transactions" },
-  { href: "/admin/articles", icon: "article", label: "Articles", desc: "Create & publish MDX articles" },
-  { href: "/admin/config-center", icon: "settings", label: "Config Center", desc: "Software configs, templates & global vars" },
-  { href: "/admin/download-center", icon: "cloud_download", label: "Downloads", desc: "Manage software downloads & version control" },
-];
-
 export default function AdminPage() {
+  const t = useTranslations("adminHome");
   const router = useRouter();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<AuthMeResponse | null>(null);
+  const quickLinks = [
+    { href: "/admin/users", icon: "people", label: t("users"), desc: t("usersDesc") },
+    { href: "/admin/packages", icon: "inventory_2", label: t("packages"), desc: t("packagesDesc") },
+    { href: "/admin/payments", icon: "receipt_long", label: t("payments"), desc: t("paymentsDesc") },
+    { href: "/admin/articles", icon: "article", label: t("articles"), desc: t("articlesDesc") },
+    { href: "/admin/config-center", icon: "settings", label: t("configCenter"), desc: t("configCenterDesc") },
+    { href: "/admin/download-center", icon: "cloud_download", label: t("downloads"), desc: t("downloadsDesc") },
+  ];
 
   useEffect(() => {
     const run = async () => {
@@ -52,12 +54,12 @@ export default function AdminPage() {
 
         const mePayload = (await meResponse.json()) as unknown;
         if (!meResponse.ok) {
-          throw new Error(extractApiError(mePayload, "failed to verify session"));
+          throw new Error(extractApiError(mePayload, t("verifyFailed")));
         }
 
         const profile = unwrapData<AuthMeResponse>(mePayload) ?? (asRecord(mePayload) as AuthMeResponse | null);
         if (!profile) {
-          throw new Error("failed to verify session");
+          throw new Error(t("verifyFailed"));
         }
         if (profile.role !== "admin") {
           router.replace("/account");
@@ -66,7 +68,7 @@ export default function AdminPage() {
 
         setAdminProfile(profile);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to verify session";
+        const message = error instanceof Error ? error.message : t("verifyFailed");
         setAuthError(message);
         localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
         router.replace("/login");
@@ -77,11 +79,11 @@ export default function AdminPage() {
     };
 
     void run();
-  }, [router]);
+  }, [router, t]);
 
   if (isCheckingAuth) {
     return (
-      <p className="text-sm text-[var(--stitch-text-muted)]">Checking admin session...</p>
+      <p className="text-sm text-[var(--stitch-text-muted)]">{t("checking")}</p>
     );
   }
 
@@ -106,7 +108,7 @@ export default function AdminPage() {
           </span>
           <div>
             <h2 className="text-lg font-bold text-[var(--portal-ink)]">
-              Welcome back{adminProfile ? `, ${adminProfile.name}` : ""}
+              {t("welcomeBack", { suffix: adminProfile ? `, ${adminProfile.name}` : "" })}
             </h2>
             <p className="text-sm text-[var(--portal-muted)]">
               {adminProfile ? adminProfile.email : ""}

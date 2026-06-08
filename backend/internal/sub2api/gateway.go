@@ -70,12 +70,21 @@ func (g *Gateway) CreateUserAPIKeyForUser(ctx context.Context, userID int64, req
 // EnsureUserKeyInGroup ensures the user has an auto-key in the specified group,
 // tolerating 409 (already exists).
 func (g *Gateway) EnsureUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
-	if g.proxy == nil || g.auth == nil {
+	if g == nil || g.proxy == nil || g.auth == nil {
 		return nil
 	}
 	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get bearer token for user %d: %w", userID, err)
+	}
+	keys, err := g.proxy.ListUserAPIKeys(ctx, bearerToken, groupID, "auto-key")
+	if err != nil {
+		return err
+	}
+	for _, key := range keys.Data {
+		if key.GroupID == groupID && strings.TrimSpace(key.Name) == "auto-key" {
+			return nil
+		}
 	}
 	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
 	_, createErr := g.proxy.CreateUserAPIKey(ctx, bearerToken, proxy.CreateUserAPIKeyRequest{
