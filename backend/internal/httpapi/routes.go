@@ -6953,7 +6953,7 @@ func isDistributorAssignablePackage(pkg adminPackageResponse) bool {
 	if !pkg.IsEnabled || !pkg.IsPublished {
 		return false
 	}
-	return pkg.Level == packageLevelAdmin || pkg.Level == packageLevelDistributor
+	return pkg.Level == packageLevelDistributor
 }
 
 func (r *routes) loadAuthorizedGroupIDSet(ctx context.Context, userID int64) (map[int64]struct{}, error) {

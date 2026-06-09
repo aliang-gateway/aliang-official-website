@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
@@ -23,6 +24,7 @@ type VerifyEmailResponse = {
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const t = useTranslations("register");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -34,8 +36,18 @@ export default function RegisterPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [requireEmailVerification, setRequireEmailVerification] = useState<boolean | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+    if (sessionToken) {
+      router.replace("/dashboard");
+      return;
+    }
+    setIsCheckingSession(false);
+  }, [router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -145,6 +157,10 @@ export default function RegisterPage() {
       setIsVerifying(false);
     }
   };
+
+  if (isCheckingSession) {
+    return null;
+  }
 
   return (
     <section className="portal-shell py-12">

@@ -3505,7 +3505,7 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 	}
 }
 
-func TestDistributorPackageAccessIncludesDefaultAndDistributorLevels(t *testing.T) {
+func TestDistributorPackageAccessOnlyIncludesDistributorLevel(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -3554,11 +3554,11 @@ func TestDistributorPackageAccessIncludesDefaultAndDistributorLevels(t *testing.
 	for _, pkg := range listPayload.Packages {
 		seen[pkg.Code] = pkg.Level
 	}
-	if len(seen) != 2 {
-		t.Fatalf("expected distributor to see 2 assignable packages, got %+v", listPayload.Packages)
+	if len(seen) != 1 {
+		t.Fatalf("expected distributor to see 1 assignable package, got %+v", listPayload.Packages)
 	}
-	if seen["admin-only"] != "admin" {
-		t.Fatalf("expected distributor to see default admin package, got %+v", listPayload.Packages)
+	if _, ok := seen["admin-only"]; ok {
+		t.Fatalf("expected distributor admin package to be hidden, got %+v", listPayload.Packages)
 	}
 	if seen["distributor-only"] != "distributor" {
 		t.Fatalf("expected distributor to see distributor package, got %+v", listPayload.Packages)

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -36,9 +36,19 @@ function LoginContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const nextPath = searchParams.get("next")?.trim() ?? "";
+
+  useEffect(() => {
+    const sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+    if (sessionToken) {
+      router.replace("/dashboard");
+      return;
+    }
+    setIsCheckingSession(false);
+  }, [router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -85,6 +95,10 @@ function LoginContent() {
       setIsSubmitting(false);
     }
   };
+
+  if (isCheckingSession) {
+    return null;
+  }
 
   return (
     <section className="portal-shell py-12">
