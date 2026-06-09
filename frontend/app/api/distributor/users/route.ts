@@ -13,7 +13,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const upstream = await fetch(`${apiBaseUrl}/distributor/users`, {
+  const url = new URL(request.url);
+  const upstreamURL = new URL(`${apiBaseUrl}/distributor/users`);
+  for (const [key, value] of url.searchParams.entries()) {
+    upstreamURL.searchParams.append(key, value);
+  }
+
+  const upstream = await fetch(upstreamURL, {
     method: "GET",
     headers: {
       accept: request.headers.get("accept") ?? "application/json",

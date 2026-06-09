@@ -6,6 +6,16 @@ import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
+const LIST_PAGE_SIZE = 20;
+
+type PaginationInfo = {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+};
 
 type DistributorUser = {
   user_id: number;
@@ -86,6 +96,31 @@ type AssignmentStats = {
   }>;
 };
 
+const defaultPagination: PaginationInfo = {
+  page: 1,
+  per_page: LIST_PAGE_SIZE,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_prev: false,
+};
+
+function parsePagination(value: unknown, fallbackPage = 1): PaginationInfo {
+  const raw = value && typeof value === "object" ? value as Partial<PaginationInfo> : {};
+  const total = Math.max(0, Number(raw.total ?? 0) || 0);
+  const perPage = Math.max(1, Number(raw.per_page ?? LIST_PAGE_SIZE) || LIST_PAGE_SIZE);
+  const page = Math.max(1, Number(raw.page ?? fallbackPage) || fallbackPage);
+  const totalPages = Math.max(0, Number(raw.total_pages ?? Math.ceil(total / perPage)) || 0);
+  return {
+    page,
+    per_page: perPage,
+    total,
+    total_pages: totalPages,
+    has_next: Boolean(raw.has_next ?? (totalPages > 0 && page < totalPages)),
+    has_prev: Boolean(raw.has_prev ?? page > 1),
+  };
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value || 0);
 }
@@ -135,12 +170,59 @@ function StatsTable({ headers, rows, emptyLabel }: { headers: string[]; rows: st
   );
 }
 
+function PaginationControls({
+  pagination,
+  isLoading,
+  onPageChange,
+  labels,
+}: {
+  pagination: PaginationInfo;
+  isLoading: boolean;
+  onPageChange: (page: number) => void;
+  labels: {
+    previous: string;
+    next: string;
+    pageSummary: string;
+    totalRecords: string;
+  };
+}) {
+  if (pagination.total <= pagination.per_page && pagination.total_pages <= 1) {
+    return null;
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
+      <span>{labels.totalRecords}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="btn-ghost min-h-11 px-3 py-2 text-sm"
+          onClick={() => onPageChange(pagination.page - 1)}
+          disabled={isLoading || !pagination.has_prev}
+        >
+          {labels.previous}
+        </button>
+        <span className="min-w-24 text-center font-medium text-[var(--portal-ink)]">{labels.pageSummary}</span>
+        <button
+          type="button"
+          className="btn-ghost min-h-11 px-3 py-2 text-sm"
+          onClick={() => onPageChange(pagination.page + 1)}
+          disabled={isLoading || !pagination.has_next}
+        >
+          {labels.next}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DistributorPage() {
   const t = useTranslations("distributor");
   const router = useRouter();
   const [sessionToken, setSessionToken] = useState("");
   const [users, setUsers] = useState<DistributorUser[]>([]);
   const [invitations, setInvitations] = useState<DistributorInvitation[]>([]);
+  const [usersPagination, setUsersPagination] = useState<PaginationInfo>(defaultPagination);
+  const [invitationsPagination, setInvitationsPagination] = useState<PaginationInfo>(defaultPagination);
   const [packages, setPackages] = useState<DistributorPackage[]>([]);
   const [selectedUserID, setSelectedUserID] = useState("");
   const [selectedTierCode, setSelectedTierCode] = useState("");
@@ -193,14 +275,18 @@ export default function DistributorPage() {
     }
   }, [t]);
 
-  const loadData = useCallback(async (token: string) => {
+  const loadData = useCallback(async (token: string, pages?: { usersPage?: number; invitationsPage?: number }) => {
     setIsLoading(true);
     setError(null);
     try {
+      const usersPage = pages?.usersPage ?? 1;
+      const invitationsPage = pages?.invitationsPage ?? 1;
+      const usersQuery = new URLSearchParams({ page: String(usersPage), per_page: String(LIST_PAGE_SIZE) });
+      const invitationsQuery = new URLSearchParams({ page: String(invitationsPage), per_page: String(LIST_PAGE_SIZE) });
       const [meResponse, usersResponse, invitationsResponse, packagesResponse] = await Promise.all([
         fetch("/api/auth/me", { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
-        fetch("/api/distributor/users", { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
-        fetch("/api/distributor/invitations", { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch(`/api/distributor/users?${usersQuery.toString()}`, { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch(`/api/distributor/invitations?${invitationsQuery.toString()}`, { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
         fetch("/api/distributor/packages", { headers: { accept: "application/json", Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
 
@@ -226,6 +312,8 @@ export default function DistributorPage() {
 
       setUsers(Array.isArray(usersPayload?.users) ? usersPayload.users : []);
       setInvitations(Array.isArray(invitationsPayload?.invitations) ? invitationsPayload.invitations : []);
+      setUsersPagination(parsePagination(usersPayload?.pagination, usersPage));
+      setInvitationsPagination(parsePagination(invitationsPayload?.pagination, invitationsPage));
       setPackages(Array.isArray(packagesPayload?.packages) ? packagesPayload.packages : []);
       await loadAssignmentStats(token);
     } catch (loadError) {
@@ -244,6 +332,16 @@ export default function DistributorPage() {
     setSessionToken(token);
     void loadData(token);
   }, [loadData, router]);
+
+  const handleUsersPageChange = (page: number) => {
+    if (!sessionToken) return;
+    void loadData(sessionToken, { usersPage: page, invitationsPage: invitationsPagination.page });
+  };
+
+  const handleInvitationsPageChange = (page: number) => {
+    if (!sessionToken) return;
+    void loadData(sessionToken, { usersPage: usersPagination.page, invitationsPage: page });
+  };
 
   const handleCopy = async (value: string) => {
     try {
@@ -521,29 +619,42 @@ export default function DistributorPage() {
         ) : invitations.length === 0 ? (
           <p className="p-4 text-sm text-[var(--portal-muted)]">{t("emptyInvitations")}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
-                <tr>
-                  <th className="px-4 py-3">{t("user")}</th>
-                  <th className="px-4 py-3">{t("source")}</th>
-                  <th className="px-4 py-3">{t("createdAt")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--portal-line)]">
-                {invitations.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.name || item.email}</p>
-                      <p className="text-xs text-[var(--portal-muted)]">{item.email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{item.source || "--"}</td>
-                    <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{formatDateTime(item.created_at)}</td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left">
+                <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
+                  <tr>
+                    <th className="px-4 py-3">{t("user")}</th>
+                    <th className="px-4 py-3">{t("source")}</th>
+                    <th className="px-4 py-3">{t("createdAt")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[var(--portal-line)]">
+                  {invitations.map((item) => (
+                    <tr key={item.id}>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.name || item.email}</p>
+                        <p className="text-xs text-[var(--portal-muted)]">{item.email}</p>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{item.source || "--"}</td>
+                      <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{formatDateTime(item.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <PaginationControls
+              pagination={invitationsPagination}
+              isLoading={isLoading}
+              onPageChange={handleInvitationsPageChange}
+              labels={{
+                previous: t("previous"),
+                next: t("nextPage"),
+                pageSummary: t("pageN", { current: formatNumber(invitationsPagination.page), total: formatNumber(Math.max(invitationsPagination.total_pages, 1)) }),
+                totalRecords: t("totalRecords", { count: formatNumber(invitationsPagination.total) }),
+              }}
+            />
+          </>
         )}
       </div>
 
@@ -557,45 +668,58 @@ export default function DistributorPage() {
           ) : users.length === 0 ? (
             <p className="p-4 text-sm text-[var(--portal-muted)]">{t("emptyUsers")}</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left">
-                <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
-                  <tr>
-                    <th className="px-4 py-3">{t("user")}</th>
-                    <th className="px-4 py-3">{t("package")}</th>
-                    <th className="px-4 py-3">{t("tokens")}</th>
-                    <th className="px-4 py-3">{t("activeDays")}</th>
-                    <th className="px-4 py-3">{t("spend")}</th>
-                    <th className="px-4 py-3">{t("lastActive")}</th>
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--portal-line)]">
-                  {users.map((user) => (
-                    <tr key={user.user_id}>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-[var(--portal-ink)]">{user.name || user.email}</p>
-                        <p className="text-xs text-[var(--portal-muted)]">{user.email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{user.package_name || user.package_code || "--"}</td>
-                      <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatNumber(user.total_tokens)}</td>
-                      <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatNumber(user.active_days)}</td>
-                      <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatMoneyMicros(user.actual_cost_micros)}</td>
-                      <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{user.last_active_date || "--"}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          className="btn-ghost px-3 py-1 text-xs"
-                          onClick={() => setSelectedUserID(String(user.user_id))}
-                        >
-                          {t("select")}
-                        </button>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left">
+                  <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
+                    <tr>
+                      <th className="px-4 py-3">{t("user")}</th>
+                      <th className="px-4 py-3">{t("package")}</th>
+                      <th className="px-4 py-3">{t("tokens")}</th>
+                      <th className="px-4 py-3">{t("activeDays")}</th>
+                      <th className="px-4 py-3">{t("spend")}</th>
+                      <th className="px-4 py-3">{t("lastActive")}</th>
+                      <th className="px-4 py-3"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--portal-line)]">
+                    {users.map((user) => (
+                      <tr key={user.user_id}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-[var(--portal-ink)]">{user.name || user.email}</p>
+                          <p className="text-xs text-[var(--portal-muted)]">{user.email}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{user.package_name || user.package_code || "--"}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatNumber(user.total_tokens)}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatNumber(user.active_days)}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-[var(--portal-ink)]">{formatMoneyMicros(user.actual_cost_micros)}</td>
+                        <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{user.last_active_date || "--"}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className="btn-ghost px-3 py-1 text-xs"
+                            onClick={() => setSelectedUserID(String(user.user_id))}
+                          >
+                            {t("select")}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                pagination={usersPagination}
+                isLoading={isLoading}
+                onPageChange={handleUsersPageChange}
+                labels={{
+                  previous: t("previous"),
+                  next: t("nextPage"),
+                  pageSummary: t("pageN", { current: formatNumber(usersPagination.page), total: formatNumber(Math.max(usersPagination.total_pages, 1)) }),
+                  totalRecords: t("totalRecords", { count: formatNumber(usersPagination.total) }),
+                }}
+              />
+            </>
           )}
         </div>
 

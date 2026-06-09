@@ -1618,6 +1618,85 @@ func TestDistributorQuickCreateUserBindsCreatedUser(t *testing.T) {
 	}
 }
 
+func TestDistributorRelationshipListsSupportPagination(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
+
+	_, adminSessionToken := createUserViaAPI(t, mux, "pagination-admin@example.com", "Pagination Admin", "admin", "test-admin-secret")
+	distributorID, distributorSessionToken := createUserViaAPI(t, mux, "pagination-distributor@example.com", "Pagination Distributor", "distributor", "test-admin-secret")
+
+	targetIDs := make([]int64, 0, 3)
+	for index := 1; index <= 3; index++ {
+		userID, _ := createUserViaAPI(t, mux, fmt.Sprintf("pagination-user-%d@example.com", index), fmt.Sprintf("Pagination User %d", index), "user", "")
+		targetIDs = append(targetIDs, userID)
+		createdAt := fmt.Sprintf("2026-06-0%d 00:00:00", index)
+		if _, err := database.ExecContext(ctx, `
+			INSERT INTO als_distributor_user_bindings(distributor_user_id, user_id, source, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?);
+		`, distributorID, userID, "pagination_test", createdAt, createdAt); err != nil {
+			t.Fatalf("seed distributor binding %d: %v", index, err)
+		}
+	}
+
+	adminReq := httptest.NewRequest(http.MethodGet, "/admin/distributor/users?page=2&per_page=2", nil)
+	setBearerAuth(adminReq, adminSessionToken)
+	adminRec := httptest.NewRecorder()
+	mux.ServeHTTP(adminRec, adminReq)
+	if adminRec.Code != http.StatusOK {
+		t.Fatalf("expected admin paginated bindings status %d, got %d body=%s", http.StatusOK, adminRec.Code, adminRec.Body.String())
+	}
+	var adminPayload listDistributorInvitationsResponse
+	if err := json.NewDecoder(adminRec.Body).Decode(&adminPayload); err != nil {
+		t.Fatalf("decode admin paginated bindings: %v", err)
+	}
+	if len(adminPayload.Invitations) != 1 || adminPayload.Invitations[0].UserID != targetIDs[0] {
+		t.Fatalf("unexpected admin paginated bindings: %+v", adminPayload.Invitations)
+	}
+	if adminPayload.Pagination.Page != 2 || adminPayload.Pagination.PerPage != 2 || adminPayload.Pagination.Total != 3 || adminPayload.Pagination.TotalPages != 2 || adminPayload.Pagination.HasNext || !adminPayload.Pagination.HasPrev {
+		t.Fatalf("unexpected admin pagination: %+v", adminPayload.Pagination)
+	}
+
+	invitationsReq := httptest.NewRequest(http.MethodGet, "/distributor/invitations?page=2&per_page=2", nil)
+	setBearerAuth(invitationsReq, distributorSessionToken)
+	invitationsRec := httptest.NewRecorder()
+	mux.ServeHTTP(invitationsRec, invitationsReq)
+	if invitationsRec.Code != http.StatusOK {
+		t.Fatalf("expected distributor paginated invitations status %d, got %d body=%s", http.StatusOK, invitationsRec.Code, invitationsRec.Body.String())
+	}
+	var invitationsPayload listDistributorInvitationsResponse
+	if err := json.NewDecoder(invitationsRec.Body).Decode(&invitationsPayload); err != nil {
+		t.Fatalf("decode distributor paginated invitations: %v", err)
+	}
+	if len(invitationsPayload.Invitations) != 1 || invitationsPayload.Invitations[0].UserID != targetIDs[0] {
+		t.Fatalf("unexpected distributor paginated invitations: %+v", invitationsPayload.Invitations)
+	}
+	if invitationsPayload.Pagination.Page != 2 || invitationsPayload.Pagination.PerPage != 2 || invitationsPayload.Pagination.Total != 3 || invitationsPayload.Pagination.TotalPages != 2 || invitationsPayload.Pagination.HasNext || !invitationsPayload.Pagination.HasPrev {
+		t.Fatalf("unexpected distributor invitations pagination: %+v", invitationsPayload.Pagination)
+	}
+
+	usersReq := httptest.NewRequest(http.MethodGet, "/distributor/users?page=2&per_page=2", nil)
+	setBearerAuth(usersReq, distributorSessionToken)
+	usersRec := httptest.NewRecorder()
+	mux.ServeHTTP(usersRec, usersReq)
+	if usersRec.Code != http.StatusOK {
+		t.Fatalf("expected distributor paginated users status %d, got %d body=%s", http.StatusOK, usersRec.Code, usersRec.Body.String())
+	}
+	var usersPayload listDistributorUsersResponse
+	if err := json.NewDecoder(usersRec.Body).Decode(&usersPayload); err != nil {
+		t.Fatalf("decode distributor paginated users: %v", err)
+	}
+	if len(usersPayload.Users) != 1 || usersPayload.Users[0].UserID != targetIDs[2] {
+		t.Fatalf("unexpected distributor paginated users: %+v", usersPayload.Users)
+	}
+	if usersPayload.Pagination.Page != 2 || usersPayload.Pagination.PerPage != 2 || usersPayload.Pagination.Total != 3 || usersPayload.Pagination.TotalPages != 2 || usersPayload.Pagination.HasNext || !usersPayload.Pagination.HasPrev {
+		t.Fatalf("unexpected distributor users pagination: %+v", usersPayload.Pagination)
+	}
+}
+
 func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
 	t.Parallel()
 

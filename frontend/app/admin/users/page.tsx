@@ -4,6 +4,16 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
+const LIST_PAGE_SIZE = 20;
+
+type PaginationInfo = {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+};
 
 type AdminPackage = {
   code: string;
@@ -102,6 +112,31 @@ type AssignmentStats = {
   }>;
 };
 
+const defaultPagination: PaginationInfo = {
+  page: 1,
+  per_page: LIST_PAGE_SIZE,
+  total: 0,
+  total_pages: 0,
+  has_next: false,
+  has_prev: false,
+};
+
+function parsePagination(value: unknown, fallbackPage = 1): PaginationInfo {
+  const raw = value && typeof value === "object" ? value as Partial<PaginationInfo> : {};
+  const total = Math.max(0, Number(raw.total ?? 0) || 0);
+  const perPage = Math.max(1, Number(raw.per_page ?? LIST_PAGE_SIZE) || LIST_PAGE_SIZE);
+  const page = Math.max(1, Number(raw.page ?? fallbackPage) || fallbackPage);
+  const totalPages = Math.max(0, Number(raw.total_pages ?? Math.ceil(total / perPage)) || 0);
+  return {
+    page,
+    per_page: perPage,
+    total,
+    total_pages: totalPages,
+    has_next: Boolean(raw.has_next ?? (totalPages > 0 && page < totalPages)),
+    has_prev: Boolean(raw.has_prev ?? page > 1),
+  };
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value || 0);
 }
@@ -151,6 +186,51 @@ function StatsTable({ headers, rows, emptyLabel }: { headers: string[]; rows: st
   );
 }
 
+function PaginationControls({
+  pagination,
+  isLoading,
+  onPageChange,
+  labels,
+}: {
+  pagination: PaginationInfo;
+  isLoading: boolean;
+  onPageChange: (page: number) => void;
+  labels: {
+    previous: string;
+    next: string;
+    pageSummary: string;
+    totalRecords: string;
+  };
+}) {
+  if (pagination.total <= pagination.per_page && pagination.total_pages <= 1) {
+    return null;
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--portal-line)] p-4 text-sm text-[var(--portal-muted)]">
+      <span>{labels.totalRecords}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="btn-ghost min-h-11 px-3 py-2 text-sm"
+          onClick={() => onPageChange(pagination.page - 1)}
+          disabled={isLoading || !pagination.has_prev}
+        >
+          {labels.previous}
+        </button>
+        <span className="min-w-24 text-center font-medium text-[var(--portal-ink)]">{labels.pageSummary}</span>
+        <button
+          type="button"
+          className="btn-ghost min-h-11 px-3 py-2 text-sm"
+          onClick={() => onPageChange(pagination.page + 1)}
+          disabled={isLoading || !pagination.has_next}
+        >
+          {labels.next}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const t = useTranslations("adminUsers");
   const [sessionToken, setSessionToken] = useState("");
@@ -189,6 +269,7 @@ export default function AdminUsersPage() {
   const [isBindingDistributor, setIsBindingDistributor] = useState(false);
   const [bindResult, setBindResult] = useState<BindDistributorResult | null>(null);
   const [distributorBindings, setDistributorBindings] = useState<DistributorBinding[]>([]);
+  const [distributorBindingsPagination, setDistributorBindingsPagination] = useState<PaginationInfo>(defaultPagination);
   const [isLoadingDistributorBindings, setIsLoadingDistributorBindings] = useState(false);
   const [assignmentStats, setAssignmentStats] = useState<AssignmentStats | null>(null);
   const [isLoadingAssignmentStats, setIsLoadingAssignmentStats] = useState(false);
@@ -244,11 +325,12 @@ export default function AdminUsersPage() {
     }
   }, [buildHeaders, handleAuthFailure, sessionToken, t]);
 
-  const loadDistributorBindings = useCallback(async () => {
+  const loadDistributorBindings = useCallback(async (page = 1) => {
     if (!sessionToken) return;
     setIsLoadingDistributorBindings(true);
     try {
-      const response = await fetch("/api/admin/distributor/users", {
+      const query = new URLSearchParams({ page: String(page), per_page: String(LIST_PAGE_SIZE) });
+      const response = await fetch(`/api/admin/distributor/users?${query.toString()}`, {
         method: "GET",
         headers: buildHeaders(),
         cache: "no-store",
@@ -260,6 +342,7 @@ export default function AdminUsersPage() {
         throw new Error(message);
       }
       setDistributorBindings(Array.isArray(payload?.invitations) ? payload.invitations : []);
+      setDistributorBindingsPagination(parsePagination(payload?.pagination, page));
     } catch {
       // keep the rest of the admin page usable if this side panel cannot load
     } finally {
@@ -502,7 +585,7 @@ export default function AdminUsersPage() {
       setAuthBlocked(null);
       setBindResult(payload);
       setGlobalSuccess(t("bindSuccess", { email: payload.email, id: payload.distributor_user_id }));
-      void loadDistributorBindings();
+      void loadDistributorBindings(1);
     } catch (err) {
       setGlobalError(err instanceof Error ? err.message : t("bindDistributorFailed"));
     } finally {
@@ -519,6 +602,10 @@ export default function AdminUsersPage() {
   };
 
   const isBlocked = Boolean(authBlocked);
+
+  const handleDistributorBindingsPageChange = (page: number) => {
+    void loadDistributorBindings(page);
+  };
 
   return (
     <section className="space-y-6">
@@ -765,34 +852,47 @@ export default function AdminUsersPage() {
           ) : distributorBindings.length === 0 ? (
             <p className="p-4 text-sm text-[var(--portal-muted)]">{t("emptyDistributorBindings")}</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left">
-                <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
-                  <tr>
-                    <th className="px-4 py-3">{t("distributor")}</th>
-                    <th className="px-4 py-3">{t("user")}</th>
-                    <th className="px-4 py-3">{t("source")}</th>
-                    <th className="px-4 py-3">{t("createdAt")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--portal-line)]">
-                  {distributorBindings.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.distributor_name || item.distributor_email || `#${item.distributor_user_id}`}</p>
-                        <p className="text-xs text-[var(--portal-muted)]">{item.distributor_email || `#${item.distributor_user_id}`}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.name || item.email}</p>
-                        <p className="text-xs text-[var(--portal-muted)]">{item.email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{item.source || "--"}</td>
-                      <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{formatDateTime(item.created_at)}</td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left">
+                  <thead className="bg-[var(--portal-clay)] text-xs uppercase text-[var(--portal-muted)]">
+                    <tr>
+                      <th className="px-4 py-3">{t("distributor")}</th>
+                      <th className="px-4 py-3">{t("user")}</th>
+                      <th className="px-4 py-3">{t("source")}</th>
+                      <th className="px-4 py-3">{t("createdAt")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--portal-line)]">
+                    {distributorBindings.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.distributor_name || item.distributor_email || `#${item.distributor_user_id}`}</p>
+                          <p className="text-xs text-[var(--portal-muted)]">{item.distributor_email || `#${item.distributor_user_id}`}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.name || item.email}</p>
+                          <p className="text-xs text-[var(--portal-muted)]">{item.email}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{item.source || "--"}</td>
+                        <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{formatDateTime(item.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                pagination={distributorBindingsPagination}
+                isLoading={isLoadingDistributorBindings}
+                onPageChange={handleDistributorBindingsPageChange}
+                labels={{
+                  previous: t("previous"),
+                  next: t("nextPage"),
+                  pageSummary: t("pageN", { current: formatNumber(distributorBindingsPagination.page), total: formatNumber(Math.max(distributorBindingsPagination.total_pages, 1)) }),
+                  totalRecords: t("totalRecords", { count: formatNumber(distributorBindingsPagination.total) }),
+                }}
+              />
+            </>
           )}
         </div>
       ) : null}

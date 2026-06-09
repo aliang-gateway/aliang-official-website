@@ -264,12 +264,29 @@ type distributorUserSummaryResponse struct {
 	UsageUnavailable   bool   `json:"usage_unavailable,omitempty"`
 }
 
+type paginationResponse struct {
+	Page       int   `json:"page"`
+	PerPage    int   `json:"per_page"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+	HasNext    bool  `json:"has_next"`
+	HasPrev    bool  `json:"has_prev"`
+}
+
+type listPaginationRequest struct {
+	Page    int
+	PerPage int
+	Offset  int
+}
+
 type listDistributorUsersResponse struct {
-	Users []distributorUserSummaryResponse `json:"users"`
+	Users      []distributorUserSummaryResponse `json:"users"`
+	Pagination paginationResponse               `json:"pagination"`
 }
 
 type listDistributorInvitationsResponse struct {
 	Invitations []distributorInvitationResponse `json:"invitations"`
+	Pagination  paginationResponse              `json:"pagination"`
 }
 
 type createPackageCheckoutSessionRequest struct {
@@ -4564,12 +4581,17 @@ func (r *routes) handleAdminBindDistributorUser(w http.ResponseWriter, req *http
 }
 
 func (r *routes) handleAdminListDistributorInvitations(w http.ResponseWriter, req *http.Request) {
-	invitations, err := r.listDistributorInvitations(req.Context(), 0)
+	paging, err := parseListPagination(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	invitations, pagination, err := r.listDistributorInvitations(req.Context(), 0, paging)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list distributor invitations")
 		return
 	}
-	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations})
+	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations, Pagination: pagination})
 }
 
 func (r *routes) handleAdminDistributorAssignmentStats(w http.ResponseWriter, req *http.Request) {
@@ -4599,12 +4621,17 @@ func (r *routes) handleDistributorListUsers(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	users, err := r.listDistributorUsers(req.Context(), user.ID)
+	paging, err := parseListPagination(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	users, pagination, err := r.listDistributorUsers(req.Context(), user.ID, paging)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list distributor users")
 		return
 	}
-	writeJSON(w, http.StatusOK, listDistributorUsersResponse{Users: users})
+	writeJSON(w, http.StatusOK, listDistributorUsersResponse{Users: users, Pagination: pagination})
 }
 
 func (r *routes) handleDistributorListInvitations(w http.ResponseWriter, req *http.Request) {
@@ -4614,12 +4641,17 @@ func (r *routes) handleDistributorListInvitations(w http.ResponseWriter, req *ht
 		return
 	}
 
-	invitations, err := r.listDistributorInvitations(req.Context(), user.ID)
+	paging, err := parseListPagination(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	invitations, pagination, err := r.listDistributorInvitations(req.Context(), user.ID, paging)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list distributor invitations")
 		return
 	}
-	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations})
+	writeJSON(w, http.StatusOK, listDistributorInvitationsResponse{Invitations: invitations, Pagination: pagination})
 }
 
 func (r *routes) handleDistributorListPackages(w http.ResponseWriter, req *http.Request) {
@@ -5094,6 +5126,59 @@ func parseOptionalPositiveInt64(value string) (int64, error) {
 	return parsed, nil
 }
 
+func parseListPagination(req *http.Request) (listPaginationRequest, error) {
+	const (
+		defaultPerPage = 20
+		maxPerPage     = 100
+	)
+	query := req.URL.Query()
+	page := 1
+	if raw := strings.TrimSpace(query.Get("page")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			return listPaginationRequest{}, errors.New("page must be a positive integer")
+		}
+		page = parsed
+	}
+	perPage := defaultPerPage
+	if raw := strings.TrimSpace(query.Get("per_page")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			return listPaginationRequest{}, errors.New("per_page must be a positive integer")
+		}
+		perPage = parsed
+	}
+	if perPage > maxPerPage {
+		perPage = maxPerPage
+	}
+	return listPaginationRequest{
+		Page:    page,
+		PerPage: perPage,
+		Offset:  (page - 1) * perPage,
+	}, nil
+}
+
+func buildPaginationResponse(paging listPaginationRequest, total int64) paginationResponse {
+	if paging.Page <= 0 {
+		paging.Page = 1
+	}
+	if paging.PerPage <= 0 {
+		paging.PerPage = 20
+	}
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(paging.PerPage) - 1) / int64(paging.PerPage))
+	}
+	return paginationResponse{
+		Page:       paging.Page,
+		PerPage:    paging.PerPage,
+		Total:      total,
+		TotalPages: totalPages,
+		HasNext:    totalPages > 0 && paging.Page < totalPages,
+		HasPrev:    paging.Page > 1,
+	}
+}
+
 func parseStatsDateRange(req *http.Request) (*time.Time, *time.Time, error) {
 	parseDate := func(name string) (*time.Time, error) {
 		value := strings.TrimSpace(req.URL.Query().Get(name))
@@ -5379,7 +5464,18 @@ func (r *routes) loadDistributorAssignmentDistributorStats(ctx context.Context, 
 	return items, nil
 }
 
-func (r *routes) listDistributorInvitations(ctx context.Context, distributorUserID int64) ([]distributorInvitationResponse, error) {
+func (r *routes) listDistributorInvitations(ctx context.Context, distributorUserID int64, paging listPaginationRequest) ([]distributorInvitationResponse, paginationResponse, error) {
+	countQuery := `SELECT COUNT(*) FROM als_distributor_user_bindings dub`
+	args := []any{}
+	if distributorUserID > 0 {
+		countQuery += " WHERE dub.distributor_user_id = ?"
+		args = append(args, distributorUserID)
+	}
+	var total int64
+	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, countQuery), args...).Scan(&total); err != nil {
+		return nil, paginationResponse{}, err
+	}
+
 	query := `
 		SELECT
 			dub.id,
@@ -5396,16 +5492,16 @@ func (r *routes) listDistributorInvitations(ctx context.Context, distributorUser
 		JOIN als_users du ON du.id = dub.distributor_user_id
 		JOIN als_users u ON u.id = dub.user_id
 	`
-	args := []any{}
+	queryArgs := append([]any(nil), args...)
 	if distributorUserID > 0 {
 		query += " WHERE dub.distributor_user_id = ?"
-		args = append(args, distributorUserID)
 	}
-	query += " ORDER BY dub.created_at DESC, dub.id DESC;"
+	query += " ORDER BY dub.created_at DESC, dub.id DESC LIMIT ? OFFSET ?;"
+	queryArgs = append(queryArgs, paging.PerPage, paging.Offset)
 
-	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), args...)
+	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, query), queryArgs...)
 	if err != nil {
-		return nil, err
+		return nil, paginationResponse{}, err
 	}
 	defer rows.Close()
 
@@ -5426,19 +5522,28 @@ func (r *routes) listDistributorInvitations(ctx context.Context, distributorUser
 			&createdAt,
 			&updatedAt,
 		); err != nil {
-			return nil, err
+			return nil, paginationResponse{}, err
 		}
 		item.CreatedAt = createdAt.Format(time.RFC3339)
 		item.UpdatedAt = updatedAt.Format(time.RFC3339)
 		invitations = append(invitations, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, paginationResponse{}, err
 	}
-	return invitations, nil
+	return invitations, buildPaginationResponse(paging, total), nil
 }
 
-func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int64) ([]distributorUserSummaryResponse, error) {
+func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int64, paging listPaginationRequest) ([]distributorUserSummaryResponse, paginationResponse, error) {
+	var total int64
+	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT COUNT(*)
+		FROM als_distributor_user_bindings rub
+		WHERE rub.distributor_user_id = ?;
+	`), distributorUserID).Scan(&total); err != nil {
+		return nil, paginationResponse{}, err
+	}
+
 	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT
 			u.id,
@@ -5452,10 +5557,11 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 		LEFT JOIN als_subscriptions s ON s.user_id = u.id AND s.status = 'active' AND s.ended_at IS NULL
 		LEFT JOIN als_tiers t ON t.id = s.tier_id
 		WHERE rub.distributor_user_id = ?
-		ORDER BY u.id ASC;
-	`), distributorUserID)
+		ORDER BY u.id ASC
+		LIMIT ? OFFSET ?;
+	`), distributorUserID, paging.PerPage, paging.Offset)
 	if err != nil {
-		return nil, err
+		return nil, paginationResponse{}, err
 	}
 	defer rows.Close()
 
@@ -5470,11 +5576,11 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 			&item.PackageName,
 			&item.SubscriptionStatus,
 		); err != nil {
-			return nil, err
+			return nil, paginationResponse{}, err
 		}
 		usage, err := r.loadDistributorUserUsageSummary(ctx, item.UserID, "all")
 		if err != nil {
-			return nil, err
+			return nil, paginationResponse{}, err
 		}
 		item.TotalTokens = usage.TotalTokens
 		item.ActiveDays = usage.ActiveDays
@@ -5487,9 +5593,9 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 		users = append(users, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, paginationResponse{}, err
 	}
-	return users, nil
+	return users, buildPaginationResponse(paging, total), nil
 }
 
 const userUsageCacheTTL = 60 * time.Second
