@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,35 @@ import (
 	portalstripe "ai-api-portal/backend/internal/stripe"
 	"ai-api-portal/backend/internal/user"
 )
+
+type memoryUsageCache struct {
+	mu      sync.Mutex
+	values  map[string][]byte
+	setTTLs []time.Duration
+}
+
+func newMemoryUsageCache() *memoryUsageCache {
+	return &memoryUsageCache{values: make(map[string][]byte)}
+}
+
+func (c *memoryUsageCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	value, ok := c.values[key]
+	if !ok {
+		return nil, false, nil
+	}
+	copied := append([]byte(nil), value...)
+	return copied, true, nil
+}
+
+func (c *memoryUsageCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.values[key] = append([]byte(nil), value...)
+	c.setTTLs = append(c.setTTLs, ttl)
+	return nil
+}
 
 func TestPublicTiersReturnsDefaultItemsWithoutAuth(t *testing.T) {
 	t.Parallel()
@@ -1497,21 +1527,22 @@ func TestDistributorQuickCreateUserBindsCreatedUser(t *testing.T) {
 
 	var upstreamEmail string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/api/v1/auth/register" {
-			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
-		}
-		if req.Method != http.MethodPost {
-			t.Fatalf("expected POST, got %s", req.Method)
-		}
-		var payload struct {
-			Email string `json:"email"`
-		}
-		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode upstream register request: %v", err)
-		}
-		upstreamEmail = payload.Email
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"distributor-upstream-access","refresh_token":"distributor-upstream-refresh","user":{"id":902,"email":"new-distributor-user@example.com","role":"user"}}}`))
+		switch {
+		case req.URL.Path == "/api/v1/auth/register" && req.Method == http.MethodPost:
+			var payload struct {
+				Email string `json:"email"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode upstream register request: %v", err)
+			}
+			upstreamEmail = payload.Email
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"distributor-upstream-access","refresh_token":"distributor-upstream-refresh","user":{"id":902,"email":"new-distributor-user@example.com","role":"user"}}}`))
+		case req.URL.Path == "/api/v1/admin/users/902/usage" && req.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"request_count":0,"input_tokens":0,"output_tokens":0,"total_tokens":0,"actual_cost_micros":0,"active_days":0}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s %s", req.Method, req.URL.Path)
+		}
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -3007,11 +3038,16 @@ func TestDistributorCanListBoundUserStatsAndAssignPackage(t *testing.T) {
 		AllowedGroups []int64 `json:"allowed_groups"`
 	}
 	var keyPayload proxy.CreateUserAPIKeyRequest
+	var usageCallCount int
+	usageCache := newMemoryUsageCache()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case req.URL.Path == "/api/v1/admin/groups/all":
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":88,"name":"Standard Group","subscription_type":""}]}`))
+		case req.URL.Path == "/api/v1/admin/users/50/usage" && req.Method == http.MethodGet:
+			usageCallCount++
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"request_count":4,"input_tokens":1000,"output_tokens":2000,"total_tokens":3000,"actual_cost_micros":4560000,"active_days":2,"last_active_date":"2026-06-02"}}`))
 		case req.URL.Path == "/api/v1/admin/users/50" && req.Method == http.MethodGet:
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":50,"allowed_groups":[11]}}`))
 		case req.URL.Path == "/api/v1/admin/users/50" && req.Method == http.MethodPut:
@@ -3038,7 +3074,7 @@ func TestDistributorCanListBoundUserStatsAndAssignPackage(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient, UserUsageCache: usageCache})
 	_, adminSessionToken := createUserViaAPI(t, mux, "distributor-admin@example.com", "Distributor Admin", "admin", "test-admin-secret")
 	distributorID, distributorSessionToken := createUserViaAPI(t, mux, "distributor@example.com", "Distributor", "user", "")
 	if _, err := database.ExecContext(ctx, `UPDATE als_users SET role = 'distributor' WHERE id = ?;`, distributorID); err != nil {
@@ -3112,8 +3148,32 @@ func TestDistributorCanListBoundUserStatsAndAssignPackage(t *testing.T) {
 	if len(listPayload.Users) != 1 || listPayload.Users[0].UserID != targetUserID {
 		t.Fatalf("unexpected distributor users: %+v", listPayload.Users)
 	}
-	if listPayload.Users[0].TotalTokens != 300 || listPayload.Users[0].ActiveDays != 1 || listPayload.Users[0].ActualCostMicros != 1230000 {
+	if listPayload.Users[0].TotalTokens != 3000 || listPayload.Users[0].ActiveDays != 2 || listPayload.Users[0].ActualCostMicros != 4560000 || listPayload.Users[0].LastActiveDate != "2026-06-02" || listPayload.Users[0].UsageSource != "sub2api" || listPayload.Users[0].UsageStale {
 		t.Fatalf("unexpected distributor usage stats: %+v", listPayload.Users[0])
+	}
+	if usageCallCount != 1 {
+		t.Fatalf("expected one upstream usage call, got %d", usageCallCount)
+	}
+	if len(usageCache.setTTLs) != 1 || usageCache.setTTLs[0] != 60*time.Second {
+		t.Fatalf("expected usage cache ttl 60s, got %+v", usageCache.setTTLs)
+	}
+
+	secondListReq := httptest.NewRequest(http.MethodGet, "/distributor/users", nil)
+	setBearerAuth(secondListReq, distributorSessionToken)
+	secondListRec := httptest.NewRecorder()
+	mux.ServeHTTP(secondListRec, secondListReq)
+	if secondListRec.Code != http.StatusOK {
+		t.Fatalf("expected second list status %d, got %d body=%s", http.StatusOK, secondListRec.Code, secondListRec.Body.String())
+	}
+	var secondListPayload listDistributorUsersResponse
+	if err := json.NewDecoder(secondListRec.Body).Decode(&secondListPayload); err != nil {
+		t.Fatalf("decode second distributor users: %v", err)
+	}
+	if usageCallCount != 1 {
+		t.Fatalf("expected second list to reuse usage cache, got %d upstream calls", usageCallCount)
+	}
+	if len(secondListPayload.Users) != 1 || secondListPayload.Users[0].UsageSource != "redis" || secondListPayload.Users[0].TotalTokens != 3000 {
+		t.Fatalf("unexpected cached distributor usage stats: %+v", secondListPayload.Users)
 	}
 
 	assignReq := httptest.NewRequest(http.MethodPost, "/distributor/assign-package", bytes.NewReader([]byte(`{"email":"distributor-user@example.com","tier_code":"distributor-package"}`)))

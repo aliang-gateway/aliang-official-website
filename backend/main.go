@@ -13,6 +13,7 @@ import (
 	"time"
 
 	_ "ai-api-portal/backend/docs"
+	"ai-api-portal/backend/internal/cache"
 	"ai-api-portal/backend/internal/config"
 	"ai-api-portal/backend/internal/db"
 	"ai-api-portal/backend/internal/httpapi"
@@ -103,8 +104,20 @@ func main() {
 	}
 	userSvc := user.NewServiceWithOptions(database, opts)
 
+	var userUsageCache httpapi.UserUsageCache
 	if cfg.Redis.Enabled {
 		slog.Info("redis configured", "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
+		redisClient, err := cache.NewRedisClient(cache.RedisConfig{
+			Addr:     cfg.Redis.Addr,
+			Password: cfg.Redis.Password,
+			DB:       cfg.Redis.DB,
+			Timeout:  2 * time.Second,
+		})
+		if err != nil {
+			slog.Error("failed to init redis client", "error", err)
+			os.Exit(1)
+		}
+		userUsageCache = redisClient
 	}
 
 	proxyClient, err := proxy.NewClientWithOptions(cfg.Sub2APIBaseURL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: cfg.Sub2APIAdminKey})
@@ -117,11 +130,11 @@ func main() {
 	var stripeClient *portalstripe.Client
 	if cfg.Stripe.SecretKey != "" {
 		stripeClient, err = portalstripe.NewClient(portalstripe.Config{
-			SecretKey:      cfg.Stripe.SecretKey,
-			WebhookSecret:  cfg.Stripe.WebhookSecret,
-			Currency:       cfg.Stripe.Currency,
-			SuccessURL:     cfg.Stripe.SuccessURL,
-			CancelURL:      cfg.Stripe.CancelURL,
+			SecretKey:     cfg.Stripe.SecretKey,
+			WebhookSecret: cfg.Stripe.WebhookSecret,
+			Currency:      cfg.Stripe.Currency,
+			SuccessURL:    cfg.Stripe.SuccessURL,
+			CancelURL:     cfg.Stripe.CancelURL,
 		})
 		if err != nil {
 			slog.Error("failed to init stripe client", "error", err)
@@ -137,6 +150,7 @@ func main() {
 		UserService:          userSvc,
 		ProxyClient:          proxyClient,
 		StripeClient:         stripeClient,
+		UserUsageCache:       userUsageCache,
 		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,
 		SQLDialect:           cfg.Database.Driver,
 	})

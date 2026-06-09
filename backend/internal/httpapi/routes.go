@@ -48,6 +48,7 @@ type routes struct {
 	sub2api              *sub2api.Gateway
 	proxyClient          *proxy.Client
 	stripeClient         *portalstripe.Client
+	userUsageCache       UserUsageCache
 	adminBootstrapSecret string
 }
 
@@ -55,8 +56,14 @@ type RoutesOptions struct {
 	UserService          *user.Service
 	ProxyClient          *proxy.Client
 	StripeClient         *portalstripe.Client
+	UserUsageCache       UserUsageCache
 	AdminBootstrapSecret string
 	SQLDialect           string
+}
+
+type UserUsageCache interface {
+	Get(ctx context.Context, key string) ([]byte, bool, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 }
 
 var errForbiddenFilteredPayload = errors.New("filtered payload forbidden")
@@ -251,6 +258,10 @@ type distributorUserSummaryResponse struct {
 	ActiveDays         int64  `json:"active_days"`
 	ActualCostMicros   int64  `json:"actual_cost_micros"`
 	LastActiveDate     string `json:"last_active_date,omitempty"`
+	UsageSyncedAt      string `json:"usage_synced_at,omitempty"`
+	UsageSource        string `json:"usage_source,omitempty"`
+	UsageStale         bool   `json:"usage_stale,omitempty"`
+	UsageUnavailable   bool   `json:"usage_unavailable,omitempty"`
 }
 
 type listDistributorUsersResponse struct {
@@ -721,6 +732,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		proxyClient:          opts.ProxyClient,
 		stripeClient:         opts.StripeClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
+		userUsageCache:       opts.UserUsageCache,
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
 
@@ -5460,7 +5472,7 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 		); err != nil {
 			return nil, err
 		}
-		usage, err := r.loadDistributorUserUsageSummary(ctx, item.UserID)
+		usage, err := r.loadDistributorUserUsageSummary(ctx, item.UserID, "all")
 		if err != nil {
 			return nil, err
 		}
@@ -5468,6 +5480,10 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 		item.ActiveDays = usage.ActiveDays
 		item.ActualCostMicros = usage.ActualCostMicros
 		item.LastActiveDate = usage.LastActiveDate
+		item.UsageSyncedAt = usage.UsageSyncedAt
+		item.UsageSource = usage.UsageSource
+		item.UsageStale = usage.UsageStale
+		item.UsageUnavailable = usage.UsageUnavailable
 		users = append(users, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -5476,50 +5492,304 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 	return users, nil
 }
 
-func (r *routes) loadDistributorUserUsageSummary(ctx context.Context, userID int64) (distributorUserSummaryResponse, error) {
-	var summary distributorUserSummaryResponse
+const userUsageCacheTTL = 60 * time.Second
+
+type distributorUserUsageCachePayload struct {
+	RequestCount     int64  `json:"request_count"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+	ActualCostMicros int64  `json:"actual_cost_micros"`
+	ActiveDays       int64  `json:"active_days"`
+	LastActiveDate   string `json:"last_active_date,omitempty"`
+	SyncedAt         string `json:"synced_at,omitempty"`
+	Source           string `json:"source,omitempty"`
+	Stale            bool   `json:"stale,omitempty"`
+	Unavailable      bool   `json:"unavailable,omitempty"`
+}
+
+func (r *routes) loadDistributorUserUsageSummary(ctx context.Context, userID int64, rangeKey string) (distributorUserSummaryResponse, error) {
+	rangeKey = normalizeUsageRangeKey(rangeKey)
+	if cached, found := r.loadDistributorUsageFromCache(ctx, userID, rangeKey); found {
+		return distributorUsagePayloadToResponse(cached, "redis", cached.Stale, cached.Unavailable), nil
+	}
+
+	if snapshot, found, err := r.loadDistributorUsageSnapshot(ctx, userID, rangeKey); err != nil {
+		return distributorUserSummaryResponse{}, err
+	} else if found && isUsageSnapshotFresh(snapshot.SyncedAt) {
+		r.storeDistributorUsageInCache(ctx, userID, rangeKey, snapshot)
+		return distributorUsagePayloadToResponse(snapshot, "snapshot", false, false), nil
+	}
+
+	if usage, err := r.fetchDistributorUsageFromSub2API(ctx, userID); err == nil {
+		usage.Source = "sub2api"
+		if usage.SyncedAt == "" {
+			usage.SyncedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		_ = r.upsertDistributorUsageSnapshot(ctx, userID, rangeKey, usage)
+		r.storeDistributorUsageInCache(ctx, userID, rangeKey, usage)
+		return distributorUsagePayloadToResponse(usage, "sub2api", false, false), nil
+	}
+
+	if snapshot, found, err := r.loadDistributorUsageSnapshot(ctx, userID, rangeKey); err != nil {
+		return distributorUserSummaryResponse{}, err
+	} else if found {
+		snapshot.Stale = true
+		r.storeDistributorUsageInCache(ctx, userID, rangeKey, snapshot)
+		return distributorUsagePayloadToResponse(snapshot, "snapshot", true, false), nil
+	}
+
+	local, err := r.loadLocalDistributorUserUsageFallback(ctx, userID)
+	if err != nil {
+		return distributorUserSummaryResponse{}, err
+	}
+	if local.TotalTokens > 0 || local.ActiveDays > 0 || local.ActualCostMicros > 0 {
+		local.Stale = true
+		r.storeDistributorUsageInCache(ctx, userID, rangeKey, local)
+		return distributorUsagePayloadToResponse(local, "local_fallback", true, false), nil
+	}
+	local.Source = "unavailable"
+	local.Stale = true
+	local.Unavailable = true
+	r.storeDistributorUsageInCache(ctx, userID, rangeKey, local)
+	return distributorUsagePayloadToResponse(local, "unavailable", true, true), nil
+}
+
+func normalizeUsageRangeKey(rangeKey string) string {
+	trimmed := strings.TrimSpace(rangeKey)
+	if trimmed == "" {
+		return "all"
+	}
+	return trimmed
+}
+
+func distributorUsageCacheKey(userID int64, rangeKey string) string {
+	return fmt.Sprintf("distributor:user_usage:%d:%s", userID, normalizeUsageRangeKey(rangeKey))
+}
+
+func (r *routes) loadDistributorUsageFromCache(ctx context.Context, userID int64, rangeKey string) (distributorUserUsageCachePayload, bool) {
+	if r.userUsageCache == nil {
+		return distributorUserUsageCachePayload{}, false
+	}
+	raw, found, err := r.userUsageCache.Get(ctx, distributorUsageCacheKey(userID, rangeKey))
+	if err != nil || !found {
+		return distributorUserUsageCachePayload{}, false
+	}
+	var payload distributorUserUsageCachePayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return distributorUserUsageCachePayload{}, false
+	}
+	return payload, true
+}
+
+func (r *routes) storeDistributorUsageInCache(ctx context.Context, userID int64, rangeKey string, payload distributorUserUsageCachePayload) {
+	if r.userUsageCache == nil {
+		return
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_ = r.userUsageCache.Set(ctx, distributorUsageCacheKey(userID, rangeKey), raw, userUsageCacheTTL)
+}
+
+func isUsageSnapshotFresh(syncedAt string) bool {
+	parsed, ok := parseUsageSnapshotTime(syncedAt)
+	return ok && time.Since(parsed) <= userUsageCacheTTL
+}
+
+func parseUsageSnapshotTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05Z"} {
+		parsed, err := time.Parse(layout, raw)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func distributorUsagePayloadToResponse(payload distributorUserUsageCachePayload, source string, stale, unavailable bool) distributorUserSummaryResponse {
+	return distributorUserSummaryResponse{
+		TotalTokens:      payload.TotalTokens,
+		ActiveDays:       payload.ActiveDays,
+		ActualCostMicros: payload.ActualCostMicros,
+		LastActiveDate:   payload.LastActiveDate,
+		UsageSyncedAt:    payload.SyncedAt,
+		UsageSource:      source,
+		UsageStale:       stale,
+		UsageUnavailable: unavailable,
+	}
+}
+
+func (r *routes) fetchDistributorUsageFromSub2API(ctx context.Context, userID int64) (distributorUserUsageCachePayload, error) {
+	if r.proxyClient == nil {
+		return distributorUserUsageCachePayload{}, errors.New("sub2api proxy client is not configured")
+	}
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, userID)
+	if err != nil {
+		return distributorUserUsageCachePayload{}, err
+	}
+	usage, err := r.proxyClient.GetAdminUserUsageSummary(ctx, upstreamUserID)
+	if err != nil {
+		return distributorUserUsageCachePayload{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	return distributorUserUsageCachePayload{
+		RequestCount:     usage.RequestCount,
+		InputTokens:      usage.InputTokens,
+		OutputTokens:     usage.OutputTokens,
+		TotalTokens:      usage.TotalTokens,
+		ActualCostMicros: usage.ActualCostMicros,
+		ActiveDays:       usage.ActiveDays,
+		LastActiveDate:   usage.LastActiveDate,
+		SyncedAt:         now,
+		Source:           "sub2api",
+	}, nil
+}
+
+func (r *routes) loadDistributorUsageSnapshot(ctx context.Context, userID int64, rangeKey string) (distributorUserUsageCachePayload, bool, error) {
+	var payload distributorUserUsageCachePayload
+	var syncedAt time.Time
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT
+			request_count,
+			input_tokens,
+			output_tokens,
+			total_tokens,
+			actual_cost_micros,
+			active_days,
+			last_active_date,
+			source,
+			synced_at
+		FROM als_distributor_user_usage_snapshots
+		WHERE user_id = ?
+			AND range_key = ?;
+	`), userID, normalizeUsageRangeKey(rangeKey)).Scan(
+		&payload.RequestCount,
+		&payload.InputTokens,
+		&payload.OutputTokens,
+		&payload.TotalTokens,
+		&payload.ActualCostMicros,
+		&payload.ActiveDays,
+		&payload.LastActiveDate,
+		&payload.Source,
+		&syncedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return distributorUserUsageCachePayload{}, false, nil
+	}
+	if err != nil {
+		return distributorUserUsageCachePayload{}, false, err
+	}
+	payload.SyncedAt = syncedAt.Format(time.RFC3339)
+	return payload, true, nil
+}
+
+func (r *routes) upsertDistributorUsageSnapshot(ctx context.Context, userID int64, rangeKey string, payload distributorUserUsageCachePayload) error {
+	upstreamUserID, err := r.resolveSub2APIUserID(ctx, userID)
+	if err != nil {
+		upstreamUserID = 0
+	}
+	now := time.Now().UTC()
+	syncedAt := now
+	if parsed, ok := parseUsageSnapshotTime(payload.SyncedAt); ok {
+		syncedAt = parsed
+	}
+	if r.sqlDialect == "postgres" {
+		_, err = r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+			INSERT INTO als_distributor_user_usage_snapshots(
+				user_id,
+				upstream_user_id,
+				range_key,
+				request_count,
+				input_tokens,
+				output_tokens,
+				total_tokens,
+				actual_cost_micros,
+				active_days,
+				last_active_date,
+				source,
+				synced_at,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, range_key) DO UPDATE SET
+				upstream_user_id = excluded.upstream_user_id,
+				request_count = excluded.request_count,
+				input_tokens = excluded.input_tokens,
+				output_tokens = excluded.output_tokens,
+				total_tokens = excluded.total_tokens,
+				actual_cost_micros = excluded.actual_cost_micros,
+				active_days = excluded.active_days,
+				last_active_date = excluded.last_active_date,
+				source = excluded.source,
+				synced_at = excluded.synced_at,
+				updated_at = excluded.updated_at;
+		`), userID, upstreamUserID, normalizeUsageRangeKey(rangeKey), payload.RequestCount, payload.InputTokens, payload.OutputTokens, payload.TotalTokens, payload.ActualCostMicros, payload.ActiveDays, payload.LastActiveDate, payload.Source, syncedAt, now, now)
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+		INSERT INTO als_distributor_user_usage_snapshots(
+			user_id,
+			upstream_user_id,
+			range_key,
+			request_count,
+			input_tokens,
+			output_tokens,
+			total_tokens,
+			actual_cost_micros,
+			active_days,
+			last_active_date,
+			source,
+			synced_at,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, range_key) DO UPDATE SET
+			upstream_user_id = excluded.upstream_user_id,
+			request_count = excluded.request_count,
+			input_tokens = excluded.input_tokens,
+			output_tokens = excluded.output_tokens,
+			total_tokens = excluded.total_tokens,
+			actual_cost_micros = excluded.actual_cost_micros,
+			active_days = excluded.active_days,
+			last_active_date = excluded.last_active_date,
+			source = excluded.source,
+			synced_at = excluded.synced_at,
+			updated_at = excluded.updated_at;
+	`), userID, upstreamUserID, normalizeUsageRangeKey(rangeKey), payload.RequestCount, payload.InputTokens, payload.OutputTokens, payload.TotalTokens, payload.ActualCostMicros, payload.ActiveDays, payload.LastActiveDate, payload.Source, syncedAt, now, now)
+	return err
+}
+
+func (r *routes) loadLocalDistributorUserUsageFallback(ctx context.Context, userID int64) (distributorUserUsageCachePayload, error) {
+	var summary distributorUserUsageCachePayload
 	var dailyLastActive sql.NullString
 	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT
+			COALESCE(SUM(request_count), 0),
+			COALESCE(SUM(input_tokens), 0),
+			COALESCE(SUM(output_tokens), 0),
 			COALESCE(SUM(total_tokens), 0),
-			COUNT(DISTINCT CASE WHEN request_count > 0 THEN usage_date END),
 			COALESCE(SUM(actual_cost_micros), 0),
+			COUNT(DISTINCT CASE WHEN request_count > 0 THEN usage_date END),
 			MAX(usage_date)
 		FROM als_user_usage_daily
 		WHERE user_id = ?;
-	`), userID).Scan(&summary.TotalTokens, &summary.ActiveDays, &summary.ActualCostMicros, &dailyLastActive)
+	`), userID).Scan(&summary.RequestCount, &summary.InputTokens, &summary.OutputTokens, &summary.TotalTokens, &summary.ActualCostMicros, &summary.ActiveDays, &dailyLastActive)
 	if err != nil {
-		return distributorUserSummaryResponse{}, err
+		return distributorUserUsageCachePayload{}, err
 	}
 	if dailyLastActive.Valid {
 		summary.LastActiveDate = dailyLastActive.String
 	}
-
-	usageDayExpr := "DATE(usage_timestamp)"
-	if r.sqlDialect == "postgres" {
-		usageDayExpr = "DATE(usage_timestamp)::text"
-	}
-	rawQuery := fmt.Sprintf(`
-		SELECT
-			COALESCE(SUM(quantity), 0),
-			COUNT(DISTINCT %s),
-			MAX(%s)
-		FROM als_usage_records
-		WHERE user_id = ?;
-	`, usageDayExpr, usageDayExpr)
-
-	var rawTokens int64
-	var rawActiveDays int64
-	var rawLastActive sql.NullString
-	if err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, rawQuery), userID).Scan(&rawTokens, &rawActiveDays, &rawLastActive); err != nil {
-		return distributorUserSummaryResponse{}, err
-	}
-	summary.TotalTokens += rawTokens
-	summary.ActiveDays += rawActiveDays
-	if rawLastActive.Valid && rawLastActive.String > summary.LastActiveDate {
-		summary.LastActiveDate = rawLastActive.String
-	}
-
+	summary.SyncedAt = time.Now().UTC().Format(time.RFC3339)
+	summary.Source = "local_fallback"
 	return summary, nil
 }
 

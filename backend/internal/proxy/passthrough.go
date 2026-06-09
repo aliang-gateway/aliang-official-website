@@ -253,6 +253,16 @@ type AdminSubscription struct {
 	CreatedAt  string `json:"created_at,omitempty"`
 }
 
+type AdminUserUsageSummary struct {
+	RequestCount     int64  `json:"request_count"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+	ActualCostMicros int64  `json:"actual_cost_micros"`
+	ActiveDays       int64  `json:"active_days"`
+	LastActiveDate   string `json:"last_active_date,omitempty"`
+}
+
 const (
 	RequestTimeout = 10 * time.Second
 	maxRetries     = 1
@@ -590,6 +600,122 @@ func (c *Client) GetAdminUser(ctx context.Context, userID int64) (*ResponseEnvel
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *Client) GetAdminUserUsageSummary(ctx context.Context, userID int64) (*AdminUserUsageSummary, error) {
+	if userID <= 0 {
+		return nil, errors.New("user id must be greater than 0")
+	}
+	var lastErr error
+	for _, path := range []string{
+		fmt.Sprintf("/api/v1/admin/users/%d/usage", userID),
+		fmt.Sprintf("/api/v1/admin/users/%d/usage/stats", userID),
+		fmt.Sprintf("/api/v1/admin/usage/users/%d/stats", userID),
+	} {
+		var raw map[string]any
+		err := c.DoAdminJSON(ctx, AdminRequest{Method: http.MethodGet, Path: path}, &raw)
+		if err != nil {
+			lastErr = err
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+				continue
+			}
+			return nil, err
+		}
+		summary := parseAdminUserUsageSummary(raw)
+		return &summary, nil
+	}
+	return nil, lastErr
+}
+
+func parseAdminUserUsageSummary(raw map[string]any) AdminUserUsageSummary {
+	root := unwrapUsageObject(raw)
+	summary := AdminUserUsageSummary{
+		RequestCount:     int64FromAny(firstUsageValue(root, "request_count", "requests", "total_requests")),
+		InputTokens:      int64FromAny(firstUsageValue(root, "input_tokens", "prompt_tokens", "total_input_tokens")),
+		OutputTokens:     int64FromAny(firstUsageValue(root, "output_tokens", "completion_tokens", "total_output_tokens")),
+		TotalTokens:      int64FromAny(firstUsageValue(root, "total_tokens", "tokens", "token_count")),
+		ActualCostMicros: int64FromAny(firstUsageValue(root, "actual_cost_micros", "cost_micros", "total_cost_micros")),
+		ActiveDays:       int64FromAny(firstUsageValue(root, "active_days", "active_day_count", "days")),
+		LastActiveDate:   stringFromAny(firstUsageValue(root, "last_active_date", "last_active_at", "last_used_at")),
+	}
+	if summary.TotalTokens == 0 {
+		summary.TotalTokens = summary.InputTokens + summary.OutputTokens
+	}
+	if summary.ActualCostMicros == 0 {
+		cost := float64FromAny(firstUsageValue(root, "actual_cost", "cost", "total_cost", "cost_usd"))
+		if cost > 0 {
+			summary.ActualCostMicros = int64(cost * 1000000)
+		}
+	}
+	return summary
+}
+
+func unwrapUsageObject(raw map[string]any) map[string]any {
+	current := raw
+	for _, key := range []string{"data", "summary", "usage", "stats"} {
+		next, ok := current[key].(map[string]any)
+		if ok {
+			current = next
+		}
+	}
+	return current
+}
+
+func firstUsageValue(raw map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+
+func int64FromAny(value any) int64 {
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case json.Number:
+		parsed, _ := typed.Int64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func float64FromAny(value any) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case int64:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func stringFromAny(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return ""
+	}
 }
 
 func (c *Client) UpdateAdminUserAllowedGroups(ctx context.Context, userID int64, allowedGroups []int64, idempotencyKey string) (*ResponseEnvelope[AdminUser], error) {
