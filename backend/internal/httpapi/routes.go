@@ -792,6 +792,11 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		mux.HandleFunc("POST /api/auth/refresh", r.handleAuthRefreshPassthrough)
 		mux.HandleFunc("POST /api/auth/logout", r.handleAuthLogoutPassthrough)
 		mux.HandleFunc("GET /api/auth/me", r.handleAuthMePassthrough)
+		// Mobile Me page routes (aliangVibeCodingPhone) — /api/ prefix aliases
+		mux.HandleFunc("GET /api/dashboard/account", r.handleDashboardAccountPassthrough)
+		mux.HandleFunc("GET /api/dashboard/usage", r.handleDashboardUsagePassthrough)
+		mux.HandleFunc("GET /api/subscriptions/active", r.handleSubscriptionsActivePassthrough)
+		mux.HandleFunc("GET /api/subscriptions/summary", r.handleSubscriptionsSummaryPassthrough)
 
 		// /api/v1/auth/* — alianggate compat paths
 		mux.HandleFunc("POST /api/v1/auth/register", r.handleAuthRegisterPassthrough)
