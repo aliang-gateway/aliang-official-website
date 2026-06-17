@@ -222,3 +222,35 @@ func (s *Service) scanCodeError(ctx context.Context, scanCode string) error {
 	}
 	return ErrInvalidState
 }
+
+// Confirm 由 App 调用：原子 scanned→authorized（必须 confirmer==scanner），再为该用户签发 session。
+// 明文 token 短暂暂存于 als_scan_codes.session_token 供 PC 幂等取用；als_sessions 仍只存哈希。
+func (s *Service) Confirm(ctx context.Context, scanCode string, confirmerID int64) error {
+	if s.minter == nil {
+		return errors.New("session minter not configured")
+	}
+	now := s.now().UTC()
+	res, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
+		UPDATE als_scan_codes
+		SET status = 'authorized', authorized_at = ?
+		WHERE scan_code_hash = ? AND status = 'scanned' AND user_id = ? AND expires_at > ?;
+	`), now, hashCode(scanCode), confirmerID, now)
+	if err != nil {
+		return fmt.Errorf("confirm transition: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return s.scanCodeError(ctx, scanCode)
+	}
+	plaintext, tokenHash, err := s.minter.MintSessionForUser(ctx, confirmerID)
+	if err != nil {
+		return fmt.Errorf("mint session: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
+		UPDATE als_scan_codes
+		SET session_token = ?, session_token_hash = ?
+		WHERE scan_code_hash = ? AND status = 'authorized';
+	`), plaintext, tokenHash, hashCode(scanCode)); err != nil {
+		return fmt.Errorf("store session token: %w", err)
+	}
+	return nil
+}

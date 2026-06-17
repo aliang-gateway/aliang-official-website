@@ -163,3 +163,35 @@ func TestScanTransitionsAndGuards(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+func TestConfirmBindsUserAndMintsToken(t *testing.T) {
+	svc, db := newTestService(t)
+	init, _ := svc.Init(context.Background(), "")
+	if err := svc.Scan(context.Background(), init.ScanCode, 9); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO als_users(id,email,name,role) VALUES(9,'c@x.com','C','user')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := svc.Confirm(context.Background(), init.ScanCode, 99); !errors.Is(err, scanlogin.ErrInvalidState) {
+		t.Fatalf("want ErrInvalidState for mismatched confirmer, got %v", err)
+	}
+	if err := svc.Confirm(context.Background(), init.ScanCode, 9); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	got, _ := svc.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusAuthorized {
+		t.Fatalf("want authorized, got %s", got.Status)
+	}
+	if got.SessionToken == "" || got.User == nil || got.User.ID != 9 {
+		t.Fatalf("bad authorized result: %+v", got)
+	}
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM als_sessions WHERE user_id=9`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("als_sessions should have 1 row, got %d", n)
+	}
+	if err := svc.Confirm(context.Background(), init.ScanCode, 9); !errors.Is(err, scanlogin.ErrInvalidState) {
+		t.Fatalf("want ErrInvalidState on reconfirm, got %v", err)
+	}
+}
