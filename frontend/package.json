@@ -15,6 +15,7 @@
     "next": "16.1.6",
     "next-intl": "^4.9.0",
     "next-mdx-remote": "^6.0.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "rehype-highlight": "^7.0.2",
