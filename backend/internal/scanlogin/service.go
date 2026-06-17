@@ -190,3 +190,35 @@ func maxInt(a, b int) int {
 
 // Hash 导出哈希函数供测试/审计使用。
 func Hash(code string) string { return hashCode(code) }
+
+// Scan 由 App（已登录）调用：把 pending 行原子置为 scanned 并绑定 App 用户。
+func (s *Service) Scan(ctx context.Context, scanCode string, userID int64) error {
+	now := s.now().UTC()
+	res, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
+		UPDATE als_scan_codes
+		SET status = 'scanned', user_id = ?, scanned_at = ?
+		WHERE scan_code_hash = ? AND status = 'pending' AND expires_at > ?;
+	`), userID, now, hashCode(scanCode), now)
+	if err != nil {
+		return fmt.Errorf("scan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return s.scanCodeError(ctx, scanCode)
+	}
+	return nil
+}
+
+// scanCodeError 在转移失败时区分「不存在」与「状态不对」。
+func (s *Service) scanCodeError(ctx context.Context, scanCode string) error {
+	var expiresAt time.Time
+	err := s.db.QueryRowContext(ctx, db.Rebind(s.dialect, `
+		SELECT expires_at FROM als_scan_codes WHERE scan_code_hash = ?;
+	`), hashCode(scanCode)).Scan(&expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return ErrInvalidState
+}

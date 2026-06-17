@@ -145,3 +145,21 @@ func TestStatusLifecycle(t *testing.T) {
 	}
 }
 
+
+func TestScanTransitionsAndGuards(t *testing.T) {
+	svc, _ := newTestService(t)
+	init, _ := svc.Init(context.Background(), "")
+	if err := svc.Scan(context.Background(), init.ScanCode, 42); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	got, _ := svc.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusScanned {
+		t.Fatalf("want scanned, got %s", got.Status)
+	}
+	if err := svc.Scan(context.Background(), init.ScanCode, 42); !errors.Is(err, scanlogin.ErrInvalidState) {
+		t.Fatalf("want ErrInvalidState on rescan, got %v", err)
+	}
+	if err := svc.Scan(context.Background(), "sc_bogus", 42); !errors.Is(err, scanlogin.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
