@@ -152,7 +152,15 @@
     "loggingIn": "Logging in...",
     "loginButton": "Login",
     "noAccount": "Don't have an account?",
-    "createAccount": "Create an account"
+    "createAccount": "Create an account",
+    "passwordTab": "Password",
+    "scanTab": "Scan to Login",
+    "scanWaiting": "Scan with the ALiang app to log in",
+    "scanScanned": "Scanned — tap confirm on your phone",
+    "scanSuccess": "Logged in",
+    "scanDenied": "Login cancelled",
+    "scanExpired": "QR code expired, refreshing...",
+    "scanInitFailed": "Failed to generate QR code, retrying..."
   },
   "register": {
     "title": "Create Account",

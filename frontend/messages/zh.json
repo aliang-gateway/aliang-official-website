@@ -152,7 +152,15 @@
     "loggingIn": "登录中...",
     "loginButton": "登录",
     "noAccount": "还没有账户？",
-    "createAccount": "创建账户"
+    "createAccount": "创建账户",
+    "passwordTab": "密码登录",
+    "scanTab": "扫码登录",
+    "scanWaiting": "请使用 ALiang App 扫码登录",
+    "scanScanned": "已扫描，请在手机上确认",
+    "scanSuccess": "登录成功",
+    "scanDenied": "已取消登录",
+    "scanExpired": "二维码已过期，正在刷新...",
+    "scanInitFailed": "二维码生成失败，正在重试..."
   },
   "register": {
     "title": "创建账户",

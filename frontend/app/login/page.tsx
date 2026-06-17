@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { ScanLoginPanel } from "@/components/auth/ScanLoginPanel";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
 import { useTranslations } from "next-intl";
 
@@ -38,6 +39,7 @@ function LoginContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"password" | "scan">("password");
 
   const nextPath = searchParams.get("next")?.trim() ?? "";
 
@@ -108,54 +110,79 @@ function LoginContent() {
           <p className="text-sm text-[var(--stitch-text-muted)]">{t("subtitle")}</p>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-email">
-              {t("email")}
-            </label>
-            <input
-              id="login-email"
-              className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
-              placeholder={t("emailPlaceholder")}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
+        <div className="mb-6 flex gap-2 rounded-lg bg-[var(--stitch-bg)] p-1">
+          <button
+            type="button"
+            onClick={() => setMode("password")}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+              mode === "password" ? "bg-[var(--stitch-primary)] text-white" : "text-[var(--stitch-text-muted)]"
+            }`}
+          >
+            {t("passwordTab")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("scan")}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+              mode === "scan" ? "bg-[var(--stitch-primary)] text-white" : "text-[var(--stitch-text-muted)]"
+            }`}
+          >
+            {t("scanTab")}
+          </button>
+        </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-password">
-                {t("password")}
+        {mode === "password" && (
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-email">
+                {t("email")}
               </label>
-            </div>
-            <div className="relative flex items-center">
               <input
-                id="login-password"
-                className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-4 pr-12 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
-                placeholder={t("passwordPlaceholder")}
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                id="login-email"
+                className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
+                placeholder={t("emailPlaceholder")}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
                 required
               />
-              <span className="absolute right-4 flex items-center text-[var(--stitch-text-muted)]">
-                <MaterialIcon name="lock" size={20} />
-              </span>
             </div>
-          </div>
 
-          {error ? <p className="text-sm text-red-500">{error}</p> : null}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-[var(--stitch-text-muted)]" htmlFor="login-password">
+                  {t("password")}
+                </label>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  id="login-password"
+                  className="h-12 w-full rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] pl-4 pr-12 text-[var(--stitch-text)] placeholder:text-[var(--stitch-text-muted)] focus:border-[var(--stitch-primary)] focus:ring-1 focus:ring-[var(--stitch-primary)]"
+                  placeholder={t("passwordPlaceholder")}
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                <span className="absolute right-4 flex items-center text-[var(--stitch-text-muted)]">
+                  <MaterialIcon name="lock" size={20} />
+                </span>
+              </div>
+            </div>
 
-          <button
-            className="h-12 w-full rounded-lg bg-[var(--stitch-primary)] font-bold text-white shadow-sm transition-colors hover:bg-[var(--stitch-primary)]/90 disabled:cursor-not-allowed disabled:opacity-60"
-            type="submit"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? t("loggingIn") : t("loginButton")}
-          </button>
-        </form>
+            {error ? <p className="text-sm text-red-500">{error}</p> : null}
+
+            <button
+              className="h-12 w-full rounded-lg bg-[var(--stitch-primary)] font-bold text-white shadow-sm transition-colors hover:bg-[var(--stitch-primary)]/90 disabled:cursor-not-allowed disabled:opacity-60"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? t("loggingIn") : t("loginButton")}
+            </button>
+          </form>
+        )}
+
+        {mode === "scan" && <ScanLoginPanel nextPath={nextPath} />}
 
         <div className="mt-8 text-center">
           <p className="text-sm text-[var(--stitch-text-muted)]">
