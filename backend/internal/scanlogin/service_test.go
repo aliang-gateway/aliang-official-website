@@ -90,9 +90,6 @@ func TestInitCreatesRowAndReturnsCodes(t *testing.T) {
 	}
 }
 
-// keep errors import used even when later tests removed temporarily
-var _ = errors.Is
-
 func TestStatusLifecycle(t *testing.T) {
 	_, db := newTestService(t)
 	frozen := time.Now()
@@ -208,5 +205,21 @@ func TestDenyFromScannedOrPending(t *testing.T) {
 	}
 	if err := svc.Deny(context.Background(), init.ScanCode); !errors.Is(err, scanlogin.ErrInvalidState) {
 		t.Fatalf("want ErrInvalidState on re-deny, got %v", err)
+	}
+}
+
+func TestCleanupExpiredDeletesOldRows(t *testing.T) {
+	svc, db := newTestService(t)
+	_, _ = svc.Init(context.Background(), "")
+	if _, err := db.Exec(`UPDATE als_scan_codes SET expires_at = ?`, time.Now().Add(-time.Hour).UTC()); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if err := svc.CleanupExpired(context.Background()); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM als_scan_codes`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("want 0 rows after cleanup, got %d", n)
 	}
 }

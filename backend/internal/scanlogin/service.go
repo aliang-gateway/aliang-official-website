@@ -271,3 +271,31 @@ func (s *Service) Deny(ctx context.Context, scanCode string) error {
 	}
 	return nil
 }
+
+// CleanupExpired 删除已过期且超过宽限期的行（含已取 token 的 authorized 行）。
+func (s *Service) CleanupExpired(ctx context.Context) error {
+	cutoff := s.now().Add(-CleanupGrace).UTC()
+	_, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
+		DELETE FROM als_scan_codes WHERE expires_at < ?;
+	`), cutoff)
+	if err != nil {
+		return fmt.Errorf("cleanup expired scan codes: %w", err)
+	}
+	return nil
+}
+
+// StartCleanup 启动每分钟清理一次的后台 goroutine，直到 ctx 取消。多实例各自幂等清扫。
+func (s *Service) StartCleanup(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = s.CleanupExpired(context.Background())
+			}
+		}
+	}()
+}
