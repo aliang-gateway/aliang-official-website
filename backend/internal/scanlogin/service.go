@@ -254,3 +254,20 @@ func (s *Service) Confirm(ctx context.Context, scanCode string, confirmerID int6
 	}
 	return nil
 }
+
+// Deny 由 App 调用：把 pending/scanned 行置为 denied（取消登录）。
+func (s *Service) Deny(ctx context.Context, scanCode string) error {
+	now := s.now().UTC()
+	res, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
+		UPDATE als_scan_codes
+		SET status = 'denied', denied_at = ?
+		WHERE scan_code_hash = ? AND status IN ('pending','scanned') AND expires_at > ?;
+	`), now, hashCode(scanCode), now)
+	if err != nil {
+		return fmt.Errorf("deny: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return s.scanCodeError(ctx, scanCode)
+	}
+	return nil
+}

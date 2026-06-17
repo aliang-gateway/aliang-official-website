@@ -195,3 +195,18 @@ func TestConfirmBindsUserAndMintsToken(t *testing.T) {
 		t.Fatalf("want ErrInvalidState on reconfirm, got %v", err)
 	}
 }
+
+func TestDenyFromScannedOrPending(t *testing.T) {
+	svc, _ := newTestService(t)
+	init, _ := svc.Init(context.Background(), "")
+	if err := svc.Deny(context.Background(), init.ScanCode); err != nil {
+		t.Fatalf("deny pending: %v", err)
+	}
+	got, _ := svc.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusDenied {
+		t.Fatalf("want denied, got %s", got.Status)
+	}
+	if err := svc.Deny(context.Background(), init.ScanCode); !errors.Is(err, scanlogin.ErrInvalidState) {
+		t.Fatalf("want ErrInvalidState on re-deny, got %v", err)
+	}
+}
