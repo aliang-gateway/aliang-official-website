@@ -29,6 +29,7 @@ import (
 	"ai-api-portal/backend/internal/fulfillment"
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
+	"ai-api-portal/backend/internal/scanlogin"
 	portalstripe "ai-api-portal/backend/internal/stripe"
 	"ai-api-portal/backend/internal/sub2api"
 	"ai-api-portal/backend/internal/sub2apiauth"
@@ -50,6 +51,7 @@ type routes struct {
 	stripeClient         *portalstripe.Client
 	userUsageCache       UserUsageCache
 	adminBootstrapSecret string
+	scanLogin            *scanlogin.Service
 }
 
 type RoutesOptions struct {
@@ -750,8 +752,16 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		stripeClient:         opts.StripeClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
 		userUsageCache:       opts.UserUsageCache,
+		scanLogin:            scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
+
+	// 扫码登录（本地能力，非 upstream passthrough）
+	mux.HandleFunc("POST /auth/scan/init", r.handleScanInit)
+	mux.HandleFunc("GET /auth/scan/status", r.handleScanStatus)
+	mux.Handle("POST /auth/scan/scan", authenticated(http.HandlerFunc(r.handleScanScan)))
+	mux.Handle("POST /auth/scan/confirm", authenticated(http.HandlerFunc(r.handleScanConfirm)))
+	mux.Handle("POST /auth/scan/deny", authenticated(http.HandlerFunc(r.handleScanDeny)))
 
 	mux.HandleFunc("POST /users", r.handleCreateUser)
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
@@ -954,6 +964,9 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("GET /public/downloads", r.handlePublicListDownloads)
 
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
+
+	// 扫码登录过期清理：进程级后台 goroutine
+	r.scanLogin.StartCleanup(context.Background())
 }
 
 func (r *routes) handleCreateUser(w http.ResponseWriter, req *http.Request) {
