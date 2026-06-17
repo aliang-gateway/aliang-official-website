@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS als_scan_codes (
     status           TEXT NOT NULL DEFAULT 'pending',
     user_id          INTEGER,
     session_token_hash TEXT,
+    session_token    TEXT,
     init_ip          TEXT,
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at       TIMESTAMP NOT NULL,
@@ -58,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_scan_codes_expires_at  ON als_scan_codes(expires_
 | `status` | `pending` / `scanned` / `authorized` / `denied`（`expired` 由 `expires_at` 计算，不入库）。 |
 | `user_id` | 扫码时写入，来自 App 的认证 session（不信任请求体）。 |
 | `session_token_hash` | 确认时复用 `als_sessions` 签发的 token_hash，做关联审计。 |
+| `session_token` | 确认时签发的明文 token，**短暂暂存**用于 PC 幂等取 token（仅 ~5min TTL，过期随行清理）。`als_sessions` 仍只存哈希，与现有一致。 |
 | `init_ip` | 发起端 IP，审计用。 |
 | `expires_at` | 默认 `created_at + 5min`。 |
 | `scanned_at` / `authorized_at` / `denied_at` | 各阶段时间戳。 |
@@ -111,7 +113,7 @@ pending ──scan(App)──► scanned ──confirm(App)──► authorized 
 
 **4. `POST /auth/scan/confirm`（App Bearer）**
 
-请求 `{code:"<scan_code>"}`。原子 `scanned→authorized`（校验 confirmer==scanner、未过期），**复用 `als_sessions` 机制为该 user 签发 session**：明文 token 只经由 PC 的 `status` 下发，`token_hash` 同时写 `als_sessions` 与 `als_scan_codes.session_token_hash`。**明文 token 任何地方都不落库**（两张表都只存哈希）。响应 `{status:"authorized"}`（不返回 token）。状态不符 → `409`。
+请求 `{code:"<scan_code>"}`。原子 `scanned→authorized`（校验 confirmer==scanner、未过期），**复用 `als_sessions` 机制为该 user 签发 session**：`token_hash` 写 `als_sessions`（只存哈希，与现有一致）+ `als_scan_codes.session_token_hash`（审计关联）；明文 token 写 `als_scan_codes.session_token` **短暂暂存**供 PC 幂等取用（仅 ~5min TTL，过期随行清理；这是随机 bearer token 可重试交付的必要条件，与 device/magic-link 流程一致）。响应 `{status:"authorized"}`（不返回 token）。状态不符 → `409`。
 
 **5. `POST /auth/scan/deny`（App Bearer）**
 
