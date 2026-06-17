@@ -31,7 +31,7 @@ func newTestService(t *testing.T) (*scanlogin.Service, *sql.DB) {
 			status TEXT DEFAULT 'pending',
 			user_id INTEGER,
 			session_token_hash TEXT,
-			session_token TEXT DEFAULT '',
+			session_token TEXT,
 			init_ip TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP,
@@ -74,7 +74,10 @@ func TestInitCreatesRowAndReturnsCodes(t *testing.T) {
 	if res.ExpiresIn <= 0 || res.Interval <= 0 {
 		t.Fatalf("bad expires/interval: %+v", res)
 	}
-	var devHash, scanHash, status, token string
+	var (
+		devHash, scanHash, status string
+		token                     sql.NullString
+	)
 	err = db.QueryRow(`SELECT device_code_hash, scan_code_hash, status, session_token FROM als_scan_codes`).Scan(&devHash, &scanHash, &status, &token)
 	if err != nil {
 		t.Fatalf("query: %v", err)
@@ -82,8 +85,8 @@ func TestInitCreatesRowAndReturnsCodes(t *testing.T) {
 	if status != "pending" {
 		t.Fatalf("status=%s", status)
 	}
-	if token != "" {
-		t.Fatalf("init must not store a session token")
+	if token.Valid {
+		t.Fatalf("init must not store a session token, got %q", token.String)
 	}
 	if devHash == res.DeviceCode || scanHash == res.ScanCode {
 		t.Fatalf("must store hashes, not plaintext")
