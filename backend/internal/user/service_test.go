@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,6 +270,60 @@ func TestListSessionsAndLogout(t *testing.T) {
 	}
 	if revokedCount != 1 {
 		t.Fatalf("expected exactly one revoked session, got %d", revokedCount)
+	}
+}
+
+func TestMintSessionForUserCreatesValidSession(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	service := NewService(database)
+
+	hash, err := HashPassword("Password#123")
+	if err != nil {
+		t.Fatalf("HashPassword() error = %v", err)
+	}
+	userID := createUserWithPassword(t, ctx, database, "mint@example.com", "Mint User", "user", hash)
+
+	plaintext, tokenHash, err := service.MintSessionForUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("MintSessionForUser() error = %v", err)
+	}
+
+	if plaintext == "" {
+		t.Fatalf("expected non-empty plaintext session token")
+	}
+	if !strings.HasPrefix(plaintext, "st_") {
+		t.Fatalf("expected plaintext token to have prefix st_, got %q", plaintext)
+	}
+	if tokenHash == "" {
+		t.Fatalf("expected non-empty token hash")
+	}
+	if tokenHash == plaintext {
+		t.Fatalf("expected token hash to differ from plaintext")
+	}
+	if tokenHash != auth.HashSessionToken(plaintext) {
+		t.Fatalf("expected token hash to equal sha256(plaintext)")
+	}
+
+	var (
+		count       int
+		storedHash  string
+	)
+	err = database.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE((SELECT token_hash FROM als_sessions WHERE user_id = ? LIMIT 1), '')
+		FROM als_sessions
+		WHERE user_id = ?;
+	`, userID, userID).Scan(&count, &storedHash)
+	if err != nil {
+		t.Fatalf("query sessions error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 session for user, got %d", count)
+	}
+	if storedHash != tokenHash {
+		t.Fatalf("expected stored token hash %q, got %q", tokenHash, storedHash)
 	}
 }
 

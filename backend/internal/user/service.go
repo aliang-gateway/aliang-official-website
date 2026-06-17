@@ -17,6 +17,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// SessionLifetime 是签发 session 的默认有效期。
+const SessionLifetime = 24 * time.Hour
+
 type Service struct {
 	db                       *sql.DB
 	mailSender               MailSender
@@ -191,22 +194,30 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthUser,
 		return nil, ErrEmailNotVerified
 	}
 
-	plaintext, tokenHash, err := auth.NewSessionToken()
+	plaintext, _, err := s.MintSessionForUser(ctx, user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("generate session token: %w", err)
-	}
-
-	expiresAt := time.Now().UTC().Add(24 * time.Hour)
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO als_sessions(user_id, token_hash, expires_at)
-		VALUES (?, ?, ?);
-	`, user.ID, tokenHash, expiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("insert session: %w", err)
+		return nil, fmt.Errorf("create session: %w", err)
 	}
 
 	user.SessionToken = plaintext
 	return &user, nil
+}
+
+// MintSessionForUser 为已有用户签发一个新 session，返回明文 token（下发用）与 token_hash（落库用）。
+// 供扫码登录确认路径与（未来）其它无密码登录路径复用。
+func (s *Service) MintSessionForUser(ctx context.Context, userID int64) (string, string, error) {
+	plaintext, tokenHash, err := auth.NewSessionToken()
+	if err != nil {
+		return "", "", fmt.Errorf("generate session token: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO als_sessions(user_id, token_hash, expires_at)
+		VALUES (?, ?, ?);
+	`, userID, tokenHash, time.Now().UTC().Add(SessionLifetime))
+	if err != nil {
+		return "", "", fmt.Errorf("insert session: %w", err)
+	}
+	return plaintext, tokenHash, nil
 }
 
 func (s *Service) GetProfile(ctx context.Context, userID int64) (*UserProfile, error) {
@@ -477,7 +488,7 @@ func (s *Service) Register(ctx context.Context, email, name, password string) (*
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
-	`, userID, tokenHash, time.Now().UTC().Add(24*time.Hour)); err != nil {
+	`, userID, tokenHash, time.Now().UTC().Add(SessionLifetime)); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 
