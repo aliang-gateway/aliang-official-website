@@ -47,6 +47,7 @@ func TestApplyMigrationsCreatesRequiredTables(t *testing.T) {
 		"als_fulfillment_jobs",
 		"als_fulfillment_events",
 		"als_payment_records",
+			"als_scan_codes",
 	}
 
 	for _, table := range tables {
