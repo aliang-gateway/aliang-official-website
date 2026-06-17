@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"ai-api-portal/backend/internal/db"
@@ -113,3 +114,79 @@ func hashCode(code string) string {
 	sum := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(sum[:])
 }
+
+type StatusResult struct {
+	Status       Status      `json:"status"`
+	ExpiresIn    int         `json:"expires_in"`
+	Interval     int         `json:"interval"`
+	SessionToken string      `json:"session_token,omitempty"`
+	User         *StatusUser `json:"user,omitempty"`
+}
+
+type StatusUser struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+}
+
+func (s *Service) Status(ctx context.Context, deviceCode string) (*StatusResult, error) {
+	deviceCode = strings.TrimSpace(deviceCode)
+	if deviceCode == "" {
+		return nil, ErrNotFound
+	}
+	now := s.now()
+	var (
+		status       Status
+		expiresAt    time.Time
+		sessionToken sql.NullString
+		userID       sql.NullInt64
+	)
+	err := s.db.QueryRowContext(ctx, db.Rebind(s.dialect, `
+		SELECT status, expires_at, session_token, user_id
+		FROM als_scan_codes
+		WHERE device_code_hash = ?;
+	`), hashCode(deviceCode)).Scan(&status, &expiresAt, &sessionToken, &userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query scan code: %w", err)
+	}
+	if !expiresAt.After(now) {
+		return &StatusResult{Status: StatusExpired, Interval: PollIntervalSec}, nil
+	}
+	res := &StatusResult{
+		Status:    status,
+		ExpiresIn: maxInt(int(time.Until(expiresAt)/time.Second), 0),
+		Interval:  PollIntervalSec,
+	}
+	if status == StatusAuthorized && userID.Valid {
+		if u, err := s.loadUser(ctx, userID.Int64); err == nil {
+			res.User = u
+		}
+		res.SessionToken = sessionToken.String
+	}
+	return res, nil
+}
+
+func (s *Service) loadUser(ctx context.Context, userID int64) (*StatusUser, error) {
+	var u StatusUser
+	err := s.db.QueryRowContext(ctx, db.Rebind(s.dialect, `
+		SELECT id, email, name, role FROM als_users WHERE id = ?;
+	`), userID).Scan(&u.ID, &u.Email, &u.Name, &u.Role)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// Hash 导出哈希函数供测试/审计使用。
+func Hash(code string) string { return hashCode(code) }

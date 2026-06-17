@@ -93,3 +93,55 @@ func TestInitCreatesRowAndReturnsCodes(t *testing.T) {
 // keep errors import used even when later tests removed temporarily
 var _ = errors.Is
 
+func TestStatusLifecycle(t *testing.T) {
+	_, db := newTestService(t)
+	frozen := time.Now()
+	svc2 := scanlogin.NewService(db, scanlogin.Options{Minter: stubMinter{db: db}, Now: func() time.Time { return frozen }})
+
+	init, err := svc2.Init(context.Background(), "")
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	got, err := svc2.Status(context.Background(), init.DeviceCode)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if got.Status != scanlogin.StatusPending {
+		t.Fatalf("want pending, got %s", got.Status)
+	}
+	if got.SessionToken != "" {
+		t.Fatalf("pending must not leak token")
+	}
+	if _, err := svc2.Status(context.Background(), "dc_bogus"); !errors.Is(err, scanlogin.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if _, err := db.Exec(`UPDATE als_scan_codes SET status='scanned', user_id=7 WHERE scan_code_hash=?`, scanlogin.Hash(init.ScanCode)); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, _ = svc2.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusScanned {
+		t.Fatalf("want scanned, got %s", got.Status)
+	}
+	if _, err := db.Exec(`UPDATE als_scan_codes SET status='authorized', session_token='st_xyz', user_id=7`); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO als_users(id,email,name,role) VALUES(7,'u@x.com','U','user')`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	got, _ = svc2.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusAuthorized {
+		t.Fatalf("want authorized, got %s", got.Status)
+	}
+	if got.SessionToken != "st_xyz" {
+		t.Fatalf("want token st_xyz, got %q", got.SessionToken)
+	}
+	if got.User == nil || got.User.ID != 7 || got.User.Email != "u@x.com" {
+		t.Fatalf("bad user: %+v", got.User)
+	}
+	svc3 := scanlogin.NewService(db, scanlogin.Options{Minter: stubMinter{db: db}, Now: func() time.Time { return frozen.Add(scanlogin.DefaultTTL + time.Second) }})
+	got, _ = svc3.Status(context.Background(), init.DeviceCode)
+	if got.Status != scanlogin.StatusExpired {
+		t.Fatalf("want expired, got %s", got.Status)
+	}
+}
+
