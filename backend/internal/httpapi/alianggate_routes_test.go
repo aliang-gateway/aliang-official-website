@@ -29,6 +29,7 @@ var alianggateClientRoutes = []struct {
 	{"GET", "/api/v1/usage/dashboard/trend"},
 	{"GET", "/api/v1/usage/dashboard/models"},
 	{"GET", "/api/v1/usage"},
+	{"GET", "/api/v1/usage/stats"},
 	{"GET", "/api/v1/admin/ops/dashboard/snapshot-v2"},
 	{"GET", "/api/public/downloads/check"},
 }

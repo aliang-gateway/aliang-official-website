@@ -99,6 +99,46 @@ func TestServiceGetBearerTokenByUserIDNotFound(t *testing.T) {
 	}
 }
 
+func TestServiceGetRefreshTokenByUserID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	service := NewServiceWithDialect(database, testDialect())
+
+	// 有 refresh_token：正常返回。
+	userID := createUser(t, ctx, database, "refresh-ok@example.com", "Refresh OK", "user")
+	refresh := "upstream-refresh-1"
+	if err := service.UpsertToken(ctx, UpsertTokenInput{
+		UserID:       userID,
+		AccessToken:  "access-1",
+		RefreshToken: &refresh,
+	}); err != nil {
+		t.Fatalf("UpsertToken error = %v", err)
+	}
+	got, err := service.GetRefreshTokenByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetRefreshTokenByUserID error = %v", err)
+	}
+	if got != refresh {
+		t.Fatalf("expected refresh %q, got %q", refresh, got)
+	}
+
+	// 仅 access、无 refresh：归为 ErrTokenNotFound（列可空）。
+	accessOnly := createUser(t, ctx, database, "refresh-absent@example.com", "No Refresh", "user")
+	if err := service.UpsertToken(ctx, UpsertTokenInput{UserID: accessOnly, AccessToken: "access-2"}); err != nil {
+		t.Fatalf("UpsertToken access-only error = %v", err)
+	}
+	if _, err := service.GetRefreshTokenByUserID(ctx, accessOnly); !errors.Is(err, ErrTokenNotFound) {
+		t.Fatalf("expected ErrTokenNotFound for missing refresh, got %v", err)
+	}
+
+	// 不存在的用户：ErrTokenNotFound。
+	if _, err := service.GetRefreshTokenByUserID(ctx, 99999); !errors.Is(err, ErrTokenNotFound) {
+		t.Fatalf("expected ErrTokenNotFound for unknown user, got %v", err)
+	}
+}
+
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 

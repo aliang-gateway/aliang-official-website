@@ -58,6 +58,48 @@ func (g *Gateway) UpstreamUserID(ctx context.Context, userID int64) (int64, bool
 	return g.auth.GetUpstreamUserIDByUserID(ctx, userID)
 }
 
+// UpstreamRefreshToken 返回该用户的 sub2api refresh_token（found=false 表示无 upstream 令牌）。
+// 供扫码登录在 authorized 状态下连同本地 st_ 一并下发给 PC，使 PC 端的刷新器与密码登录等价。
+func (g *Gateway) UpstreamRefreshToken(ctx context.Context, userID int64) (string, bool, error) {
+	if g == nil || g.auth == nil {
+		return "", false, nil
+	}
+	refresh, err := g.auth.GetRefreshTokenByUserID(ctx, userID)
+	if err == nil {
+		return refresh, true, nil
+	}
+	if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+		return "", false, nil
+	}
+	return "", false, err
+}
+
+// LoadVault returns the user's stored upstream token pair for the refresh
+// arbiter (current + previous refresh, and access-token expiry). nil when absent.
+func (g *Gateway) LoadVault(ctx context.Context, userID int64) (*sub2apiauth.VaultTokens, error) {
+	if g == nil || g.auth == nil {
+		return nil, nil
+	}
+	return g.auth.LoadVault(ctx, userID)
+}
+
+// FindUserIDByRefreshOrPrev resolves a user from a refresh_token that is the
+// current or previous (grace-window) stored value. See VaultTokens.
+func (g *Gateway) FindUserIDByRefreshOrPrev(ctx context.Context, refreshToken string) (int64, bool, error) {
+	if g == nil || g.auth == nil {
+		return 0, false, nil
+	}
+	return g.auth.FindUserIDByRefreshOrPrev(ctx, refreshToken)
+}
+
+// ClearVault drops the user's stored upstream tokens (family invalidated).
+func (g *Gateway) ClearVault(ctx context.Context, userID int64) error {
+	if g == nil || g.auth == nil {
+		return nil
+	}
+	return g.auth.ClearVault(ctx, userID)
+}
+
 // CreateUserAPIKeyForUser resolves the user's upstream token and creates an API key.
 func (g *Gateway) CreateUserAPIKeyForUser(ctx context.Context, userID int64, req proxy.CreateUserAPIKeyRequest, idempotencyKey string) (*proxy.ResponseEnvelope[proxy.APIKey], error) {
 	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)

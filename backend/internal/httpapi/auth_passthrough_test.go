@@ -464,13 +464,6 @@ func TestAuthPassthroughRoutesForwardMethodPathAndBody(t *testing.T) {
 			query:        "include=profile",
 		},
 		{
-			name:         "refresh",
-			method:       http.MethodPost,
-			routePath:    "/auth/refresh",
-			upstreamPath: "/api/v1/auth/refresh",
-			body:         `{"refresh_token":"rt_123"}`,
-		},
-		{
 			name:         "logout",
 			method:       http.MethodPost,
 			routePath:    "/auth/logout",
@@ -634,7 +627,10 @@ func TestAuthPassthroughReturnsBadGatewayWhenUpstreamUnavailable(t *testing.T) {
 	m := http.NewServeMux()
 	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader([]byte(`{"refresh_token":"rt_123"}`)))
+	// /auth/login is a pure passthrough route (refresh now goes through the
+	// arbiter, which rejects unknown tokens before touching upstream), so it is
+	// the canonical route to exercise "upstream unreachable → 502".
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"x@example.com","password":"pw"}`)))
 	rec := httptest.NewRecorder()
 	m.ServeHTTP(rec, req)
 
