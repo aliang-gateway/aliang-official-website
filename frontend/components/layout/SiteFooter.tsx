@@ -78,9 +78,9 @@ export function SiteFooter() {
       {
         title: t("blog.companyTitle"),
         links: [
-          { href: "#", label: t("blog.aboutUs") },
+          { href: "/about", label: t("blog.aboutUs") },
           { href: "#", label: t("blog.careers") },
-          { href: "#", label: t("blog.securityPolicy") },
+          { href: "/security", label: t("blog.securityPolicy") },
           { href: "#", label: t("blog.contact") },
         ],
       },
@@ -131,10 +131,10 @@ export function SiteFooter() {
       {
         title: t("services.companyTitle"),
         links: [
-          { href: "#", label: t("services.aboutUs") },
+          { href: "/about", label: t("services.aboutUs") },
           { href: "#", label: t("services.careers") },
-          { href: "#", label: t("services.privacyPolicy") },
-          { href: "#", label: t("services.termsOfService") },
+          { href: "/privacy", label: t("services.privacyPolicy") },
+          { href: "/terms", label: t("services.termsOfService") },
         ],
       },
     ];
@@ -184,8 +184,8 @@ export function SiteFooter() {
       {
         title: t("compact.companyTitle"),
         links: [
-          { href: "#", label: t("compact.security") },
-          { href: "#", label: t("compact.privacy") },
+          { href: "/security", label: t("compact.security") },
+          { href: "/privacy", label: t("compact.privacy") },
         ],
       },
     ];
@@ -251,10 +251,10 @@ export function SiteFooter() {
     {
       title: t("default.companyTitle"),
       links: [
-        { href: "#", label: t("default.about") },
-        { href: "#", label: t("default.security") },
-        { href: "#", label: t("default.privacy") },
-        { href: "#", label: t("default.terms") },
+        { href: "/about", label: t("default.about") },
+        { href: "/security", label: t("default.security") },
+        { href: "/privacy", label: t("default.privacy") },
+        { href: "/terms", label: t("default.terms") },
       ],
     },
   ];

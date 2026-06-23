@@ -261,11 +261,11 @@ export default function RegisterPage() {
             />
             <label className="text-sm text-[var(--stitch-text-muted)]" htmlFor="register-terms">
               {t("agreeTerms")}
-              <a className="mx-1 text-[var(--stitch-primary)] hover:underline" href="/docs">
+              <a className="mx-1 text-[var(--stitch-primary)] hover:underline" href="/terms">
                 {t("termsAndConditions")}
               </a>
               {t("and")}
-              <a className="ml-1 text-[var(--stitch-primary)] hover:underline" href="/docs">
+              <a className="ml-1 text-[var(--stitch-primary)] hover:underline" href="/privacy">
                 {t("privacyPolicy")}
               </a>
             </label>

@@ -115,6 +115,22 @@
     "feature3Title": "Rich Feature Set",
     "feature3Description": "Advanced prompt management, real-time rate limiting, and granular cost tracking out of the box."
   },
+  "homeApp": {
+    "badge": "New · Mobile",
+    "title": "Put AI coding",
+    "titleHighlight": "in your pocket",
+    "description": "The ALiang App lets you drive vibe coding remotely from your phone — commute, layover, café. Stay connected to your AI coding environment and pick up unfinished work with a single message.",
+    "feature1Title": "Remote vibe coding",
+    "feature1Description": "Send prompts to Claude, Cursor and friends from your phone. Watch code changes in real time and keep flow state even away from the desk.",
+    "feature2Title": "Multi-session sync",
+    "feature2Description": "Sessions started on mobile sync back to desktop automatically — tasks, context, and file state carry over seamlessly.",
+    "feature3Title": "Push notifications",
+    "feature3Description": "Code review, build results, and error alerts pushed to your phone in real time. Never miss a critical event again.",
+    "scanToDownload": "Scan to download ALiang App",
+    "iosStore": "App Store",
+    "androidStore": "Google Play",
+    "learnMore": "Learn more"
+  },
   "homeCta": {
     "titleFull": "Ready to switch to the most stable AI Gateway?",
     "titleCompact": "Ready to switch to ALiang Gateway?",
@@ -603,5 +619,232 @@
     "previous": "Previous",
     "nextPage": "Next page",
     "requestRecordsTrendsDescription": "Review recent request activity and the two deeper trend surfaces exposed by the simplified dashboard contract."
+  },
+  "aboutPage": {
+    "badge": "About Us",
+    "title": "Making AI accessible to everyone",
+    "subtitle": "ALiang Gateway is a dependable bridge between you and the world's leading large language models. With a resilient gateway architecture, intelligent routing, and extremely low latency, we are redefining the experience of AI API services.",
+    "sections": [
+      {
+        "icon": "rocket_launch",
+        "heading": "Our Mission",
+        "paragraphs": [
+          "We believe that no line of code, product, or innovation should be held back by complicated onboarding, fluctuating latency, or unreliable links. ALiang Gateway's mission is to remove every barrier between you and the best AI capabilities—so you can focus on creating, and leave stability, compatibility, and performance to us."
+        ]
+      },
+      {
+        "icon": "hub",
+        "heading": "What We Do",
+        "paragraphs": [
+          "ALiang Gateway is an intelligent gateway built around large language models (LLMs). We aggregate multiple leading model providers and expose them through a single, widely-compatible API, giving you a consistent calling experience.",
+          "Before a request ever reaches an upstream model, the gateway handles authentication, rate limiting, load balancing, intelligent routing, and edge acceleration—all transparently. You simply call us as if calling one dependable endpoint."
+        ]
+      },
+      {
+        "icon": "verified",
+        "heading": "Why Choose Us",
+        "points": [
+          "Reliable: multi-node redundancy and automatic failover, engineered for high availability.",
+          "Low latency: edge nodes and smart routing send every request along the fastest path.",
+          "Uniform compatibility: one widely-compatible API to switch between models seamlessly.",
+          "Transparent billing: pay for actual usage, with clear and auditable invoices.",
+          "Privacy first: request content is retained minimally and never used for training without permission.",
+          "Sincere service: honesty first—issues get a response, feedback gets heard."
+        ]
+      },
+      {
+        "icon": "handshake",
+        "heading": "Our Promise",
+        "paragraphs": [
+          "We promise to be a product built for the long term: continuously refining our architecture, treating every user honestly, and never compromising on security and privacy. Whether you're an individual developer or a growing team, we want to be the most reliable stretch of your road to AI."
+        ]
+      }
+    ]
+  },
+  "securityPage": {
+    "badge": "Security",
+    "title": "Security is the foundation of everything we do",
+    "subtitle": "From the transport layer to key management, from data handling to infrastructure, we put security first at every step.",
+    "sections": [
+      {
+        "icon": "lock",
+        "heading": "Transport Encryption",
+        "paragraphs": [
+          "All API requests and console traffic are transmitted over TLS encryption, preventing eavesdropping or tampering in transit. We continuously follow the latest encryption standards and phase out risky legacy protocols in a timely manner."
+        ]
+      },
+      {
+        "icon": "key",
+        "heading": "API Key Security",
+        "points": [
+          "Keys are stored encrypted, never in plaintext.",
+          "Create multiple keys on demand, each with independent permissions and quotas.",
+          "Rotate or revoke keys at any time without service interruption.",
+          "Abnormal calls and usage changes are monitored for early risk detection."
+        ]
+      },
+      {
+        "icon": "shield",
+        "heading": "Data Handling & Privacy",
+        "paragraphs": [
+          "We follow the principle of minimal retention: by default, request and response content is forwarded in memory only and not persisted; the operational logs we do keep are used solely for billing, troubleshooting, and security auditing, and are desensitized.",
+          "Without your explicit authorization, your request content is never used for model training or any other commercial purpose."
+        ]
+      },
+      {
+        "icon": "dns",
+        "heading": "Infrastructure Security",
+        "points": [
+          "Cloud-native deployment with resource isolation and least-privilege access control.",
+          "Audit logs retained for critical operations, fully traceable.",
+          "Infrastructure protected against abnormal traffic and DDoS.",
+          "Regular security assessments and dependency vulnerability scans."
+        ]
+      },
+      {
+        "icon": "bug_report",
+        "heading": "Vulnerability Disclosure",
+        "paragraphs": [
+          "We welcome security researchers and users to report security issues to us responsibly. If you discover a potential vulnerability, please reach out through our security channel; we commit to responding and fixing it within a reasonable timeframe."
+        ]
+      }
+    ]
+  },
+  "privacyPage": {
+    "badge": "Privacy",
+    "title": "We respect and protect your privacy",
+    "subtitle": "This policy explains what information we collect when providing our services, how we use it, and the rights you have.",
+    "lastUpdated": "Last updated: June 2026",
+    "sections": [
+      {
+        "icon": "info",
+        "heading": "Information We Collect",
+        "points": [
+          "Account information: basic details such as the email address provided at registration.",
+          "Payment information: processed by compliant payment channels; we retain only desensitized billing records.",
+          "Usage data: API call volume and billing dimensions used for settlement and service operation.",
+          "Technical logs: operational logs for troubleshooting and security, desensitized and time-limited."
+        ]
+      },
+      {
+        "icon": "settings",
+        "heading": "How We Use Information",
+        "paragraphs": [
+          "We use your information only to the extent necessary to provide, maintain, and improve the service, including: completing API calls and routing, calculating usage and fees, safeguarding accounts and service security, troubleshooting, and improving the product experience.",
+          "We do not sell your information to any third party."
+        ]
+      },
+      {
+        "icon": "share",
+        "heading": "Third-Party Model Providers",
+        "paragraphs": [
+          "The essence of ALiang Gateway is gateway relay: to fulfill your request, the call content is forwarded to the upstream model provider you specify. These providers have their own independent privacy policies; we encourage you to understand the data-handling rules of your chosen provider.",
+          "Beyond what is necessary to complete a request, we do not pass any additional personal data to providers."
+        ]
+      },
+      {
+        "icon": "delete",
+        "heading": "Data Retention & Deletion",
+        "paragraphs": [
+          "Operational logs and billing data are automatically deleted or anonymized after the shortest period required to meet business and compliance obligations.",
+          "You may contact us at any time to delete your account and related data, except for data that the law requires us to retain."
+        ]
+      },
+      {
+        "icon": "cookie",
+        "heading": "Cookies & Local Storage",
+        "paragraphs": [
+          "We use cookies and browser local storage to maintain login sessions and remember preferences such as language and theme. These stores are not used for cross-site tracking, and you can clear them at any time in your browser settings."
+        ]
+      },
+      {
+        "icon": "gavel",
+        "heading": "Your Rights",
+        "points": [
+          "Access and understand the data we hold about you.",
+          "Correct inaccurate or incomplete information.",
+          "Request deletion of your account and related data.",
+          "Export your data.",
+          "Withdraw consent or stop using the service at any time."
+        ]
+      }
+    ]
+  },
+  "termsPage": {
+    "badge": "Terms",
+    "title": "Terms of Service",
+    "subtitle": "Please read the following terms carefully before using the service. By using ALiang Gateway, you agree to these terms.",
+    "lastUpdated": "Last updated: June 2026",
+    "sections": [
+      {
+        "icon": "check_circle",
+        "heading": "Acceptance of Terms",
+        "paragraphs": [
+          "By accessing or using any service provided by ALiang Gateway, you confirm that you have read, understood, and agreed to accept these Terms of Service. If you do not agree to any term, please stop using the service."
+        ]
+      },
+      {
+        "icon": "description",
+        "heading": "Service Description",
+        "paragraphs": [
+          "ALiang Gateway provides an AI API gateway and relay service that aggregates multiple model providers and forwards requests through a unified interface. We do not guarantee the continued availability of any specific model or provider, and may adjust the list of available models based on upstream conditions."
+        ]
+      },
+      {
+        "icon": "person",
+        "heading": "Account & Responsibility",
+        "points": [
+          "You must provide true and accurate registration information.",
+          "You are responsible for all activity under your account; keep your keys safe.",
+          "If you become aware of any unauthorized use, notify us immediately."
+        ]
+      },
+      {
+        "icon": "rule",
+        "heading": "Acceptable Use",
+        "paragraphs": [
+          "You agree not to use the service for any illegal, infringing, or harmful activity, including but not limited to:"
+        ],
+        "points": [
+          "Infringing the lawful rights or intellectual property of others.",
+          "Distributing illegal, harmful, or abusive content.",
+          "Attacking or disrupting the service or upstream providers' infrastructure.",
+          "Circumventing usage limits or conducting abusive crawling.",
+          "Violating the usage policies of your chosen model provider."
+        ]
+      },
+      {
+        "icon": "payments",
+        "heading": "Usage & Billing",
+        "points": [
+          "The service is billed based on actual usage; specific rates are as shown in the console.",
+          "Prepaid balances can be used to offset usage; insufficient balance may affect calls.",
+          "Except as required by law, fees already paid are generally non-refundable.",
+          "We reserve the right to investigate and address abnormal or abusive usage."
+        ]
+      },
+      {
+        "icon": "copyright",
+        "heading": "Intellectual Property",
+        "paragraphs": [
+          "The underlying technology, branding, and interface of the service are owned by us or their rights holders. The rights to content you generate through the service depend on your agreement with the upstream model provider; we claim no rights to generated content and bear no responsibility for its legality."
+        ]
+      },
+      {
+        "icon": "gavel",
+        "heading": "Limitation of Liability",
+        "paragraphs": [
+          "The service is provided on an \"as is\" basis. To the maximum extent permitted by law, we are not liable for any indirect, incidental, or consequential damages arising from the use of or inability to use the service; our cumulative liability is limited to the fees you have actually paid for the service."
+        ]
+      },
+      {
+        "icon": "update",
+        "heading": "Changes & Termination",
+        "paragraphs": [
+          "We may update these terms from time to time; updates take effect when published within the service, and continued use constitutes acceptance.",
+          "You may stop using the service and close your account at any time; we also reserve the right to suspend or terminate the service in the event of a breach of these terms."
+        ]
+      }
+    ]
   }
 }
