@@ -102,6 +102,10 @@ func main() {
 		}
 		opts.MailSender = sender
 	}
+	// user.Service runs parameterized SQL; on postgres it MUST rebind `?`→`$N`
+	// (raw `?` is a syntax error — it broke scan-login /auth/scan/confirm's
+	// session mint). Seed the dialect from the configured DB driver.
+	opts.SQLDialect = cfg.Database.Driver
 	userSvc := user.NewServiceWithOptions(database, opts)
 
 	var userUsageCache httpapi.UserUsageCache
