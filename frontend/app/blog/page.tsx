@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import TechRadar3D from "./TechRadar3D";
 
@@ -47,6 +48,20 @@ type TechBlip = {
   relatedTags: string[];
   relatedKeywords: string[];
 };
+
+// 分类配置：id 对应 i18n key，icon 为 Material Symbol 名称
+type CategoryConfig = {
+  id: string;
+  icon: string;
+  tagMatch: string[];
+};
+
+const categories: CategoryConfig[] = [
+  { id: "allPublications", icon: "layers", tagMatch: [] },
+  { id: "aiGateways", icon: "neurology", tagMatch: ["AI网关", "AI评测", "AI Gateway"] },
+  { id: "networking", icon: "lan", tagMatch: ["网络", "教程", "Networking"] },
+  { id: "security", icon: "shield", tagMatch: ["安全", "Security"] },
+];
 
 const techBlips: TechBlip[] = [
   { id: "gpt", name: "GPT-4o", ring: "adopt", x: 34, y: 27, relatedTags: ["AI评测"], relatedKeywords: ["GPT", "Claude"] },
@@ -96,16 +111,32 @@ function normalizeArticle(article: PublicArticle): Article {
 }
 
 export default function BlogPage() {
+  const t = useTranslations("blog");
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoadingArticles, setIsLoadingArticles] = useState(true);
   const [articlesError, setArticlesError] = useState<string | null>(null);
   const [selectedBlip, setSelectedBlip] = useState<TechBlip | null>(null);
+  const [activeCategory, setActiveCategory] = useState(0);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
   const hadModalOpenRef = useRef(false);
 
   const closeModal = useCallback(() => setSelectedBlip(null), []);
+
+  const filteredArticles = useMemo(() => {
+    if (activeCategory === 0) return articles;
+    const cat = categories[activeCategory];
+    if (!cat || cat.tagMatch.length === 0) return articles;
+    return articles.filter((article) =>
+      cat.tagMatch.some(
+        (tag) =>
+          article.tag === tag ||
+          article.tag.includes(tag) ||
+          tag.includes(article.tag)
+      )
+    );
+  }, [articles, activeCategory]);
 
   const relatedArticles = useMemo(() => {
     if (!selectedBlip) return [];
@@ -214,269 +245,509 @@ export default function BlogPage() {
     };
   }, [closeModal, selectedBlip]);
 
+  // 每个分类的文章计数
+  const categoryCounts = useMemo(() => {
+    return categories.map((cat) => {
+      if (cat.tagMatch.length === 0) return articles.length;
+      return articles.filter((article) =>
+        cat.tagMatch.some(
+          (tag) =>
+            article.tag === tag ||
+            article.tag.includes(tag) ||
+            tag.includes(article.tag)
+        )
+      ).length;
+    });
+  }, [articles]);
+
   return (
     <>
-      <section className="relative overflow-hidden bg-slate-100 py-16 px-6 text-slate-900 md:px-20 dark:bg-slate-900 dark:text-slate-100">
+      {/* ===== Hero 区域：编辑式排版 + 雷达 + 分类卡片 ===== */}
+      <section
+        data-od-id="blog-hero"
+        className="relative overflow-hidden bg-[var(--stitch-bg-elevated)] px-6 pt-16 pb-0 md:px-20 md:pt-24"
+      >
+        {/* 背景纹理：克制的圆点网格 */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-10 dark:opacity-20"
-          style={{ backgroundImage: "radial-gradient(circle at 2px 2px, #21c45d 1px, transparent 0)", backgroundSize: "40px 40px" }}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 2px 2px, var(--stitch-text) 1px, transparent 0)",
+            backgroundSize: "32px 32px",
+          }}
         />
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 relative z-10">
-          <div className="flex flex-col gap-6 lg:w-1/2 text-left">
-            <div
-              className="inline-flex w-max items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
-              style={{ backgroundColor: "rgba(33, 196, 93, 0.15)", color: "#21c45d" }}
-            >
-              Edition 2024.Q3
+        {/* 背景辉光 */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-40 top-0 hidden lg:block"
+          style={{
+            width: 600,
+            height: 600,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(33,196,93,0.06) 0%, transparent 70%)",
+          }}
+        />
+
+        <div className="relative z-10 mx-auto max-w-7xl">
+          {/* 顶部：badge + 标题 + 雷达 并列 */}
+          <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_auto] lg:gap-16">
+            {/* 左侧文案 */}
+            <div className="flex flex-col gap-5">
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-[var(--stitch-primary)]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--stitch-primary)]">
+                <MaterialIcon name="radar" size={11} />
+                {t("edition")}
+              </span>
+
+              <h1
+                className="text-4xl font-black leading-[1.05] tracking-[-0.03em] text-[var(--stitch-text)] md:text-5xl lg:text-6xl"
+                dangerouslySetInnerHTML={{ __html: t("title") }}
+              />
+
+              <p className="max-w-xl text-base leading-relaxed text-[var(--stitch-text-muted)] md:text-lg">
+                {t("subtitle")}
+              </p>
+
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button
+                  type="button"
+                  className="group flex h-11 items-center gap-2 rounded-lg bg-[var(--stitch-primary)] px-6 text-sm font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-all hover:shadow-xl hover:shadow-[var(--stitch-primary)]/30 active:scale-[0.98]"
+                >
+                  {t("exploreRadar")}
+                  <MaterialIcon
+                    name="explore"
+                    size={16}
+                    className="transition-transform group-hover:rotate-45"
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-11 items-center gap-2 rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-6 text-sm font-bold text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+                >
+                  <MaterialIcon name="science" size={16} />
+                  {t("methodology")}
+                </button>
+              </div>
             </div>
-            <h1 className="text-4xl font-black leading-tight tracking-tighter text-slate-900 md:text-6xl dark:text-white">
-              The ALiang <br /><span className="text-[var(--stitch-primary)]">Tech Radar</span>
-            </h1>
-            <p className="max-w-xl text-lg font-normal leading-relaxed text-slate-600 md:text-xl dark:text-slate-400">
-              A data-driven visualization of our strategic technology landscape: from high-performance TUN/HTTP proxies to advanced LLM Routing strategies.
-            </p>
-            <div className="flex flex-wrap gap-4 pt-4">
-              <button
-                type="button"
-                className="flex h-12 items-center gap-2 rounded-lg bg-[var(--stitch-primary)] px-8 font-bold text-white shadow-lg shadow-[var(--stitch-primary)]/20 transition-all hover:-translate-y-0.5"
+
+            {/* 右侧雷达 — 桌面端可见，移动端隐藏 */}
+            <div className="relative hidden justify-center lg:flex">
+              <div
+                className="relative flex items-center justify-center rounded-full border"
+                style={{
+                  width: 360,
+                  height: 360,
+                  borderColor: "rgba(33, 196, 93, 0.2)",
+                }}
               >
-                <span>Explore the Radar</span>
-                <MaterialIcon name="explore" size={20} />
-              </button>
-              <button
-                type="button"
-                className="flex h-12 items-center gap-2 rounded-lg border border-slate-900/10 bg-white/50 px-8 font-bold text-slate-900 backdrop-blur-sm transition-all hover:bg-white/80 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-              >
-                <span>Methodology</span>
-              </button>
+                {/* 同心圆环 */}
+                <div className="absolute inset-0 rounded-full border" style={{ borderColor: "rgba(33, 196, 93, 0.15)" }} />
+                <div className="absolute inset-[12%] rounded-full border" style={{ borderColor: "rgba(33, 196, 93, 0.12)" }} />
+                <div className="absolute inset-[28%] rounded-full border" style={{ borderColor: "rgba(33, 196, 93, 0.08)" }} />
+                <div className="absolute inset-[44%] rounded-full border" style={{ borderColor: "rgba(33, 196, 93, 0.05)" }} />
+
+                {/* 十字线 */}
+                <div className="absolute top-1/2 h-px w-full" style={{ background: "rgba(33, 196, 93, 0.08)" }} />
+                <div className="absolute left-1/2 h-full w-px" style={{ background: "rgba(33, 196, 93, 0.08)" }} />
+
+                {/* 3D 雷达 */}
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  <TechRadar3D
+                    blips={techBlips}
+                    onBlipClick={(blip, buttonEl) => {
+                      lastTriggerRef.current = buttonEl;
+                      setSelectedBlip(blip);
+                    }}
+                  />
+                </div>
+
+                {/* Active Matrix 标签 */}
+                <div className="absolute -bottom-3 right-4 z-20 rounded-md border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-3 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--stitch-primary)]">
+                  {t("activeMatrix")}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="lg:w-1/2 relative flex justify-center items-center">
-            <div className="relative size-[320px] md:size-[500px] border rounded-full flex items-center justify-center" style={{ borderColor: "rgba(33, 196, 93, 0.3)" }}>
-              <div className="absolute inset-0 border rounded-full scale-75" style={{ borderColor: "rgba(33, 196, 93, 0.2)" }} />
-              <div className="absolute inset-0 border rounded-full scale-50" style={{ borderColor: "rgba(33, 196, 93, 0.1)" }} />
-              <div className="absolute inset-0 border rounded-full scale-[0.25]" style={{ borderColor: "rgba(33, 196, 93, 0.05)" }} />
+          {/* 底部：4 分类卡片 — 取代旧的 tab bar */}
+          <div className="mt-14 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+            {categories.map((cat, idx) => {
+              const isActive = activeCategory === idx;
+              const count = categoryCounts[idx];
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveCategory(idx)}
+                  className={[
+                    "group relative flex flex-col gap-3 overflow-hidden rounded-xl border p-4 text-left transition-all duration-300 md:p-5",
+                    isActive
+                      ? "border-[var(--stitch-primary)] bg-[var(--stitch-bg)] shadow-md"
+                      : "border-[var(--stitch-border)] bg-[var(--stitch-bg)] hover:-translate-y-0.5 hover:border-[var(--stitch-primary)]/30",
+                  ].join(" ")}
+                >
+                  {/* 选中态背景辉光 */}
+                  {isActive && (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        background: "radial-gradient(circle at 0% 0%, rgba(33,196,93,0.06) 0%, transparent 60%)",
+                      }}
+                    />
+                  )}
 
-              <div className="absolute inset-0 w-full h-full flex items-center justify-center pointer-events-auto z-10">
-                <TechRadar3D
-                  blips={techBlips}
-                  onBlipClick={(blip, buttonEl) => {
-                    lastTriggerRef.current = buttonEl;
-                    setSelectedBlip(blip);
-                  }}
-                />
-              </div>
+                  <div className="relative flex items-center justify-between">
+                    <div
+                      className={[
+                        "flex items-center justify-center rounded-lg transition-colors",
+                        "size-9 md:size-10",
+                      ].join(" ")}
+                      style={{
+                        background: isActive
+                          ? "var(--stitch-primary)"
+                          : "rgba(33,196,93,0.1)",
+                      }}
+                    >
+                      <MaterialIcon
+                        name={cat.icon}
+                        size={18}
+                        className={isActive ? "text-white" : "text-[var(--stitch-primary)]"}
+                      />
+                    </div>
+                    {/* 文章计数 */}
+                    <span
+                      className={[
+                        "rounded-full px-2 py-0.5 font-mono text-[10px] font-bold tabular-nums",
+                        isActive
+                          ? "bg-[var(--stitch-primary)]/15 text-[var(--stitch-primary)]"
+                          : "bg-[var(--stitch-border)] text-[var(--stitch-text-muted)]",
+                      ].join(" ")}
+                    >
+                      {count}
+                    </span>
+                  </div>
 
-              <div className="absolute h-px w-full top-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
-              <div className="absolute w-px h-full left-1/2" style={{ backgroundColor: "rgba(33, 196, 93, 0.1)" }} />
+                  <div className="relative">
+                    <h3
+                      className={[
+                        "text-sm font-bold tracking-tight md:text-base",
+                        isActive ? "text-[var(--stitch-text)]" : "text-[var(--stitch-text)]",
+                      ].join(" ")}
+                    >
+                      {t(cat.id)}
+                    </h3>
+                  </div>
 
-              <div className="absolute bottom-0 right-0 z-10 rounded-lg border border-[var(--stitch-primary)]/50 bg-white p-4 font-mono text-sm uppercase tracking-widest text-[var(--stitch-primary)] dark:bg-slate-900">
-                Active Matrix
-              </div>
-            </div>
+                  {/* 选中指示条 */}
+                  {isActive && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute bottom-0 left-0 h-0.5 w-full"
+                      style={{ background: "var(--stitch-primary)" }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      <div className="max-w-7xl mx-auto px-6 md:px-20 py-12">
-        <div className="flex items-center justify-between border-b mb-10" style={{ borderColor: 'var(--stitch-border)' }}>
-          <div className="flex gap-8 overflow-x-auto no-scrollbar">
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 font-bold text-sm tracking-wide" style={{ borderColor: 'var(--stitch-primary)', color: 'var(--stitch-text)' }}>
-              All Publications
-            </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
-              AI Gateways
-            </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
-              Networking
-            </button>
-            <button type="button" className="flex flex-col items-center py-4 border-b-2 border-transparent dark:border-transparent transition-colors font-semibold text-sm tracking-wide hover:text-primary" style={{ color: 'var(--stitch-text-muted)' }}>
-              Security
-            </button>
+      {/* ===== 文章列表 ===== */}
+      <div className="mx-auto max-w-7xl px-6 py-12 md:px-20 md:py-16">
+        {/* 排序指示器 */}
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-[var(--stitch-text)]">
+              {t(categories[activeCategory].id)}
+            </span>
+            <span className="font-mono text-xs text-[var(--stitch-text-muted)]">
+              ({filteredArticles.length})
+            </span>
           </div>
-          <div className="hidden md:flex items-center gap-2 text-sm" style={{ color: 'var(--stitch-text-muted)' }}>
-            <MaterialIcon name="sort" size={16} />
-            <span>Latest First</span>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--stitch-text-muted)]">
+            <MaterialIcon name="sort" size={14} />
+            {t("latestFirst")}
           </div>
         </div>
 
         {isLoadingArticles ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" aria-live="polite" aria-busy="true">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3" aria-live="polite" aria-busy="true">
             {["article-skeleton-1", "article-skeleton-2", "article-skeleton-3"].map((skeletonKey) => (
               <div
                 key={skeletonKey}
-                className="flex flex-col rounded-xl overflow-hidden border animate-pulse"
-                style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)' }}
+                className="flex animate-pulse flex-col overflow-hidden rounded-xl border"
+                style={{ backgroundColor: "var(--stitch-bg)", borderColor: "var(--stitch-border)" }}
               >
-                <div className="aspect-video" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
-                <div className="p-6 flex flex-col gap-3">
-                  <div className="h-3 w-2/3 rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
-                  <div className="h-6 w-full rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
-                  <div className="h-4 w-full rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
-                  <div className="h-4 w-4/5 rounded" style={{ backgroundColor: 'var(--stitch-bg-elevated)' }} />
+                <div className="aspect-video" style={{ backgroundColor: "var(--stitch-bg-elevated)" }} />
+                <div className="flex flex-col gap-3 p-6">
+                  <div className="h-3 w-2/3 rounded" style={{ backgroundColor: "var(--stitch-bg-elevated)" }} />
+                  <div className="h-6 w-full rounded" style={{ backgroundColor: "var(--stitch-bg-elevated)" }} />
+                  <div className="h-4 w-full rounded" style={{ backgroundColor: "var(--stitch-bg-elevated)" }} />
+                  <div className="h-4 w-4/5 rounded" style={{ backgroundColor: "var(--stitch-bg-elevated)" }} />
                 </div>
               </div>
             ))}
           </div>
         ) : articlesError ? (
-          <div className="py-16 text-center border rounded-xl" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg)' }}>
-            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--stitch-text)' }}>Unable to load publications.</p>
-            <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>{articlesError}</p>
+          <div className="rounded-xl border py-16 text-center" style={{ borderColor: "var(--stitch-border)", backgroundColor: "var(--stitch-bg)" }}>
+            <p className="mb-2 text-lg font-semibold" style={{ color: "var(--stitch-text)" }}>{t("unableToLoad")}</p>
+            <p className="text-sm" style={{ color: "var(--stitch-text-muted)" }}>{articlesError}</p>
           </div>
-        ) : articles.length === 0 ? (
-          <div className="py-16 text-center border rounded-xl" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg)' }}>
-            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--stitch-text)' }}>No publications yet.</p>
-            <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>Please check back soon for new articles.</p>
+        ) : filteredArticles.length === 0 ? (
+          <div className="rounded-xl border py-16 text-center" style={{ borderColor: "var(--stitch-border)", backgroundColor: "var(--stitch-bg)" }}>
+            <div className="mb-3 flex justify-center" style={{ color: "var(--stitch-text-muted)" }}>
+              <MaterialIcon name="article" size={40} />
+            </div>
+            <p className="mb-2 text-lg font-semibold" style={{ color: "var(--stitch-text)" }}>{t("noPublications")}</p>
+            <p className="text-sm" style={{ color: "var(--stitch-text-muted)" }}>{t("checkBackSoon")}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {articles.map((article) => (
-            <Link
-              key={article.slug}
-              href={`/blog/${article.slug}`}
-              className="group flex flex-col rounded-xl overflow-hidden border hover:shadow-xl transition-all duration-300"
-              style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)' }}
-            >
-              <div className="aspect-video relative overflow-hidden">
-                {article.image ? (
-                  <Image 
-                    src={article.image} 
-                    alt={article.title} 
-                    width={400}
-                    height={300}
-                    className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
-                    unoptimized
-                  />
-                ) : (
-                  <div
-                    className="flex h-full w-full items-center justify-center bg-[var(--stitch-bg-elevated)] text-[var(--stitch-text-muted)]"
-                    aria-hidden="true"
-                  >
-                    <MaterialIcon name="article" size={40} />
-                  </div>
-                )}
-                <div className="absolute top-4 left-4">
-                  <span className="text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 90%, transparent)' }}>
-                    {article.tag}
-                  </span>
-                </div>
-              </div>
-              <div className="p-6 flex flex-col grow">
-                <div className="flex items-center gap-2 text-xs mb-3 font-medium" style={{ color: 'var(--stitch-text-muted)' }}>
-                  <MaterialIcon name="calendar_today" size={14} />
-                  <span>{article.publishedAt}</span>
-                  <span className="mx-1">•</span>
-                  <MaterialIcon name="schedule" size={14} />
-                  <span>{article.readTime}</span>
-                </div>
-                <h3 className="text-xl font-bold mb-3 transition-colors leading-snug group-hover:text-primary" style={{ color: 'var(--stitch-text)' }}>
-                  {article.title}
-                </h3>
-                <p className="text-sm leading-relaxed mb-6 line-clamp-3" style={{ color: 'var(--stitch-text-muted)' }}>
-                  {article.excerpt}
-                </p>
-                <div className="mt-auto pt-4 border-t flex items-center justify-between" style={{ borderColor: 'var(--stitch-border)' }}>
-                  <div className="flex items-center gap-2">
-                    <div className="size-6 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: 'var(--stitch-border)' }}>
-                      {article.author.avatar ? (
-                        <Image 
-                          src={article.author.avatar} 
-                          alt={article.author.name}
-                          width={24}
-                          height={24}
-                          className="object-cover size-full"
-                          unoptimized
-                        />
-                      ) : (
-                        <MaterialIcon name={article.author.icon || "person"} size={14} />
-                      )}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredArticles.map((article) => (
+              <Link
+                key={article.slug}
+                href={`/blog/${article.slug}`}
+                className="group flex flex-col overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                style={{ backgroundColor: "var(--stitch-bg)", borderColor: "var(--stitch-border)" }}
+              >
+                <div className="relative aspect-video overflow-hidden">
+                  {article.image ? (
+                    <Image
+                      src={article.image}
+                      alt={article.title}
+                      width={400}
+                      height={300}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      unoptimized
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-center bg-[var(--stitch-bg-elevated)] text-[var(--stitch-text-muted)]"
+                      aria-hidden="true"
+                    >
+                      <MaterialIcon name="article" size={40} />
                     </div>
-                    <span className="text-xs font-bold" style={{ color: 'var(--stitch-text)' }}>{article.author.name}</span>
-                  </div>
-                  <div className="transition-all group-hover:translate-x-1" style={{ color: 'var(--stitch-text-muted)' }}>
-                    <MaterialIcon name="arrow_forward" size={20} />
+                  )}
+                  <div className="absolute left-4 top-4">
+                    <span
+                      className="rounded px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
+                      style={{ backgroundColor: "color-mix(in srgb, var(--stitch-primary) 90%, transparent)" }}
+                    >
+                      {article.tag}
+                    </span>
                   </div>
                 </div>
-              </div>
-            </Link>
+                <div className="flex grow flex-col p-6">
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium" style={{ color: "var(--stitch-text-muted)" }}>
+                    <MaterialIcon name="calendar_today" size={14} />
+                    <span>{article.publishedAt}</span>
+                    <span className="mx-1">·</span>
+                    <MaterialIcon name="schedule" size={14} />
+                    <span>{article.readTime}</span>
+                  </div>
+                  <h3
+                    className="mb-3 text-lg font-bold leading-snug transition-colors group-hover:text-[var(--stitch-primary)]"
+                    style={{ color: "var(--stitch-text)" }}
+                  >
+                    {article.title}
+                  </h3>
+                  <p className="mb-6 line-clamp-3 text-sm leading-relaxed" style={{ color: "var(--stitch-text-muted)" }}>
+                    {article.excerpt}
+                  </p>
+                  <div
+                    className="mt-auto flex items-center justify-between border-t pt-4"
+                    style={{ borderColor: "var(--stitch-border)" }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex size-6 items-center justify-center overflow-hidden rounded-full" style={{ backgroundColor: "var(--stitch-border)" }}>
+                        {article.author.avatar ? (
+                          <Image
+                            src={article.author.avatar}
+                            alt={article.author.name}
+                            width={24}
+                            height={24}
+                            className="size-full object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <MaterialIcon name={article.author.icon || "person"} size={14} />
+                        )}
+                      </div>
+                      <span className="text-xs font-bold" style={{ color: "var(--stitch-text)" }}>{article.author.name}</span>
+                    </div>
+                    <div className="transition-all group-hover:translate-x-1" style={{ color: "var(--stitch-text-muted)" }}>
+                      <MaterialIcon name="arrow_forward" size={20} />
+                    </div>
+                  </div>
+                </div>
+              </Link>
             ))}
           </div>
         )}
 
-        <div className="flex items-center justify-center mt-16 gap-2">
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
+        {/* 分页 */}
+        <div className="mt-14 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+            style={{ borderColor: "var(--stitch-border)", color: "var(--stitch-text-muted)" }}
+          >
             <span aria-hidden="true" className="text-lg leading-none">‹</span>
           </button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg text-white font-bold text-sm" style={{ backgroundColor: 'var(--stitch-primary)' }}>1</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>2</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>3</button>
-          <span className="px-2" style={{ color: 'var(--stitch-text-muted)' }}>...</span>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border border-transparent dark:border-transparent transition-colors font-semibold text-sm hover:bg-[var(--stitch-bg-elevated)]" style={{ color: 'var(--stitch-text-muted)' }}>12</button>
-          <button type="button" className="size-10 flex items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]" style={{ borderColor: 'var(--stitch-border)', color: 'var(--stitch-text-muted)' }}>
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg text-sm font-bold text-white"
+            style={{ backgroundColor: "var(--stitch-primary)" }}
+          >
+            1
+          </button>
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg border border-transparent text-sm font-semibold transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+            style={{ color: "var(--stitch-text-muted)" }}
+          >
+            2
+          </button>
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg border border-transparent text-sm font-semibold transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+            style={{ color: "var(--stitch-text-muted)" }}
+          >
+            3
+          </button>
+          <span className="px-2" style={{ color: "var(--stitch-text-muted)" }}>...</span>
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg border border-transparent text-sm font-semibold transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+            style={{ color: "var(--stitch-text-muted)" }}
+          >
+            12
+          </button>
+          <button
+            type="button"
+            className="flex size-10 items-center justify-center rounded-lg border transition-colors hover:bg-[var(--stitch-bg-elevated)]"
+            style={{ borderColor: "var(--stitch-border)", color: "var(--stitch-text-muted)" }}
+          >
             <span aria-hidden="true" className="text-lg leading-none">›</span>
           </button>
         </div>
       </div>
 
-      <section className="py-16 px-6 border-y" style={{ backgroundColor: 'color-mix(in srgb, var(--stitch-primary) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--stitch-primary) 10%, transparent)' }}>
-        <div className="max-w-4xl mx-auto text-center flex flex-col items-center gap-6">
-          <div style={{ color: 'var(--stitch-primary)' }}>
-            <MaterialIcon name="mail" size={48} />
+      {/* ===== Newsletter ===== */}
+      <section
+        data-od-id="blog-newsletter"
+        className="border-y px-6 py-16 md:px-20"
+        style={{
+          backgroundColor: "color-mix(in srgb, var(--stitch-primary) 4%, transparent)",
+          borderColor: "color-mix(in srgb, var(--stitch-primary) 10%, transparent)",
+        }}
+      >
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-5 text-center">
+          <div style={{ color: "var(--stitch-primary)" }}>
+            <MaterialIcon name="mail" size={40} />
           </div>
-          <h2 className="text-3xl font-black tracking-tight" style={{ color: 'var(--stitch-text)' }}>Stay ahead of the network.</h2>
-          <p className="text-lg" style={{ color: 'var(--stitch-text-muted)' }}>Join 5,000+ engineers receiving our monthly breakdown of gateway architecture and AI networking trends.</p>
-          <form className="w-full max-w-md flex flex-col sm:flex-row gap-3 mt-4">
-            <input className="flex-1 rounded-lg border px-4 py-3 focus:ring-primary focus:border-primary outline-none" style={{ backgroundColor: 'var(--stitch-bg)', borderColor: 'var(--stitch-border)', color: 'var(--stitch-text)' }} placeholder="engineer@enterprise.com" type="email" />
-            <button type="submit" className="text-white font-bold px-8 py-3 rounded-lg hover:shadow-lg transition-all" style={{ backgroundColor: 'var(--stitch-primary)', boxShadow: '0 10px 15px -3px color-mix(in srgb, var(--stitch-primary) 20%, transparent)' }}>Subscribe</button>
+          <h2 className="text-2xl font-black tracking-[-0.02em] md:text-3xl" style={{ color: "var(--stitch-text)" }}>
+            {t("stayAhead")}
+          </h2>
+          <p className="max-w-xl text-base md:text-lg" style={{ color: "var(--stitch-text-muted)" }}>
+            {t("newsletterDescription")}
+          </p>
+          <form className="mt-2 flex w-full max-w-md flex-col gap-3 sm:flex-row">
+            <input
+              className="flex-1 rounded-lg border px-4 py-3 outline-none focus:border-[var(--stitch-primary)]"
+              style={{
+                backgroundColor: "var(--stitch-bg)",
+                borderColor: "var(--stitch-border)",
+                color: "var(--stitch-text)",
+              }}
+              placeholder="engineer@gateway.ai"
+              type="email"
+            />
+            <button
+              type="submit"
+              className="rounded-lg px-8 py-3 font-bold text-white transition-all hover:shadow-lg"
+              style={{
+                backgroundColor: "var(--stitch-primary)",
+                boxShadow: "0 10px 15px -3px color-mix(in srgb, var(--stitch-primary) 20%, transparent)",
+              }}
+            >
+              {t("subscribe")}
+            </button>
           </form>
-          <p className="text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--stitch-text-muted)' }}>Academic release • No spam • Opt-out anytime</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--stitch-text-muted)" }}>
+            {t("newsletterDisclaimer")}
+          </p>
         </div>
       </section>
 
+      {/* ===== 雷达弹窗 ===== */}
       {selectedBlip && (
         <section
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
           role="dialog"
           aria-modal="true"
-          aria-label={`${selectedBlip.name} 相关博客`}
+          aria-label={t("relatedBlogs", { name: selectedBlip.name })}
         >
           <button
             type="button"
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-            aria-label="关闭弹窗"
+            aria-label={t("closeModal")}
             onClick={closeModal}
           />
 
-          <div className="relative w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden" style={{ backgroundColor: 'var(--stitch-bg)', border: '1px solid var(--stitch-border)' }} ref={modalRef}>
-            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--stitch-border)' }}>
-              <h3 className="text-xl font-bold" style={{ color: 'var(--stitch-text)' }}>{selectedBlip.name} 相关博客</h3>
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+            style={{ backgroundColor: "var(--stitch-bg)", border: "1px solid var(--stitch-border)" }}
+            ref={modalRef}
+          >
+            <div className="flex items-center justify-between border-b p-6" style={{ borderColor: "var(--stitch-border)" }}>
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex items-center justify-center rounded-lg size-10"
+                  style={{ backgroundColor: "rgba(33,196,93,0.1)" }}
+                >
+                  <MaterialIcon name="hub" size={20} className="text-[var(--stitch-primary)]" />
+                </div>
+                <h3 className="text-lg font-bold" style={{ color: "var(--stitch-text)" }}>
+                  {t("relatedBlogs", { name: selectedBlip.name })}
+                </h3>
+              </div>
               <button
                 type="button"
                 className="rounded-full p-2 transition-colors hover:bg-[var(--stitch-bg-elevated)]"
-                style={{ color: 'var(--stitch-text-muted)' }}
-                aria-label="关闭弹窗"
+                style={{ color: "var(--stitch-text-muted)" }}
+                aria-label={t("closeModal")}
                 ref={closeButtonRef}
                 onClick={closeModal}
               >
-                <MaterialIcon name="close" size={24} />
+                <MaterialIcon name="close" size={22} />
               </button>
             </div>
 
-            <div className="overflow-y-auto p-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-3 overflow-y-auto p-6">
               {relatedArticles.length > 0 ? (
                 relatedArticles.map((article) => (
-                  <Link key={article.slug} href={`/blog/${article.slug}`} className="block p-4 rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md" style={{ borderColor: 'var(--stitch-border)', backgroundColor: 'var(--stitch-bg-elevated)' }}>
-                    <p className="font-bold mb-2 transition-colors hover:text-primary" style={{ color: 'var(--stitch-text)' }}>{article.title}</p>
-                    <p className="text-sm" style={{ color: 'var(--stitch-text-muted)' }}>{article.tag} · {article.publishedAt} · {article.readTime}</p>
+                  <Link
+                    key={article.slug}
+                    href={`/blog/${article.slug}`}
+                    className="block rounded-xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    style={{ borderColor: "var(--stitch-border)", backgroundColor: "var(--stitch-bg-elevated)" }}
+                  >
+                    <p className="mb-2 font-bold transition-colors hover:text-[var(--stitch-primary)]" style={{ color: "var(--stitch-text)" }}>
+                      {article.title}
+                    </p>
+                    <p className="text-sm" style={{ color: "var(--stitch-text-muted)" }}>
+                      {article.tag} · {article.publishedAt} · {article.readTime}
+                    </p>
                   </Link>
                 ))
               ) : (
-                <div className="py-12 text-center flex flex-col items-center gap-4">
-                  <div style={{ color: 'var(--stitch-text-muted)' }}>
-                    <MaterialIcon name="article" size={48} />
+                <div className="flex flex-col items-center gap-4 py-12 text-center">
+                  <div style={{ color: "var(--stitch-text-muted)" }}>
+                    <MaterialIcon name="article" size={40} />
                   </div>
-                  <p style={{ color: 'var(--stitch-text-muted)' }}>暂无相关博客，后续会持续补充。</p>
+                  <p style={{ color: "var(--stitch-text-muted)" }}>{t("noRelatedBlogs")}</p>
                 </div>
               )}
             </div>
