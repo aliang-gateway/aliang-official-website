@@ -363,3 +363,27 @@ func createUserWithPassword(t *testing.T, ctx context.Context, database *sql.DB,
 
 	return id
 }
+
+// TestServiceRebindPostgres guards the scan-login confirm fix: user.Service must
+// rebind `?` placeholders for postgres (raw `?` is a syntax error there — it broke
+// MintSessionForUser → /auth/scan/confirm returned 500 "scan operation failed").
+// sqlite (the default) is a no-op. The sqlite integration tests can't catch a
+// regression that removes s.rebind(), so assert the wiring directly.
+func TestServiceRebindPostgres(t *testing.T) {
+	s := NewServiceWithOptions(nil, ServiceOptions{SQLDialect: "postgres"})
+	got := s.rebind("INSERT INTO als_sessions(user_id, token_hash, expires_at) VALUES (?, ?, ?)")
+	for _, needle := range []string{"$1", "$2", "$3"} {
+		if !strings.Contains(got, needle) {
+			t.Fatalf("postgres rebind missing %s in: %s", needle, got)
+		}
+	}
+	if strings.Contains(got, "?") {
+		t.Fatalf("postgres rebind left a raw ? in: %s", got)
+	}
+
+	// sqlite / unset dialect must leave `?` untouched.
+	sqlite := NewService(nil)
+	if got := sqlite.rebind("VALUES (?, ?)"); got != "VALUES (?, ?)" {
+		t.Fatalf("sqlite rebind altered query: %s", got)
+	}
+}

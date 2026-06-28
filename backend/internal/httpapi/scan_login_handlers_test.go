@@ -164,3 +164,89 @@ func TestScanLoginFullFlow(t *testing.T) {
 		t.Fatalf("als_sessions count for pc token = %d, want 1", count)
 	}
 }
+
+// TestScanLoginWithAccessToken verifies the App (the phone app) can authorize a
+// desktop scan-login using the sub2api access_token it already holds — without
+// an st_ session. The phone never has an st_; this is its credential.
+func TestScanLoginWithAccessToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	// Seed a user and store their sub2api access_token (what the phone carries).
+	res, err := database.ExecContext(ctx, `
+		INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);
+	`, "phone@example.com", "Phone App", "user")
+	if err != nil {
+		t.Fatalf("seed phone user: %v", err)
+	}
+	phoneUserID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("phone user LastInsertId: %v", err)
+	}
+	const phoneAccessToken = "phone_sub2api_access_token_xyz"
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token) VALUES (?, ?);
+	`, phoneUserID, phoneAccessToken); err != nil {
+		t.Fatalf("seed sub2api access token: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{SQLDialect: "sqlite"})
+
+	// 1. Init → scan_code.
+	_, payload := doJSON(t, mux, http.MethodPost, "/auth/scan/init", map[string]string{}, "")
+	deviceCode, _ := payload["device_code"].(string)
+	scanCode, _ := payload["scan_code"].(string)
+	if deviceCode == "" || scanCode == "" {
+		t.Fatalf("init missing codes: %v", payload)
+	}
+
+	// 2. Scan with the access_token bearer → 200, → scanned.
+	status, _ := doJSON(t, mux, http.MethodPost, "/auth/scan/scan", map[string]string{"code": scanCode}, phoneAccessToken)
+	if status != http.StatusOK {
+		t.Fatalf("scan with access_token status = %d, want 200", status)
+	}
+	_, payload = doJSON(t, mux, http.MethodGet, "/auth/scan/status?device_code="+deviceCode, nil, "")
+	if got, _ := payload["status"].(string); got != "scanned" {
+		t.Fatalf("status after access_token scan = %q, want scanned", got)
+	}
+
+	// 3. Confirm with the access_token bearer → 200, → authorized; user is the
+	//    phone user (resolved from the stored access_token).
+	status, payload = doJSON(t, mux, http.MethodPost, "/auth/scan/confirm", map[string]string{"code": scanCode}, phoneAccessToken)
+	if status != http.StatusOK {
+		t.Fatalf("confirm with access_token status = %d, want 200", status)
+	}
+	_, payload = doJSON(t, mux, http.MethodGet, "/auth/scan/status?device_code="+deviceCode, nil, "")
+	if got, _ := payload["status"].(string); got != "authorized" {
+		t.Fatalf("status after access_token confirm = %q, want authorized", got)
+	}
+	userObj, _ := payload["user"].(map[string]any)
+	if userObj == nil {
+		t.Fatalf("authorized status missing user: %v", payload)
+	}
+	if got := int64(userObj["id"].(float64)); got != phoneUserID {
+		t.Fatalf("authorized user.id = %d, want %d (phone user)", got, phoneUserID)
+	}
+
+	// 4. Regression: an st_ session token still authenticates (website path).
+	userSvc := user.NewService(database)
+	stToken, _, err := userSvc.MintSessionForUser(ctx, phoneUserID)
+	if err != nil {
+		t.Fatalf("mint st_ session: %v", err)
+	}
+	_, payload = doJSON(t, mux, http.MethodPost, "/auth/scan/init", map[string]string{}, "")
+	scanCode2, _ := payload["scan_code"].(string)
+	status, _ = doJSON(t, mux, http.MethodPost, "/auth/scan/scan", map[string]string{"code": scanCode2}, stToken)
+	if status != http.StatusOK {
+		t.Fatalf("scan with st_ status = %d, want 200 (regression)", status)
+	}
+
+	// 5. Unknown token → 401.
+	status, _ = doJSON(t, mux, http.MethodPost, "/auth/scan/scan", map[string]string{"code": scanCode2}, "not_a_real_token")
+	if status != http.StatusUnauthorized {
+		t.Fatalf("scan with bogus token status = %d, want 401", status)
+	}
+}

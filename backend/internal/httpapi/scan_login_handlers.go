@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -108,6 +109,10 @@ func writeScanStateError(w http.ResponseWriter, err error) {
 	case errors.Is(err, scanlogin.ErrInvalidState):
 		writeError(w, http.StatusConflict, "scan code is not in a valid state")
 	default:
+		// Surface the real cause server-side: the client only sees the generic
+		// "scan operation failed", so without this log a 500 (e.g. a postgres
+		// placeholder rebinding miss in the session minter) is invisible.
+		slog.Error("scan operation failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "scan operation failed")
 	}
 }

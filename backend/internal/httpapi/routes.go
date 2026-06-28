@@ -743,7 +743,7 @@ func RegisterRoutesWithUserService(mux *http.ServeMux, database *sql.DB, userSvc
 func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts RoutesOptions) {
 	userSvc := opts.UserService
 	if userSvc == nil {
-		userSvc = user.NewService(database)
+		userSvc = user.NewServiceWithOptions(database, user.ServiceOptions{SQLDialect: strings.TrimSpace(opts.SQLDialect)})
 	}
 	// 共享同一个 sub2api Gateway：既作为 upstream passthrough 入口，
 	// 也作为扫码登录的 refresh_token 解析器（authorized 时把 sub2api refresh_token 连同 st_ 下发）。
@@ -770,9 +770,9 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	// 扫码登录（本地能力，非 upstream passthrough）
 	mux.HandleFunc("POST /auth/scan/init", r.handleScanInit)
 	mux.HandleFunc("GET /auth/scan/status", r.handleScanStatus)
-	mux.Handle("POST /auth/scan/scan", authenticated(http.HandlerFunc(r.handleScanScan)))
-	mux.Handle("POST /auth/scan/confirm", authenticated(http.HandlerFunc(r.handleScanConfirm)))
-	mux.Handle("POST /auth/scan/deny", authenticated(http.HandlerFunc(r.handleScanDeny)))
+	mux.Handle("POST /auth/scan/scan", r.requireUserForScan(http.HandlerFunc(r.handleScanScan)))
+	mux.Handle("POST /auth/scan/confirm", r.requireUserForScan(http.HandlerFunc(r.handleScanConfirm)))
+	mux.Handle("POST /auth/scan/deny", r.requireUserForScan(http.HandlerFunc(r.handleScanDeny)))
 
 	mux.HandleFunc("POST /users", r.handleCreateUser)
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
@@ -2460,6 +2460,68 @@ func (r *routes) findLocalUserIDByStoredAccessToken(ctx context.Context, accessT
 	}
 
 	return userID, true, nil
+}
+
+// loadAuthenticatedUserByID loads the full AuthenticatedUser (id/email/name/
+// role) for a local als_users row. Used by the scan-login auth paths that
+// resolve a userID via a non-st_ credential (the phone's stored sub2api
+// access_token) and need to inject the user into the request context.
+func (r *routes) loadAuthenticatedUserByID(ctx context.Context, userID int64) (*auth.AuthenticatedUser, error) {
+	var u auth.AuthenticatedUser
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+		SELECT id, email, name, role FROM als_users WHERE id = ?;
+	`), userID).Scan(&u.ID, &u.Email, &u.Name, &u.Role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load authenticated user by id: %w", err)
+	}
+	return &u, nil
+}
+
+// resolveScanUserID resolves the local als_users.id behind a scan-login App
+// bearer token. Accepts EITHER an official-website st_ session (the website's
+// own frontend) OR the sub2api access_token the phone app holds (looked up in
+// the locally stored als_sub2api_auth_tokens row, which the refresh arbiter
+// keeps current). Returns ok=false when the token matches neither.
+func (r *routes) resolveScanUserID(ctx context.Context, token string) (int64, bool) {
+	trimmed := strings.TrimSpace(token)
+	if trimmed == "" {
+		return 0, false
+	}
+	if id, ok, err := r.findLocalUserIDBySessionToken(ctx, trimmed); err == nil && ok {
+		return id, true
+	}
+	if id, ok, err := r.findLocalUserIDByStoredAccessToken(ctx, trimmed); err == nil && ok {
+		return id, true
+	}
+	return 0, false
+}
+
+// requireUserForScan authenticates the scan-login App (phone or website). It
+// resolves the user via resolveScanUserID (st_ OR stored access_token) and
+// injects the AuthenticatedUser into the context, so the existing scan handlers
+// (which call auth.UserFromContext) work unchanged.
+func (r *routes) requireUserForScan(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		token := strings.TrimSpace(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
+		userID, ok := r.resolveScanUserID(req.Context(), token)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		user, err := r.loadAuthenticatedUserByID(req.Context(), userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to authenticate")
+			return
+		}
+		if user == nil {
+			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		next.ServeHTTP(w, req.WithContext(auth.WithUser(req.Context(), *user)))
+	})
 }
 
 func (r *routes) findLocalUserIDByStoredRefreshToken(ctx context.Context, refreshToken string) (int64, bool, error) {

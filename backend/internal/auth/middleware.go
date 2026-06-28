@@ -32,6 +32,14 @@ func UserFromContext(ctx context.Context) (AuthenticatedUser, bool) {
 	return user, ok
 }
 
+// WithUser returns a copy of ctx carrying the authenticated user. Lets callers
+// outside the auth package (e.g. httpapi routes resolving a user via the
+// scan-login access_token path) inject the user and reuse UserFromContext /
+// the existing handlers unchanged.
+func WithUser(ctx context.Context, user AuthenticatedUser) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 func RequireUser(database *sql.DB) func(http.Handler) http.Handler {
 	return RequireUserWithDialect(database, "")
 }

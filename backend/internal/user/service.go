@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"ai-api-portal/backend/internal/auth"
+	"ai-api-portal/backend/internal/db"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -22,9 +23,17 @@ const SessionLifetime = 24 * time.Hour
 
 type Service struct {
 	db                       *sql.DB
+	dialect                  string
 	mailSender               MailSender
 	allowedEmailDomains      map[string]struct{}
 	requireEmailVerification bool
+}
+
+// rebind converts `?` placeholders to the driver's form (postgres → $N). user.Service
+// queries must be rebound — on postgres a raw `?` is a syntax error (e.g. it broke
+// MintSessionForUser → scan-login /auth/scan/confirm returned 500). sqlite is a no-op.
+func (s *Service) rebind(query string) string {
+	return db.Rebind(s.dialect, query)
 }
 
 type MailSender interface {
@@ -39,6 +48,9 @@ type ServiceOptions struct {
 	MailSender               MailSender
 	AllowedEmailDomains      []string
 	RequireEmailVerification *bool
+	// SQLDialect ("sqlite" | "postgres") enables driver-correct placeholder
+	// rebinding. Required for postgres correctness (raw `?` is a syntax error).
+	SQLDialect string
 }
 
 type AuthUser struct {
@@ -133,6 +145,7 @@ func NewServiceWithOptions(database *sql.DB, opts ServiceOptions) *Service {
 
 	return &Service{
 		db:                       database,
+		dialect:                  strings.TrimSpace(opts.SQLDialect),
 		mailSender:               mailSender,
 		allowedEmailDomains:      allowedDomains,
 		requireEmailVerification: requireEmailVerification,
@@ -210,10 +223,10 @@ func (s *Service) MintSessionForUser(ctx context.Context, userID int64) (string,
 	if err != nil {
 		return "", "", fmt.Errorf("generate session token: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, s.rebind(`
 		INSERT INTO als_sessions(user_id, token_hash, expires_at)
 		VALUES (?, ?, ?);
-	`, userID, tokenHash, time.Now().UTC().Add(SessionLifetime))
+	`), userID, tokenHash, time.Now().UTC().Add(SessionLifetime))
 	if err != nil {
 		return "", "", fmt.Errorf("insert session: %w", err)
 	}
