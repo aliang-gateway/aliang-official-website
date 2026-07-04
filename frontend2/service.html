@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>服务 - 阿良 AI coding 工作室</title>
+  <meta name="description" content="阿良服务时间线：最新研究方向在前，依次展示多 AI 会话并发协同、状态同步，以及已完成的手机 vibecoding、API 中转站、VSCode Copilot、Cursor Pro 服务。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #efe7d2;
+      --bone: #f7f1de;
+      --ink: #15140f;
+      --ink-soft: #2a2620;
+      --ink-muted: #5a5448;
+      --ink-faint: #8b8676;
+      --accent: #147a4f;
+      --accent-ink: #0b4d33;
+      --accent-soft: #58a873;
+      --accent-wash: rgba(20, 122, 79, 0.1);
+      --mustard: #d5b54b;
+      --line: rgba(21, 20, 15, 0.16);
+      --line-soft: rgba(21, 20, 15, 0.08);
+      --sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --body: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --serif: "Playfair Display", Georgia, serif;
+      --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { background: var(--paper); scroll-behavior: smooth; }
+    body {
+      min-width: 320px;
+      overflow-x: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--body);
+      line-height: 1.58;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle at 18% 16%, rgba(20, 122, 79, 0.08) 0, transparent 30%),
+        radial-gradient(circle at 86% 74%, rgba(213, 181, 75, 0.1) 0, transparent 34%),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.16 0 0 0 0 0.12 0 0 0 0.052 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      mix-blend-mode: multiply;
+      opacity: 0.9;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+    button { font: inherit; }
+    a:focus-visible, button:focus-visible { outline: 3px solid rgba(20, 122, 79, 0.28); outline-offset: 4px; }
+    .shell { position: relative; z-index: 2; }
+    .container { width: min(100% - 128px, 1320px); margin: 0 auto; position: relative; }
+    .container.wide { width: min(100% - 104px, 1480px); }
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .topbar-inner {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 22px;
+      color: var(--ink-faint);
+      font: 700 11px/1.2 var(--mono);
+      white-space: nowrap;
+    }
+    .topbar b { color: var(--ink); font-family: var(--sans); }
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in oklab, var(--paper) 92%, transparent);
+      backdrop-filter: blur(14px);
+    }
+    .nav-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 14px; font-family: var(--sans); font-weight: 900; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--paper);
+      font: italic 600 24px/1 var(--serif);
+    }
+    .brand small { display: block; margin-top: 3px; color: var(--ink-faint); font: 700 10px/1 var(--mono); }
+    .page-links { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 26px); color: var(--ink-muted); font: 800 12px/1 var(--sans); }
+    .page-links a { position: relative; display: inline-flex; align-items: baseline; gap: 8px; padding-bottom: 6px; }
+    .page-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: transform 180ms ease;
+    }
+    .page-links a:hover, .page-links a[aria-current="page"] { color: var(--accent-ink); }
+    .page-links a[aria-current="page"]::after { transform: scaleX(1); }
+    .page-links .num { color: var(--accent); font-family: var(--mono); font-size: 10px; }
+    .nav-cta {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 18px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--paper);
+      font: 900 12px/1 var(--sans);
+    }
+    .display {
+      font-family: var(--sans);
+      font-weight: 900;
+      line-height: 0.94;
+      text-wrap: balance;
+    }
+    .display em { font-family: var(--serif); font-style: italic; font-weight: 600; }
+    .dot, .label { color: var(--accent); }
+    .label { font: 800 11px/1.4 var(--mono); }
+    .lead { max-width: 58ch; color: var(--ink-soft); font-size: clamp(17px, 1.35vw, 20px); line-height: 1.75; text-wrap: pretty; }
+    .hero {
+      padding: 70px 0 56px;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.52fr);
+      gap: clamp(42px, 6vw, 90px);
+      align-items: center;
+    }
+    .hero h1 { max-width: 960px; margin: 26px 0 30px; font-size: clamp(64px, 8.6vw, 132px); }
+    .hero-note {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .note {
+      min-height: 112px;
+      padding: 16px;
+      border: 1px dashed color-mix(in oklab, var(--accent) 42%, var(--line));
+      background: var(--accent-wash);
+    }
+    .note b { display: block; color: var(--accent-ink); font: 900 32px/1 var(--sans); }
+    .note span { display: block; margin-top: 12px; color: var(--ink-muted); font-size: 13px; }
+    .plate {
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: rgba(247, 241, 222, 0.5);
+      box-shadow: 16px 16px 0 rgba(20, 122, 79, 0.12);
+    }
+    .plate img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border: 1px solid var(--line-soft);
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 44px 0 26px;
+    }
+    .filters button {
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(247, 241, 222, 0.5);
+      color: var(--ink-muted);
+      cursor: pointer;
+      font: 800 11px/1 var(--mono);
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 120ms ease;
+      touch-action: manipulation;
+    }
+    .filters button:hover {
+      border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+      color: var(--accent-ink);
+    }
+    .filters button:active {
+      transform: translateY(1px);
+    }
+    .filters button[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--paper);
+    }
+    .filter-feedback {
+      min-height: 22px;
+      margin: -8px 0 28px;
+      color: var(--ink-muted);
+      font: 800 12px/1.5 var(--mono);
+    }
+    .filter-feedback.is-refreshing {
+      animation: filterRefresh 190ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .empty-state {
+      display: none;
+      margin: -2px 0 26px;
+      padding: 18px 20px;
+      border: 1px dashed color-mix(in oklab, var(--accent) 40%, var(--line));
+      background: color-mix(in oklab, var(--accent) 7%, transparent);
+      color: var(--ink-muted);
+      font: 800 12px/1.6 var(--mono);
+    }
+    .empty-state.is-visible { display: block; }
+    .timeline-section { padding: 92px 0 118px; }
+    .timeline-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(280px, 0.42fr);
+      gap: 42px;
+      align-items: end;
+      margin-bottom: 48px;
+    }
+    .timeline-head h2 { margin-top: 22px; font-size: clamp(44px, 5.6vw, 84px); }
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 18px;
+      padding-left: 36px;
+      border-left: 1px solid var(--line);
+    }
+    .timeline-item {
+      position: relative;
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) 220px;
+      gap: 26px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: rgba(247, 241, 222, 0.58);
+      transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+    }
+    .timeline-item::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 2px;
+      background: var(--accent);
+      opacity: 0;
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -44px;
+      top: 30px;
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      background: var(--accent);
+      transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+    .timeline-item[data-status="research"]::before { background: var(--mustard); }
+    .timeline-item.is-hidden { opacity: 0; transform: translateX(16px); pointer-events: none; }
+    .timeline-item.is-current:not(.is-hidden) {
+      border-color: color-mix(in oklab, var(--accent) 48%, var(--line));
+    }
+    .timeline-item.is-current:not(.is-hidden)::before {
+      transform: scale(1.18);
+      box-shadow: 0 0 0 6px rgba(20, 122, 79, 0.12);
+    }
+    .timeline-item.is-current:not(.is-hidden)::after {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+    .phase { color: var(--accent); font: 800 12px/1.4 var(--mono); }
+    .timeline-item h3 { margin-bottom: 10px; font: 850 clamp(24px, 2.2vw, 36px)/1.05 var(--sans); }
+    .timeline-item p { max-width: 64ch; color: var(--ink-muted); }
+    .status {
+      align-self: start;
+      justify-self: end;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--accent-ink);
+      background: color-mix(in oklab, var(--accent) 8%, var(--bone));
+      font: 800 11px/1 var(--mono);
+      white-space: nowrap;
+    }
+    .status.research {
+      color: #705a12;
+      background: color-mix(in oklab, var(--mustard) 22%, var(--bone));
+    }
+    .closing {
+      padding: 74px 0;
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .closing-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 36px;
+      align-items: center;
+    }
+    .closing p { max-width: 52ch; color: rgba(239, 231, 210, 0.72); }
+    .btn {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      border: 1px solid var(--paper);
+      border-radius: 999px;
+      color: var(--paper);
+      font: 900 12px/1 var(--sans);
+      transition: background 150ms ease, color 150ms ease, transform 120ms ease;
+      touch-action: manipulation;
+    }
+    .btn:hover {
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .btn:active {
+      transform: translateY(1px);
+    }
+    [data-reveal] { opacity: 0; transform: translateY(22px); transition: opacity 700ms ease, transform 700ms ease; }
+    [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+    @keyframes filterRefresh {
+      from { opacity: 0.2; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+      [data-reveal] { opacity: 1; transform: none; }
+      .filter-feedback.is-refreshing { animation: none; }
+    }
+    @media (max-width: 1080px) {
+      .container, .container.wide { width: min(100% - 56px, 980px); }
+      .hero-grid, .timeline-head, .closing-grid { grid-template-columns: 1fr; }
+      .hero-note { grid-template-columns: 1fr; }
+      .timeline-item { grid-template-columns: 1fr; }
+      .status { justify-self: start; }
+    }
+    @media (max-width: 560px) {
+      .container, .container.wide { width: min(100% - 28px, 520px); }
+      .topbar-inner { height: auto; padding: 10px 0; white-space: normal; }
+      .nav-cta { display: none; }
+      .page-links { order: 3; width: 100%; justify-content: space-between; }
+      .hero h1 { font-size: clamp(54px, 14vw, 92px); }
+      .timeline { padding-left: 20px; }
+      .filters { margin-top: 32px; }
+      .filter-feedback { margin-bottom: 20px; }
+      .timeline-item { padding: 20px; gap: 14px; }
+      .timeline-item::before { left: -28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div class="container wide topbar-inner">
+        <span><b>阿良</b> / 服务时间线</span>
+        <span>最新研究在前 / 已完成能力在后</span>
+        <span>第 01 期 / 2026</span>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <div class="container wide nav-inner">
+        <a class="brand" href="index.html" aria-label="返回阿良首页">
+          <span class="brand-mark">良</span>
+          <span>阿良<small>AI coding 工作室</small></span>
+        </a>
+        <div class="page-links" aria-label="站点页面">
+          <a href="index.html"><span class="num">01</span>首页</a>
+          <a href="service.html" aria-current="page"><span class="num">02</span>服务</a>
+          <a href="download.html"><span class="num">03</span>下载</a>
+        </div>
+        <a class="nav-cta" href="download.html">下载客户端</a>
+      </div>
+    </nav>
+
+    <header class="hero" aria-labelledby="hero-title">
+      <div class="container wide hero-grid">
+        <div data-reveal>
+          <div class="label">服务 / 研究路线</div>
+          <h1 class="display" id="hero-title">从最新研究，回看已完成 <em>AI 服务</em><span class="dot">.</span></h1>
+          <p class="lead">服务页按“最新在前”的方式展示：先看阿良正在研究的 AI 协同方向，再回看已经可以交付的服务基础。没有伪日期，没有夸张指标。</p>
+          <div class="hero-note" aria-label="服务状态摘要">
+            <div class="note"><b>4</b><span>已完成服务方向</span></div>
+            <div class="note"><b>2</b><span>正在研究方向</span></div>
+            <div class="note"><b>1</b><span>统一工作流持续维护</span></div>
+          </div>
+        </div>
+        <figure class="plate" data-reveal>
+          <img src="assets/capabilities.svg" alt="阿良服务时间线拼贴图" width="1024" height="1024" />
+        </figure>
+      </div>
+    </header>
+
+    <main>
+      <section class="timeline-section" aria-labelledby="timeline-title">
+        <div class="container">
+          <div class="timeline-head" data-reveal>
+            <div>
+              <div class="label">时间线</div>
+              <h2 class="display" id="timeline-title">最新研究在前，最早完成的能力收在后面<span class="dot">.</span></h2>
+            </div>
+            <p class="lead">筛选按钮只改变时间线显示，不改变服务状态。用户可以先理解阿良下一步研究方向，再判断哪些能力现在已经可用。</p>
+          </div>
+
+          <div class="filters" aria-label="服务状态筛选">
+            <button type="button" data-status-filter="all" aria-pressed="true" aria-controls="service-timeline">全部</button>
+            <button type="button" data-status-filter="done" aria-pressed="false" aria-controls="service-timeline">已完成</button>
+            <button type="button" data-status-filter="research" aria-pressed="false" aria-controls="service-timeline">研究中</button>
+          </div>
+          <p class="filter-feedback" id="timeline-filter-feedback" aria-live="polite">当前显示全部 6 个方向，按最新研究到最早完成排列。</p>
+          <p class="empty-state" id="timeline-empty-state" role="status" aria-live="polite">当前筛选没有匹配的服务方向。切回“全部”查看完整研究路线。</p>
+
+          <div class="timeline" id="service-timeline">
+            <article class="timeline-item" data-status="research" data-reveal>
+              <div class="phase">最新 01 / 研究中</div>
+              <div>
+                <h3>多 AI 会话并发协同</h3>
+                <p>研究多个 AI 会话并行处理同一工程任务时，如何分工、互相校验、合并结论，并保持上下文不互相污染。</p>
+              </div>
+              <span class="status research">研究中</span>
+            </article>
+            <article class="timeline-item" data-status="research" data-reveal>
+              <div class="phase">最新 02 / 研究中</div>
+              <div>
+                <h3>状态同步</h3>
+                <p>研究桌面、移动端和云端会话之间的任务状态同步，确保用户从任意设备回到同一个 coding 现场。</p>
+              </div>
+              <span class="status research">研究中</span>
+            </article>
+            <article class="timeline-item" data-status="done" data-reveal>
+              <div class="phase">已完成 04 / 最近落地</div>
+              <div>
+                <h3>手机 vibecoding</h3>
+                <p>把 coding 任务从桌面延伸到手机端，让用户可以远程发起、跟进、整理和继续推进开发任务。</p>
+              </div>
+              <span class="status">已完成</span>
+            </article>
+            <article class="timeline-item" data-status="done" data-reveal>
+              <div class="phase">已完成 03 / 稳定交付</div>
+              <div>
+                <h3>API 中转站</h3>
+                <p>把 OpenAI、Anthropic 等主流格式整理成更稳定的调用入口，服务开发者工具、自动化脚本和内部产品接入。</p>
+              </div>
+              <span class="status">已完成</span>
+            </article>
+            <article class="timeline-item" data-status="done" data-reveal>
+              <div class="phase">已完成 02 / 稳定交付</div>
+              <div>
+                <h3>VSCode Copilot 破解服务</h3>
+                <p>针对 VSCode 与 Copilot 工作流做环境整理、使用路径配置和开发场景适配，降低团队上手成本。</p>
+              </div>
+              <span class="status">已完成</span>
+            </article>
+            <article class="timeline-item" data-status="done" data-reveal>
+              <div class="phase">已完成 01 / 最早基础</div>
+              <div>
+                <h3>Cursor Pro 破解服务</h3>
+                <p>围绕 Cursor Pro 使用场景提供接入、配置和维护支持，让开发者把 AI coding 能力放进真实项目节奏。</p>
+              </div>
+              <span class="status">已完成</span>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="closing" aria-labelledby="closing-title">
+      <div class="container closing-grid">
+        <div>
+          <div class="label">下一步</div>
+          <h2 class="display" id="closing-title">需要先安装客户端，再接入你的工作流<span class="dot">.</span></h2>
+          <p>下载页会把桌面端和手机端入口拆开；iOS 当前明确标注暂不支持，避免用户误点。</p>
+        </div>
+        <a class="btn" href="download.html">前往下载页</a>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
+      if (reduceMotion || !("IntersectionObserver" in window)) {
+        revealItems.forEach(function (el) { el.classList.add("is-visible"); });
+      } else {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.16, rootMargin: "0px 0px -8% 0px" });
+        revealItems.forEach(function (el) { observer.observe(el); });
+      }
+
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-status-filter]"));
+      var items = Array.prototype.slice.call(document.querySelectorAll("[data-status]"));
+      var feedback = document.getElementById("timeline-filter-feedback");
+      var emptyState = document.getElementById("timeline-empty-state");
+      var feedbackCopy = {
+        all: "当前显示全部 6 个方向，按最新研究到最早完成排列。",
+        done: "当前显示 4 个已完成服务，按最近落地到最早基础排列。",
+        research: "当前显示 2 个研究中方向，优先查看阿良下一步研究重点。"
+      };
+      function setCurrentItem(item) {
+        items.forEach(function (entry) { entry.classList.remove("is-current"); });
+        if (item && !item.classList.contains("is-hidden")) {
+          item.classList.add("is-current");
+        }
+      }
+      function firstVisibleItem(filter) {
+        return items.find(function (item) {
+          return filter === "all" || item.dataset.status === filter;
+        });
+      }
+      function refreshFeedback(filter, count) {
+        if (!feedback) return;
+        feedback.textContent = count ? (feedbackCopy[filter] || feedbackCopy.all) : "当前筛选没有匹配的服务方向。";
+        if (emptyState) {
+          emptyState.classList.toggle("is-visible", !count);
+          emptyState.hidden = Boolean(count);
+        }
+        if (!reduceMotion) {
+          feedback.classList.remove("is-refreshing");
+          void feedback.offsetWidth;
+          feedback.classList.add("is-refreshing");
+        }
+      }
+      if (emptyState) emptyState.hidden = true;
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var filter = button.dataset.statusFilter;
+          buttons.forEach(function (btn) { btn.setAttribute("aria-pressed", String(btn === button)); });
+          var visibleCount = 0;
+          items.forEach(function (item) {
+            var isHidden = filter !== "all" && item.dataset.status !== filter;
+            item.classList.toggle("is-hidden", isHidden);
+            item.hidden = isHidden;
+            item.setAttribute("aria-hidden", String(isHidden));
+            if (!isHidden) visibleCount += 1;
+          });
+          refreshFeedback(filter, visibleCount);
+          setCurrentItem(firstVisibleItem(filter));
+        });
+      });
+      setCurrentItem(items[0]);
+      if ("IntersectionObserver" in window) {
+        var currentObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting && !entry.target.classList.contains("is-hidden")) {
+              setCurrentItem(entry.target);
+            }
+          });
+        }, { threshold: 0.55, rootMargin: "-18% 0px -32% 0px" });
+        items.forEach(function (item) { currentObserver.observe(item); });
+      }
+    })();
+  </script>
+</body>
+</html>

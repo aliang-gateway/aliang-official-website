@@ -31,3 +31,5 @@ frontend/build/
 .playwright-mcp
 .sisyphus/
 .codegraph/
+# design-tool internal artifacts (binary skill bundles), keep frontend2 HTML/SVG as reference
+frontend2/.od-skills/

@@ -4,6 +4,53 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================
+   EDITORIAL DESIGN TOKENS (from frontend2)
+   Warm-paper editorial palette + type system.
+   Registers --color-paper / --font-editorial-* etc.,
+   which both surface as Tailwind utilities (bg-paper,
+   text-ink, font-editorial-serif …) and feed editorial.css
+   via the alias block at the top of editorial.css.
+   ============================================ */
+@theme {
+  --color-paper: #efe7d2;
+  --color-paper-warm: #ece4cf;
+  --color-paper-dark: #ded1b1;
+  --color-bone: #f7f1de;
+  --color-ink: #15140f;
+  --color-ink-soft: #2a2620;
+  --color-ink-muted: #5a5448;
+  --color-ink-faint: #8b8676;
+  --color-accent: #147a4f;
+  --color-accent-ink: #0b4d33;
+  --color-accent-soft: #58a873;
+  --color-olive: #3f6f4c;
+  --color-mustard: #d5b54b;
+
+  --font-editorial: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-editorial-body: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-editorial-serif: "Playfair Display", Georgia, serif;
+  --font-editorial-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+
+/* editorial token aliases —— 全局可用(不只 .editorial scope),
+   保证任何页面的 var(--paper)/var(--ink) 都能解析,深色按钮字色正常 */
+:root {
+  --paper: var(--color-paper);
+  --paper-warm: var(--color-paper-warm);
+  --paper-dark: var(--color-paper-dark);
+  --bone: var(--color-bone);
+  --ink: var(--color-ink);
+  --ink-soft: var(--color-ink-soft);
+  --ink-muted: var(--color-ink-muted);
+  --ink-faint: var(--color-ink-faint);
+  --accent: var(--color-accent);
+  --accent-ink: var(--color-accent-ink);
+  --accent-soft: var(--color-accent-soft);
+  --olive: var(--color-olive);
+  --mustard: var(--color-mustard);
+}
+
+/* ============================================
    STITCH DESIGN SYSTEM TOKENS (NEW)
    Primary: #21c45d (green)
    Background Light: #f6f8f7

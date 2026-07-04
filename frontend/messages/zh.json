@@ -16,6 +16,498 @@
     "searchPlaceholder": "搜索架构...",
     "userMenu": "用户菜单"
   },
+  "editorial": {
+    "brandName": "阿良",
+    "brandMark": "良",
+    "brandSmall": "ALiang Gateway",
+    "brandAria": "返回阿良首页",
+    "topbarLead": "面向开发者的 AI 网关",
+    "topbarMid": [
+      "主流 AI 服务",
+      "最新技术跟进",
+      "手机端 vibecoding"
+    ],
+    "statusLive": "持续维护中",
+    "edition": "第 01 期",
+    "year": "2026",
+    "navAria": "主导航",
+    "pagesAria": "站点页面",
+    "navHome": "首页",
+    "navServices": "服务",
+    "navDownload": "下载",
+    "navDoc": "文档",
+    "navBlog": "博客",
+    "navAbout": "关于",
+    "footerAbout": "阿良是一座连接你与全球领先大模型的可靠网关，以稳定架构、智能路由和极致延迟，重新定义 AI 接口服务。",
+    "footerSite": "站点",
+    "footerResources": "资源",
+    "footerProduct": "产品",
+    "footerCompany": "公司",
+    "footerSecurity": "安全",
+    "footerPrivacy": "隐私",
+    "footerTerms": "条款",
+    "footerMegaPre": "保持",
+    "footerMegaEm": "coding",
+    "footerMegaPost": "持续向前",
+    "home": {
+      "heroLabel": "编辑拼贴 / AI coding 工作室",
+      "heroTitlePre": "阿良把",
+      "heroTitleEm": "AI coding",
+      "heroTitlePost": "变成持续服务",
+      "heroLead": "从模型中转、工具接入到手机端 vibecoding，阿良为开发者提供一套持续跟进最新技术的 AI coding 工作室服务。",
+      "heroPrimary": "预约技术诊断",
+      "heroSecondary": "查看服务时间线",
+      "statsAria": "服务摘要",
+      "stats": [
+        {
+          "value": "常更",
+          "label": "跟进主流模型与工具变化"
+        },
+        {
+          "value": "3",
+          "label": "中转代理 / 桌面 IDE / 手机 vibecoding"
+        },
+        {
+          "value": "1",
+          "label": "统一的开发者工作流"
+        }
+      ],
+      "heroIndex": [
+        "主流 AI 服务中转",
+        "VSCode / Cursor 使用能力",
+        "手机端远程 vibecoding",
+        "持续更新的技术判断"
+      ],
+      "dockAria": "首页章节",
+      "dockKicker": "Index / 阅读路线",
+      "dockTitle": "首页章节",
+      "dockNote": "一页内完成品牌判断，先看气质，再看能力、方法和行动入口。",
+      "dockItems": [
+        {
+          "name": "理念",
+          "note": "阿良为什么要做持续型 AI coding 工作室。"
+        },
+        {
+          "name": "能力",
+          "note": "中转、工具链、手机端与团队校验的组合。"
+        },
+        {
+          "name": "实验室",
+          "note": "把正在变化的模型和工具整理成可用目录。"
+        },
+        {
+          "name": "方法",
+          "note": "从需求拆解到落地验收的工作节奏。"
+        },
+        {
+          "name": "案例",
+          "note": "服务页与移动 vibecoding 的真实方向。"
+        },
+        {
+          "name": "札记",
+          "note": "技术判断、工具迁移和持续维护的记录。"
+        },
+        {
+          "name": "诊断",
+          "note": "复制一份提纲，开始第一次技术诊断。"
+        }
+      ],
+      "nextAria": "下一步入口",
+      "nextTitle": "Next / 行动路线",
+      "nextLabel": "看完首页后",
+      "nextItems": [
+        {
+          "b": "读服务时间线",
+          "small": "研究中方向与已完成能力",
+          "href": "/services"
+        },
+        {
+          "b": "进入下载页",
+          "small": "桌面端与手机端安装入口",
+          "href": "/download"
+        },
+        {
+          "b": "复制诊断提纲",
+          "small": "把当前工作流发给阿良判断",
+          "href": "#cta"
+        }
+      ],
+      "aboutStamp": "良 / 持续服务",
+      "aboutLabel": "I / 工作室札记",
+      "aboutTitle": "不是一次性工具页，而是一间持续维护的 AI coding 工作室",
+      "aboutLead1": "阿良关注开发者真正会反复遇到的问题：模型服务不稳定、工具链碎片化、移动场景无法继续推进、最新技术没人替你判断。",
+      "aboutLead2": "首页承担品牌展示：告诉开发者这里有人持续跟进主流 AI 服务和 coding 工作流。具体服务可以随着技术变化迭代，但底层承诺保持一致。",
+      "capLabel": "II / 能力",
+      "capTitle": "把开发者每天要碰的 AI 能力，整理成可执行的服务模块",
+      "capLead": "服务可以继续扩展，但首屏先让人看见三件事：模型服务、开发工具链、移动端 coding 续航。",
+      "capCards": [
+        {
+          "num": "01",
+          "tag": "中转",
+          "title": "主流 AI 中转代理",
+          "desc": "统一接入 OpenAI、Anthropic 等格式，降低服务切换和环境配置成本。"
+        },
+        {
+          "num": "02",
+          "tag": "工具链",
+          "title": "VSCode / Cursor 使用能力",
+          "desc": "围绕真实工程场景整理提示词、上下文组织、调试和重构工作流。"
+        },
+        {
+          "num": "03",
+          "tag": "移动端",
+          "title": "手机端 vibecoding",
+          "desc": "在手机上继续发起、跟进和整理 coding 任务，减少离开电脑后的断点。"
+        },
+        {
+          "num": "04",
+          "tag": "技术雷达",
+          "title": "持续技术跟进",
+          "desc": "跟踪模型、工具和接口变化，把可用的新能力转译成开发者能直接尝试的方案。"
+        }
+      ],
+      "labsLabel": "III / 实验室目录",
+      "labsTitle": "一个持续更新的 AI coding 服务目录",
+      "filterAria": "实验室分类筛选",
+      "filters": [
+        {
+          "key": "all",
+          "label": "全部"
+        },
+        {
+          "key": "模型服务",
+          "label": "模型服务"
+        },
+        {
+          "key": "工具链",
+          "label": "工具链"
+        },
+        {
+          "key": "移动端",
+          "label": "移动端"
+        },
+        {
+          "key": "校验",
+          "label": "校验"
+        },
+        {
+          "key": "技术雷达",
+          "label": "技术雷达"
+        }
+      ],
+      "filterStatusAll": "当前显示全部 {count} 个实验室方向。",
+      "filterStatusFiltered": "当前筛选：{filter}，显示 {count} 个方向。",
+      "labCards": [
+        {
+          "kicker": "中转",
+          "title": "多模型格式适配",
+          "desc": "把不同模型服务整理成更稳定的接入方式，减少项目切换成本。",
+          "category": "模型服务",
+          "img": "/editorial/lab-1.svg"
+        },
+        {
+          "kicker": "上下文",
+          "title": "上下文与任务拆解",
+          "desc": "帮助开发者把模糊需求拆成可交给 AI 执行的工程任务。",
+          "category": "工具链",
+          "img": "/editorial/lab-2.svg"
+        },
+        {
+          "kicker": "移动端",
+          "title": "远程 vibecoding",
+          "desc": "在移动场景中继续描述、生成、检查和追踪代码任务。",
+          "category": "移动端",
+          "img": "/editorial/lab-3.svg"
+        },
+        {
+          "kicker": "校验",
+          "title": "代码与产物校验",
+          "desc": "把 AI 输出放回真实工程约束里检查，而不是只看生成速度。",
+          "category": "校验",
+          "img": "/editorial/lab-4.svg"
+        },
+        {
+          "kicker": "雷达",
+          "title": "最新能力观察",
+          "desc": "筛选值得关注的模型更新、IDE 功能和开发者工具变化。",
+          "category": "技术雷达",
+          "img": "/editorial/lab-5.svg"
+        }
+      ],
+      "methodLabel": "IV / 方法",
+      "methodTitle": "从问题到可用工作流，按四步推进",
+      "methodLead": "阿良不把 AI coding 当成一次安装，而是把它整理成可复用、可复盘、可迁移的工作方法。",
+      "methodSteps": [
+        {
+          "title": "识别瓶颈",
+          "desc": "先看你现在卡在模型、工具、环境还是任务拆解。"
+        },
+        {
+          "title": "整理上下文",
+          "desc": "把项目、代码、目标和约束变成 AI 能稳定理解的输入。"
+        },
+        {
+          "title": "接入服务",
+          "desc": "根据场景配置中转、IDE、手机端或混合工作流。"
+        },
+        {
+          "title": "持续复盘",
+          "desc": "随着模型和工具变化，保留有效做法，替换过期路径。"
+        }
+      ],
+      "workLabel": "V / 选定工作",
+      "workTitle": "阿良更像一个工作室入口，而不是单点功能陈列",
+      "workLead": "首页负责建立品牌信任；具体服务拆到服务页和下载页里，用时间线和平台入口展示。",
+      "workCards": [
+        {
+          "chip": "服务页 / 研究时间线",
+          "title": "服务页：已完成与研究中的能力路线",
+          "desc": "面向开发者解释 Cursor、VSCode、API 中转和手机 vibecoding 的服务状态。",
+          "img": "/editorial/work-1.svg"
+        },
+        {
+          "chip": "下载页 / 平台入口",
+          "title": "下载页：桌面端与移动端安装入口",
+          "desc": "拆分 Windows、Linux、macOS、Android 和 iOS 状态，让用户直接判断可用平台。",
+          "img": "/editorial/work-2.svg"
+        }
+      ],
+      "quoteLabel": "VI / 现场札记",
+      "quoteText": "开发者不缺一个新的按钮，缺的是能持续跟进技术变化的人和工作流。",
+      "quoteAuthor": "阿良工作室札记",
+      "partnersAria": "服务关键词",
+      "partners": [
+        "模型",
+        "IDE",
+        "接口",
+        "移动",
+        "工程"
+      ],
+      "ctaLabel": "VII / 合作入口",
+      "ctaTitle": "把你的开发工作流交给阿良做一次诊断",
+      "ctaLead": "如果你正在搭建 AI coding 服务、优化 Cursor / VSCode 流程，或想把手机端远程 vibecoding 做成可用产品，可以从一次技术诊断开始。",
+      "ctaCopyBtn": "复制诊断提纲",
+      "ctaSecondary": "阅读服务时间线",
+      "ctaRibbon": "持续 AI coding 工作室",
+      "copySuccess": "诊断提纲已复制，可以直接粘贴补充。",
+      "copyError": "复制失败，请手动记录诊断提纲。",
+      "briefText": "阿良技术诊断提纲：\n1. 当前 AI coding 场景：\n2. 使用的模型 / 中转 / IDE：\n3. 最大阻塞点：\n4. 是否需要手机端远程 vibecoding：\n5. 希望阿良优先诊断的结果："
+    },
+    "services": {
+      "heroLabel": "服务 / 研究路线",
+      "heroTitlePre": "从最新研究，回看已完成",
+      "heroTitleEm": "AI 服务",
+      "heroLead": "服务页按“最新在前”的方式展示：先看阿良正在研究的 AI 协同方向，再回看已经可以交付的服务基础。没有伪日期，没有夸张指标。",
+      "statsAria": "服务状态摘要",
+      "stats": [
+        {
+          "value": "4",
+          "label": "已完成服务方向"
+        },
+        {
+          "value": "2",
+          "label": "正在研究方向"
+        },
+        {
+          "value": "1",
+          "label": "统一工作流持续维护"
+        }
+      ],
+      "timelineLabel": "时间线",
+      "timelineTitle": "最新研究在前，最早完成的能力收在后面",
+      "timelineLead": "筛选按钮只改变时间线显示，不改变服务状态。用户可以先理解阿良下一步研究方向，再判断哪些能力现在已经可用。",
+      "filterAria": "服务状态筛选",
+      "filters": [
+        {
+          "key": "all",
+          "label": "全部"
+        },
+        {
+          "key": "done",
+          "label": "已完成"
+        },
+        {
+          "key": "research",
+          "label": "研究中"
+        }
+      ],
+      "filterAll": "当前显示全部 6 个方向，按最新研究到最早完成排列。",
+      "filterDone": "当前显示 4 个已完成服务，按最近落地到最早基础排列。",
+      "filterResearch": "当前显示 2 个研究中方向，优先查看阿良下一步研究重点。",
+      "emptyState": "当前筛选没有匹配的服务方向。切回“全部”查看完整研究路线。",
+      "statusDone": "已完成",
+      "statusResearch": "研究中",
+      "items": [
+        {
+          "phase": "最新 01 / 研究中",
+          "status": "research",
+          "title": "多 AI 会话并发协同",
+          "desc": "研究多个 AI 会话并行处理同一工程任务时，如何分工、互相校验、合并结论，并保持上下文不互相污染。"
+        },
+        {
+          "phase": "最新 02 / 研究中",
+          "status": "research",
+          "title": "状态同步",
+          "desc": "研究桌面、移动端和云端会话之间的任务状态同步，确保用户从任意设备回到同一个 coding 现场。"
+        },
+        {
+          "phase": "已完成 04 / 最近落地",
+          "status": "done",
+          "title": "手机 vibecoding",
+          "desc": "把 coding 任务从桌面延伸到手机端，让用户可以远程发起、跟进、整理和继续推进开发任务。"
+        },
+        {
+          "phase": "已完成 03 / 稳定交付",
+          "status": "done",
+          "title": "API 中转站",
+          "desc": "把 OpenAI、Anthropic 等主流格式整理成更稳定的调用入口，服务开发者工具、自动化脚本和内部产品接入。"
+        },
+        {
+          "phase": "已完成 02 / 稳定交付",
+          "status": "done",
+          "title": "VSCode Copilot 破解服务",
+          "desc": "针对 VSCode 与 Copilot 工作流做环境整理、使用路径配置和开发场景适配，降低团队上手成本。"
+        },
+        {
+          "phase": "已完成 01 / 最早基础",
+          "status": "done",
+          "title": "Cursor Pro 破解服务",
+          "desc": "围绕 Cursor Pro 使用场景提供接入、配置和维护支持，让开发者把 AI coding 能力放进真实项目节奏。"
+        }
+      ],
+      "closingLabel": "下一步",
+      "closingTitle": "需要先安装客户端，再接入你的工作流",
+      "closingLead": "下载页会把桌面端和手机端入口拆开；iOS 当前明确标注暂不支持，避免用户误点。",
+      "closingBtn": "前往下载页",
+      "topbarCtx": "服务时间线",
+      "topbarMid": [
+        "最新研究在前",
+        "已完成能力在后"
+      ]
+    },
+    "download": {
+      "heroLabel": "下载 / 平台入口",
+      "heroTitle": "把阿良带到桌面端和手机端",
+      "heroLead": "下载页按平台拆开：Windows、Linux、macOS 是桌面端入口；Android 是手机端入口；iOS 当前明确标注暂不支持。",
+      "headLabel": "平台选择",
+      "headTitle": "用户先选平台，再进入安装流程",
+      "headLead": "这里不混入营销模块，只保留下载、系统要求和当前支持状态。",
+      "groupDesktopLabel": "桌面端",
+      "groupDesktopTitle": "桌面客户端",
+      "groupMobileLabel": "手机端",
+      "groupMobileTitle": "手机客户端",
+      "available": "可下载",
+      "unsupported": "敬请期待",
+      "downloadBtn": "下载 {name} 版",
+      "macArm": "Apple Silicon",
+      "macIntel": "Intel",
+      "statusMacSelect": "{name} {variant} 版已选中，请确认系统架构后获取安装包。",
+      "cards": [
+        {
+          "name": "Windows",
+          "platform": "desktop",
+          "icon": "Win",
+          "desc": "适合主力开发机、Cursor / VSCode 工作流和本地代理调试。",
+          "meta": [
+            "架构：x64 / arm64",
+            "类型：桌面客户端"
+          ]
+        },
+        {
+          "name": "Linux",
+          "platform": "desktop",
+          "icon": "Lin",
+          "desc": "适合服务器、开发容器、远程工作站和自动化任务环境。",
+          "meta": [
+            "架构：x64",
+            "类型：AppImage / tar"
+          ]
+        },
+        {
+          "name": "macOS",
+          "platform": "desktop",
+          "icon": "Mac",
+          "desc": "适合 MacBook 上的 IDE、模型代理和移动端联动调试。",
+          "meta": [
+            "架构：Apple Silicon / Intel",
+            "类型：dmg"
+          ]
+        },
+        {
+          "name": "Android",
+          "platform": "mobile",
+          "icon": "And",
+          "desc": "用于手机端远程 vibecoding，快速发起、跟进和整理 coding 任务。",
+          "meta": [
+            "版本：Android 10+",
+            "类型：APK"
+          ]
+        },
+        {
+          "name": "iOS",
+          "platform": "mobile",
+          "icon": "iOS",
+          "disabled": true,
+          "desc": "iOS 客户端正在路上，先在 Android 与桌面端体验完整工作流。",
+          "meta": [
+            "状态：敬请期待",
+            "下一步：规划中，敬请关注"
+          ]
+        }
+      ],
+      "installTitle": "桌面端安装前先确认工作流",
+      "installDefault": "# 阿良客户端安装前检查\n1. 确认当前 IDE：Cursor / VSCode / 其他\n2. 确认模型入口：API 中转站 / 直连服务\n3. 确认手机端是否需要远程 vibecoding",
+      "installSteps": {
+        "Windows": "# Windows 下载前检查\n1. 选择 x64 / arm64 安装包\n2. 确认 Cursor / VSCode 当前版本\n3. 连接 API 中转站或本地代理",
+        "Linux": "# Linux 下载前检查\n1. 选择 AppImage 或 tar 包\n2. 确认远程工作站权限\n3. 配置自动化任务里的模型入口",
+        "macOS": "# macOS 下载前检查\n1. 区分 Apple Silicon / Intel\n2. 允许开发者签名来源\n3. 与桌面 IDE 和手机端任务同步",
+        "Android": "# Android 下载前检查\n1. 确认 Android 10+\n2. 允许安装 APK\n3. 登录后接入远程 vibecoding 任务"
+      },
+      "releaseTitle": "支持状态",
+      "release": [
+        "Windows、Linux、macOS：桌面端下载入口。",
+        "Android：手机端 vibecoding 下载入口。",
+        "iOS：敬请期待，客户端正在路上。"
+      ],
+      "statusSelected": "{name} 版已选中。请确认系统架构后获取当前安装包。",
+      "closingLabel": "服务路线",
+      "closingTitle": "下载之前，也可以先看阿良在做什么",
+      "closingLead": "服务页按时间线列出已完成和研究中的方向，避免把不同成熟度的能力混在一起。",
+      "closingBtn": "查看服务时间线",
+      "metaVersion": "版本：{version}",
+      "metaLatest": "最新版本",
+      "metaType": "类型：{type}",
+      "metaClient": "类型：桌面客户端",
+      "statusDownloading": "{name} 版开始下载，请确认系统架构后安装。",
+      "topbarCtx": "下载中心",
+      "topbarMid": [
+        "桌面端",
+        "手机端"
+      ]
+    },
+    "auth": {
+      "loginLabel": "访问",
+      "loginTitle": "欢迎回到阿良家。",
+      "loginLead": "登录控制台，管理你的 API 密钥、用量与订阅。",
+      "loginPoint1": "统一管理 Claude / GPT / GLM 等多家模型密钥",
+      "loginPoint2": "实时用量与配额监控",
+      "loginPoint3": "扫码安全登录，免输密码",
+      "registerLabel": "创建账户",
+      "registerTitle": "开启你的 AI 网关。",
+      "registerLead": "一分钟完成注册，立即接入稳定可靠的 AI 接口服务。",
+      "registerPoint1": "免费试用额度，开通即用",
+      "registerPoint2": "支持 Cursor / VSCode / Claude Code",
+      "registerPoint3": "企业级稳定性与 99.9% 可用性",
+      "backHome": "返回首页"
+    },
+    "docs": {
+      "comingSoonTitle": "文档即将上线",
+      "comingSoonLead": "我们正在编写文档，请稍后再来查看。",
+      "sidebarHelpTitle": "需要账户配置帮助？",
+      "sidebarHelpBody": "从账户页面开始，两分钟内签发你的第一把 API 密钥。",
+      "sidebarHelpCta": "前往注册"
+    }
+  },
   "footer": {
     "blog": {
       "brandTitle": "ALiang Gateway",
@@ -481,7 +973,7 @@
     "models": "{count} 个模型",
     "empty": "空",
     "noModelShareData": "所选周期内暂无模型份额数据。饼图在至少一个模型报告非零 Token 总量之前保持空白。",
-    "totalTokens": "{value} 总 Token",
+    "totalTokens": "总 Token",
     "package": "套餐",
     "noPackageYet": "暂无套餐",
     "subscriptionExpires": "订阅 {id} 到期于 {date}",
@@ -608,7 +1100,6 @@
     "requestId": "请求 ID",
     "endpoint": "端点",
     "model": "模型",
-    "totalTokens": "总 Token",
     "actualCost": "实际费用",
     "duration": "耗时",
     "noUsageRecordsTitle": "暂无用量记录。",

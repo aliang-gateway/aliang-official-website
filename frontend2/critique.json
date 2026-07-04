@@ -1,0 +1,26 @@
+{
+  "kind": "critique-panel",
+  "score": 4,
+  "axes": {
+    "philosophy": {
+      "score": 4,
+      "notes": "三页都保持 Atelier Zero 的暖纸底、编辑拼贴、点线、绿色终止点和 serif italic 强调；首页负责品牌，服务页负责路线，下载页负责平台入口。"
+    },
+    "hierarchy": {
+      "score": 4,
+      "notes": "首页顶部导航是跨页面入口，理念/能力/实验室/方法/案例/札记/诊断以首屏下方的编辑目录呈现；服务页把最新研究放在前面，并用筛选状态说明和空状态兜底让时间线范围更清楚。"
+    },
+    "execution": {
+      "score": 4,
+      "notes": "index.html、service.html、download.html 都是完整 HTML；首页补齐 CTA 备用路径，service.html 补齐筛选 aria-live、hidden/aria-hidden 管理、空状态、按钮 hover/active/focus 状态和移动端时间线间距。"
+    },
+    "specificity": {
+      "score": 4,
+      "notes": "新增内容直接对应阿良当前服务：Cursor Pro、VSCode Copilot、API 中转站、手机 vibecoding，以及研究中的多 AI 会话并发协同和状态同步；下载页明确 iOS 暂不支持。"
+    },
+    "restraint": {
+      "score": 4,
+      "notes": "没有引入新组件库、外部生成图或大面积绿色渐变；服务页 polish 聚焦状态、可访问性和小屏稳定性，没有继续堆叠装饰动画，绿色只作为品牌强调、状态和交互反馈使用。"
+    }
+  }
+}

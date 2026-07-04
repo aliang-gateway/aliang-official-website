@@ -1,0 +1,1363 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>阿良 - 面向开发者的 AI coding 工作室</title>
+  <meta name="description" content="阿良是一家面向开发者的 AI coding 工作室，提供主流 AI 服务中转、VSCode / Cursor 工作流和手机端远程 vibecoding 服务。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #efe7d2;
+      --paper-warm: #ece4cf;
+      --paper-dark: #ded1b1;
+      --bone: #f7f1de;
+      --ink: #15140f;
+      --ink-soft: #2a2620;
+      --ink-muted: #5a5448;
+      --ink-faint: #8b8676;
+      --accent: #147a4f;
+      --accent-ink: #0b4d33;
+      --accent-soft: #58a873;
+      --accent-wash: rgba(20, 122, 79, 0.1);
+      --olive: #3f6f4c;
+      --mustard: #d5b54b;
+      --line: rgba(21, 20, 15, 0.16);
+      --line-soft: rgba(21, 20, 15, 0.08);
+      --focus-ring: #0b6b45;
+      --shadow: 0 30px 60px -30px rgba(21, 20, 15, 0.26);
+      --sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --body: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --serif: "Playfair Display", Georgia, serif;
+      --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; background: var(--paper); }
+    body {
+      min-width: 320px;
+      overflow-x: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--body);
+      font-size: 16px;
+      line-height: 1.58;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle at 12% 18%, rgba(106, 92, 56, 0.07) 0, transparent 28%),
+        radial-gradient(circle at 88% 72%, rgba(20, 122, 79, 0.06) 0, transparent 32%),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.16 0 0 0 0 0.12 0 0 0 0.052 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      background-size: auto, auto, 240px 240px;
+      mix-blend-mode: multiply;
+      opacity: 0.9;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+    button { font: inherit; }
+    a:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 4px;
+    }
+
+    .shell { position: relative; z-index: 2; }
+    .container { width: min(100% - 128px, 1360px); margin: 0 auto; position: relative; }
+    .container.wide { width: min(100% - 104px, 1480px); }
+
+    .side-rail {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      z-index: 4;
+      width: 36px;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      color: var(--ink-faint);
+      border-color: var(--line-soft);
+      font: 700 10px/1 var(--mono);
+      writing-mode: vertical-rl;
+    }
+    .side-rail.left { left: 0; border-right: 1px solid var(--line-soft); }
+    .side-rail.right { right: 0; border-left: 1px solid var(--line-soft); transform: rotate(180deg); }
+
+    .topbar {
+      position: relative;
+      z-index: 5;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .topbar-inner {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 22px;
+      color: var(--ink-faint);
+      font: 700 11px/1.2 var(--mono);
+      white-space: nowrap;
+    }
+    .topbar-inner b { color: var(--ink); font-family: var(--sans); }
+    .topbar-inner .mid,
+    .topbar-inner .right { display: inline-flex; gap: 22px; align-items: center; }
+    .pulse {
+      width: 6px;
+      height: 6px;
+      display: inline-block;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 20px 0;
+      background: color-mix(in oklab, var(--paper) 92%, transparent);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid transparent;
+      transition: transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1), border-color 180ms ease;
+    }
+    .nav.is-docked { border-bottom-color: var(--line); }
+    .nav.is-hidden { transform: translateY(-100%); }
+    .nav-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 14px; font-family: var(--sans); font-weight: 900; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--paper);
+      font: italic 600 24px/1 var(--serif);
+    }
+    .brand-text small {
+      display: block;
+      margin-top: 3px;
+      color: var(--ink-faint);
+      font: 700 10px/1 var(--mono);
+    }
+    .page-links { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 26px); color: var(--ink-muted); font: 800 12px/1 var(--sans); }
+    .page-links a { position: relative; display: inline-flex; align-items: baseline; gap: 8px; padding-bottom: 6px; transition: color 160ms ease; }
+    .page-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: transform 180ms ease;
+    }
+    .page-links a:hover,
+    .page-links a[aria-current="page"] { color: var(--accent-ink); }
+    .page-links a[aria-current="page"]::after { transform: scaleX(1); }
+    .page-links .num { color: var(--accent); font-family: var(--mono); font-size: 10px; }
+    .nav-cta {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 18px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--paper);
+      font: 900 12px/1 var(--sans);
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+    .nav-cta:hover { background: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+    .nav-cta:active,
+    .btn:active,
+    .next-strip a:active,
+    .section-dock a:active {
+      transform: translateY(0) scale(0.99);
+    }
+
+    .section-dock {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.3fr) minmax(0, 1fr);
+      align-items: stretch;
+      gap: clamp(18px, 3vw, 34px);
+      margin-top: clamp(28px, 4vw, 54px);
+      padding: clamp(20px, 3vw, 30px) 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 0 0, rgba(20, 122, 79, 0.12), transparent 30%),
+        linear-gradient(90deg, rgba(20, 122, 79, 0.065), transparent 42%),
+        linear-gradient(180deg, rgba(247, 241, 222, 0.5), transparent);
+    }
+    .section-dock-title {
+      position: relative;
+      display: flex;
+      min-height: 100%;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 22px;
+      color: var(--ink-muted);
+      font: 800 11px/1.4 var(--mono);
+      text-transform: uppercase;
+    }
+    .section-dock-title::after {
+      content: "";
+      width: 56px;
+      height: 2px;
+      background: var(--accent);
+      transform-origin: left center;
+    }
+    .section-dock-kicker {
+      color: var(--accent);
+      letter-spacing: 0.08em;
+    }
+    .section-dock-title strong {
+      display: block;
+      max-width: 10ch;
+      color: var(--ink);
+      font: 900 clamp(24px, 3.2vw, 42px)/0.96 var(--sans);
+      text-transform: none;
+    }
+    .section-dock-title span {
+      max-width: 24ch;
+      color: var(--ink-faint);
+    }
+    .section-dock-links {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      border-left: 1px dashed var(--line);
+    }
+    .section-dock a {
+      position: relative;
+      min-height: 138px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      align-content: start;
+      gap: 10px;
+      padding: 18px 14px 16px;
+      border-right: 1px dashed var(--line);
+      color: var(--ink-muted);
+      font: 850 13px/1.1 var(--sans);
+      transition: color 160ms ease, background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+      overflow: hidden;
+    }
+    .section-dock a:last-child { border-right: 0; }
+    .section-dock a::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      top: 0;
+      height: 2px;
+      background: var(--accent);
+      opacity: 0;
+      transform: scaleX(0.2);
+      transform-origin: left center;
+      transition: opacity 180ms ease, transform 260ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .section-dock a::after {
+      content: "";
+      position: absolute;
+      top: 18px;
+      right: 14px;
+      width: 18px;
+      height: 18px;
+      border: 1px solid color-mix(in oklab, var(--accent) 54%, var(--line));
+      border-radius: 50%;
+      background: transparent;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+    .section-dock a:hover,
+    .section-dock a[aria-current="true"] {
+      color: var(--accent-ink);
+      background: rgba(20, 122, 79, 0.075);
+      box-shadow: inset 0 -2px 0 var(--accent);
+      transform: translateY(-2px);
+    }
+    .section-dock a:hover::before,
+    .section-dock a[aria-current="true"]::before {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+    .section-dock a:hover::after,
+    .section-dock a[aria-current="true"]::after {
+      background: var(--accent);
+      transform: scale(0.82);
+    }
+    .section-dock .num {
+      color: var(--accent);
+      font: 800 10px/1 var(--mono);
+    }
+    .section-dock .chapter-name {
+      display: block;
+      margin-top: 18px;
+      color: var(--ink);
+      font-size: 15px;
+    }
+    .section-dock .chapter-note {
+      display: block;
+      color: var(--ink-faint);
+      font: 650 12px/1.45 var(--sans);
+      text-wrap: pretty;
+    }
+
+    .display {
+      font-family: var(--sans);
+      font-weight: 900;
+      line-height: 0.94;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+    .display em {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 600;
+    }
+    .dot { color: var(--accent); }
+    .label { color: var(--accent); font: 800 11px/1.4 var(--mono); }
+    .lead {
+      color: var(--ink-soft);
+      font-size: clamp(17px, 1.35vw, 20px);
+      line-height: 1.75;
+      text-wrap: pretty;
+    }
+    .button-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .btn {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      font: 900 12px/1 var(--sans);
+      transition: transform 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      transform: none;
+    }
+    .btn.primary { background: var(--ink); color: var(--paper); }
+    .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+
+    .hero { padding: 54px 0 42px; border-bottom: 1px solid var(--line); }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(420px, 0.9fr);
+      gap: clamp(42px, 6vw, 90px);
+      align-items: center;
+    }
+    .hero .label { margin-bottom: 28px; }
+    .hero h1 { max-width: 900px; font-size: clamp(66px, 9.4vw, 138px); }
+    .hero .lead { max-width: 43ch; margin: 30px 0; }
+    .hero-stats {
+      margin-top: 28px;
+      max-width: 780px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .stat {
+      min-height: 118px;
+      padding: 18px;
+      display: grid;
+      align-content: space-between;
+      gap: 14px;
+      border: 1px dashed color-mix(in oklab, var(--accent) 42%, var(--line));
+      background: var(--accent-wash);
+    }
+    .stat b { color: var(--accent-ink); font: 900 clamp(28px, 4vw, 52px)/0.9 var(--sans); }
+    .stat span { color: var(--ink-muted); font-size: 13px; line-height: 1.45; }
+    .hero-art {
+      position: relative;
+      min-width: 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: rgba(247, 241, 222, 0.52);
+      box-shadow: var(--shadow);
+    }
+    .hero-art img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border: 1px solid var(--line);
+      background: var(--paper-warm);
+    }
+    .hero-index {
+      position: absolute;
+      right: -22px;
+      bottom: 28px;
+      width: min(300px, 72%);
+      padding: 18px;
+      background: var(--paper);
+      border: 1px solid var(--ink);
+      box-shadow: 14px 14px 0 var(--accent);
+      font: 700 12px/1.7 var(--mono);
+    }
+    .hero-index span { display: block; }
+    .hero-index b { color: var(--accent); margin-right: 8px; }
+    .next-strip {
+      margin-top: 38px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      color: var(--ink-muted);
+      font: 800 11px/1.35 var(--mono);
+    }
+    .next-strip-track {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.55fr) repeat(3, minmax(0, 1fr));
+      align-items: stretch;
+    }
+    .next-strip-title {
+      display: grid;
+      align-content: center;
+      gap: 6px;
+      padding: 18px 22px 18px 0;
+      border-right: 1px dashed var(--line);
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .next-strip-title strong {
+      color: var(--ink);
+      font: 900 18px/1 var(--sans);
+      text-transform: none;
+    }
+    .next-strip a {
+      position: relative;
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      min-height: 78px;
+      padding: 18px 22px;
+      border-right: 1px dashed var(--line);
+      color: var(--ink-muted);
+      transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+      overflow: hidden;
+    }
+    .next-strip a:last-child { border-right: 0; }
+    .next-strip a::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 2px;
+      background: var(--accent);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+    .next-strip a:hover {
+      color: var(--accent-ink);
+      background: rgba(20, 122, 79, 0.07);
+      transform: translateY(-1px);
+    }
+    .next-strip a:hover::before {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .next-strip b {
+      color: var(--ink);
+      font: 900 13px/1.2 var(--sans);
+    }
+    .next-strip small {
+      color: var(--ink-faint);
+      font: 700 10px/1.4 var(--mono);
+    }
+
+    section {
+      position: relative;
+      padding: 116px 0;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .section-header {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(320px, 0.55fr);
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 58px;
+    }
+    .section-header h2 { margin-top: 26px; font-size: clamp(42px, 5.2vw, 76px); }
+
+    .about-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.55fr) minmax(0, 1fr);
+      gap: 58px;
+      align-items: stretch;
+    }
+    .plate {
+      position: relative;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: color-mix(in oklab, var(--bone) 70%, transparent);
+    }
+    .plate img {
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      object-fit: cover;
+      border: 1px solid var(--line-soft);
+    }
+    .plate::after {
+      content: "";
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      width: 24px;
+      height: 24px;
+      border-right: 2px solid var(--accent);
+      border-bottom: 2px solid var(--accent);
+    }
+    .manifesto {
+      display: grid;
+      gap: 24px;
+      align-content: center;
+      padding: clamp(24px, 4vw, 54px);
+      border-top: 1px dashed var(--line);
+      border-bottom: 1px dashed var(--line);
+    }
+    .manifesto p {
+      max-width: 68ch;
+      color: var(--ink-soft);
+      font-size: clamp(18px, 1.45vw, 22px);
+      line-height: 1.82;
+    }
+    .manifesto .stamp {
+      width: fit-content;
+      padding: 10px 14px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      color: var(--accent);
+      font: 800 11px/1 var(--mono);
+      transform: rotate(-4deg);
+    }
+
+    .capability-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+      gap: 54px;
+      align-items: start;
+    }
+    .capability-art { position: sticky; top: 110px; }
+    .capability-list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
+    .cap-card {
+      display: grid;
+      grid-template-columns: 72px 128px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+      padding: 26px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .cap-card .num,
+    .cap-card .tag { font: 800 12px/1.4 var(--mono); }
+    .cap-card .num { color: var(--accent); }
+    .cap-card .tag { color: var(--ink-faint); }
+    .cap-card h3 { margin-bottom: 8px; font: 850 clamp(22px, 2vw, 34px)/1.05 var(--sans); }
+    .cap-card p { max-width: 52ch; color: var(--ink-muted); }
+
+    .labs-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 34px;
+    }
+    .labs-head h2 { max-width: 940px; font-size: clamp(44px, 5.6vw, 84px); }
+    .filter-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .filter-pills button {
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(247, 241, 222, 0.44);
+      color: var(--ink-muted);
+      cursor: pointer;
+      font: 800 11px/1 var(--mono);
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+    .filter-pills button:hover {
+      border-color: color-mix(in oklab, var(--accent) 62%, var(--line));
+      color: var(--accent-ink);
+    }
+    .filter-pills button[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--paper);
+      border-color: var(--accent);
+    }
+    .filter-pills button:active {
+      transform: translateY(1px);
+    }
+    .filter-status {
+      min-height: 20px;
+      margin: -10px 0 18px;
+      color: var(--ink-faint);
+      font: 800 12px/1.55 var(--mono);
+    }
+    .filter-status.is-fresh {
+      animation: statusFresh 210ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .labs-progress { height: 2px; margin-bottom: 22px; background: var(--line-soft); overflow: hidden; }
+    .labs-progress span {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: var(--accent);
+      transform-origin: left center;
+      transition: transform 240ms ease;
+    }
+    .labs-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .lab-card {
+      min-width: 0;
+      padding: 13px 13px 22px;
+      border: 1px solid var(--line);
+      background: rgba(247, 241, 222, 0.48);
+      transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+    .lab-card:not(.is-hidden):hover {
+      border-color: color-mix(in oklab, var(--accent) 68%, var(--line));
+      background: color-mix(in oklab, var(--accent) 9%, var(--bone));
+    }
+    .lab-card.is-hidden { opacity: 0.18; transform: translateY(10px); pointer-events: none; }
+    .lab-card[hidden] { display: none; }
+    .lab-card img {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      border: 1px solid var(--line-soft);
+      margin-bottom: 18px;
+    }
+    .lab-card .kicker { color: var(--accent); font: 800 11px/1 var(--mono); }
+    .lab-card h3 { margin: 12px 0 9px; font: 850 24px/1.05 var(--sans); }
+    .lab-card p { color: var(--ink-muted); font-size: 14px; }
+
+    .method-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+    .method-step {
+      min-width: 0;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 241, 222, 0.36);
+    }
+    .method-step img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border: 1px solid var(--line-soft);
+      margin-bottom: 22px;
+    }
+    .method-step .num {
+      display: inline-block;
+      margin-bottom: 12px;
+      color: var(--accent);
+      font: 800 12px/1 var(--mono);
+    }
+    .method-step h3 { margin-bottom: 12px; font: 850 28px/1 var(--sans); }
+    .method-step p { color: var(--ink-muted); }
+
+    .work {
+      background:
+        linear-gradient(rgba(21, 20, 15, 0.94), rgba(21, 20, 15, 0.94)),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n2)'/></svg>");
+      color: var(--paper);
+      border-bottom: 0;
+    }
+    .work .label,
+    .work .dot { color: var(--accent-soft); }
+    .work .lead,
+    .work p { color: rgba(239, 231, 210, 0.72); }
+    .work-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+      gap: 58px;
+      align-items: center;
+    }
+    .work h2 { margin: 28px 0; font-size: clamp(46px, 6vw, 92px); }
+    .work-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; perspective: 1200px; }
+    .work-card {
+      padding: 15px;
+      border: 1px solid rgba(239, 231, 210, 0.22);
+      background: rgba(239, 231, 210, 0.06);
+      transform: rotate(-2deg);
+    }
+    .work-card:nth-child(2) { transform: rotate(2deg) translateY(32px); }
+    .work-card img {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      border: 1px solid rgba(239, 231, 210, 0.16);
+      margin-bottom: 18px;
+    }
+    .work-chip {
+      display: inline-flex;
+      margin-bottom: 12px;
+      padding: 7px 10px;
+      border: 1px solid rgba(88, 168, 115, 0.62);
+      color: var(--accent-soft);
+      font: 800 10px/1 var(--mono);
+    }
+    .work-card h3 { margin-bottom: 10px; color: var(--paper); font: 850 25px/1.08 var(--sans); }
+
+    .testimonial-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(300px, 0.52fr);
+      gap: 64px;
+      align-items: center;
+    }
+    .quote {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: clamp(38px, 5.2vw, 76px);
+      line-height: 1.08;
+      text-wrap: balance;
+    }
+    .quote-author { margin-top: 26px; color: var(--ink-muted); font: 800 13px/1.4 var(--mono); }
+    .partner-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 38px; }
+    .partner-row span {
+      min-height: 64px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      background: color-mix(in oklab, var(--accent) 5%, var(--bone));
+      color: var(--accent-ink);
+      font: 850 16px/1 var(--sans);
+    }
+
+    .cta-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.62fr);
+      gap: 58px;
+      align-items: center;
+    }
+    .cta h2 { margin: 24px 0 28px; font-size: clamp(48px, 6vw, 96px); }
+    .cta .lead { max-width: 48ch; margin-bottom: 32px; }
+    .ribbon {
+      display: inline-flex;
+      width: fit-content;
+      margin-top: 26px;
+      padding: 12px 18px;
+      border: 1px dashed var(--ink);
+      color: var(--accent);
+      font: 800 11px/1 var(--mono);
+      transform: rotate(-2deg);
+    }
+    .copy-status {
+      min-height: 18px;
+      margin-top: 14px;
+      color: var(--ink-muted);
+      font: 800 12px/1.5 var(--mono);
+    }
+    .copy-status.is-fresh {
+      animation: statusFresh 210ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .copy-status.is-success { color: var(--accent-ink); }
+    .copy-status.is-error { color: #8b3b2f; }
+    .fallback-brief {
+      margin-top: 16px;
+      padding: 16px;
+      border: 1px dashed color-mix(in oklab, var(--accent) 56%, var(--line));
+      background: color-mix(in oklab, var(--accent) 7%, var(--bone));
+      color: var(--ink-soft);
+    }
+    .fallback-brief[hidden] { display: none; }
+    .fallback-brief b {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--accent-ink);
+      font: 900 12px/1 var(--sans);
+    }
+    .fallback-brief pre {
+      white-space: pre-wrap;
+      color: var(--ink-muted);
+      font: 700 12px/1.65 var(--mono);
+    }
+
+    .footer { padding: 76px 0 46px; background: var(--ink); color: var(--paper); }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.85fr) repeat(4, minmax(0, 1fr));
+      gap: 34px;
+      margin-bottom: 70px;
+    }
+    .footer p { max-width: 44ch; color: rgba(239, 231, 210, 0.7); }
+    .footer h4 { margin-bottom: 16px; color: var(--accent-soft); font: 800 11px/1 var(--mono); }
+    .footer li { list-style: none; margin: 9px 0; color: rgba(239, 231, 210, 0.7); font-size: 14px; }
+    .footer-mega {
+      padding-top: 36px;
+      border-top: 1px solid rgba(239, 231, 210, 0.18);
+      color: var(--paper);
+      font-size: clamp(58px, 11vw, 176px);
+    }
+
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 700ms ease, transform 700ms ease;
+    }
+    [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+    [data-reveal-delay="1"] { transition-delay: 90ms; }
+    [data-reveal-delay="2"] { transition-delay: 180ms; }
+    [data-reveal-delay="3"] { transition-delay: 270ms; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.76); }
+    }
+    @keyframes statusFresh {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+      [data-reveal] { opacity: 1; transform: none; }
+      .nav.is-hidden { transform: none; }
+      .copy-status.is-fresh { animation: none; }
+      .filter-status.is-fresh { animation: none; }
+    }
+
+    @media (max-width: 1280px) {
+      .container,
+      .container.wide { width: min(100% - 80px, 1180px); }
+      .hero-grid,
+      .work-grid { gap: 48px; }
+      .labs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .footer-grid { grid-template-columns: minmax(260px, 1fr) repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1180px) {
+      .container,
+      .container.wide { width: min(100% - 300px, 1360px); }
+    }
+    @media (max-width: 1080px) {
+      .side-rail { display: none; }
+      .section-dock { grid-template-columns: 1fr; }
+      .section-dock-title { min-height: auto; flex-direction: row; align-items: end; }
+      .section-dock-title::after { display: none; }
+      .section-dock-title strong { max-width: none; }
+      .section-dock-links { grid-template-columns: repeat(4, minmax(0, 1fr)); border-left: 0; border-top: 1px dashed var(--line); }
+      .section-dock a { border-top: 0; border-bottom: 1px dashed var(--line-soft); }
+      .next-strip-track { grid-template-columns: 1fr 1fr; }
+      .next-strip-title { border-right: 0; border-bottom: 1px dashed var(--line); grid-column: 1 / -1; }
+      .next-strip a:nth-last-child(2) { border-right: 0; }
+      .hero-grid,
+      .about-grid,
+      .capability-layout,
+      .work-grid,
+      .testimonial-grid,
+      .cta-grid { grid-template-columns: 1fr; }
+      .hero-art { max-width: 640px; }
+      .capability-art { position: relative; top: auto; }
+      .method-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 880px) {
+      .container,
+      .container.wide { width: min(100% - 44px, 820px); }
+      section { padding: 86px 0; }
+      .hero { padding-top: 38px; }
+      .hero h1 { font-size: clamp(54px, 13vw, 96px); }
+      .hero-stats { grid-template-columns: 1fr; }
+      .section-header,
+      .labs-head { grid-template-columns: 1fr; }
+      .filter-pills { justify-content: flex-start; }
+      .labs-grid,
+      .work-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .container,
+      .container.wide { width: min(100% - 28px, 520px); }
+      .topbar-inner { height: auto; padding: 10px 0; align-items: flex-start; white-space: normal; }
+      .topbar-inner .right { display: none; }
+      .brand-text small,
+      .nav-cta { display: none; }
+      .page-links { order: 3; width: 100%; justify-content: space-between; }
+      .display { line-height: 0.99; }
+      .hero-index { position: static; width: 100%; margin-top: 14px; box-shadow: 8px 8px 0 var(--accent); }
+      .section-dock { padding: 16px 0; }
+      .section-dock-title { align-items: flex-start; flex-direction: column; gap: 10px; }
+      .section-dock-kicker { font-size: 10px; }
+      .section-dock-title strong { font-size: clamp(28px, 9vw, 42px); }
+      .section-dock-links { grid-template-columns: 1fr; }
+      .section-dock a { min-height: auto; padding: 14px 12px 12px; }
+      .section-dock .chapter-name { margin-top: 8px; }
+      .section-dock .chapter-note { font-size: 11.5px; }
+      .next-strip-track { grid-template-columns: 1fr; }
+      .next-strip-title { padding: 16px 0; }
+      .next-strip a { min-height: 72px; padding: 16px 0; border-right: 0; border-bottom: 1px dashed var(--line-soft); }
+      .next-strip a:last-child { border-bottom: 0; }
+      .hero-art { padding: 12px; }
+      .cap-card { grid-template-columns: 54px 1fr; gap: 12px; }
+      .cap-card .tag { grid-column: 2; }
+      .cap-card .cap-body { grid-column: 1 / -1; }
+      .labs-grid,
+      .method-grid,
+      .work-cards,
+      .partner-row,
+      .footer-grid { grid-template-columns: 1fr; }
+      .work-card,
+      .work-card:nth-child(2) { transform: none; }
+      .footer-mega { font-size: clamp(48px, 18vw, 92px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="side-rail right">阿良 第 01 期</div>
+  <div class="shell" id="top">
+    <div class="topbar">
+      <div class="container wide topbar-inner">
+        <span><b>阿良</b> / 面向开发者的 AI coding 工作室</span>
+        <span class="mid"><span>主流 AI 服务</span><span>最新技术跟进</span><span>手机端 vibecoding</span></span>
+        <span class="right"><span><i class="pulse"></i>持续维护中</span><span>第 01 期 / 2026</span></span>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <div class="container wide nav-inner">
+        <a class="brand" href="#top" aria-label="返回阿良首页">
+          <span class="brand-mark">良</span>
+          <span class="brand-text">阿良<small>AI coding 工作室</small></span>
+        </a>
+        <div class="page-links" aria-label="站点页面">
+          <a href="index.html" aria-current="page"><span class="num">01</span>首页</a>
+          <a href="service.html"><span class="num">02</span>服务</a>
+          <a href="download.html"><span class="num">03</span>下载</a>
+        </div>
+        <a class="nav-cta" href="#cta">预约诊断</a>
+      </div>
+    </nav>
+
+    <header class="hero" aria-labelledby="hero-title">
+      <div class="container wide hero-grid">
+        <div class="hero-copy" data-reveal>
+          <div class="label">编辑拼贴 / AI coding 工作室</div>
+          <h1 class="display" id="hero-title">阿良把 <em>AI coding</em> 变成持续服务<span class="dot">.</span></h1>
+          <p class="lead">从模型中转、工具接入到手机端 vibecoding，阿良为开发者提供一套持续跟进最新技术的 AI coding 工作室服务。</p>
+          <div class="button-row">
+            <a class="btn primary" href="#cta">预约技术诊断</a>
+            <a class="btn" href="service.html">查看服务时间线</a>
+          </div>
+          <div class="hero-stats" aria-label="服务摘要">
+            <div class="stat"><b>常更</b><span>跟进主流模型与工具变化</span></div>
+            <div class="stat"><b>3</b><span>中转代理 / 桌面 IDE / 手机 vibecoding</span></div>
+            <div class="stat"><b>1</b><span>统一的开发者工作流</span></div>
+          </div>
+        </div>
+        <figure class="hero-art" data-reveal data-reveal-delay="1">
+          <img src="assets/hero.svg" alt="阿良 AI coding 工作室编辑拼贴占位图" width="1024" height="1024" />
+          <figcaption class="hero-index">
+            <span><b>01</b>主流 AI 服务中转</span>
+            <span><b>02</b>VSCode / Cursor 使用能力</span>
+            <span><b>03</b>手机端远程 vibecoding</span>
+            <span><b>04</b>持续更新的技术判断</span>
+          </figcaption>
+        </figure>
+      </div>
+      <nav class="section-dock container wide" aria-label="首页章节">
+        <div class="section-dock-title">
+          <span class="section-dock-kicker">Index / 阅读路线</span>
+          <strong>首页章节</strong>
+          <span>一页内完成品牌判断，先看气质，再看能力、方法和行动入口。</span>
+        </div>
+        <div class="section-dock-links">
+          <a href="#about"><span class="num">01</span><span class="chapter-name">理念</span><span class="chapter-note">阿良为什么要做持续型 AI coding 工作室。</span></a>
+          <a href="#capabilities"><span class="num">02</span><span class="chapter-name">能力</span><span class="chapter-note">中转、工具链、手机端与团队校验的组合。</span></a>
+          <a href="#labs"><span class="num">03</span><span class="chapter-name">实验室</span><span class="chapter-note">把正在变化的模型和工具整理成可用目录。</span></a>
+          <a href="#method"><span class="num">04</span><span class="chapter-name">方法</span><span class="chapter-note">从需求拆解到落地验收的工作节奏。</span></a>
+          <a href="#work"><span class="num">05</span><span class="chapter-name">案例</span><span class="chapter-note">服务页与移动 vibecoding 的真实方向。</span></a>
+          <a href="#testimonial"><span class="num">06</span><span class="chapter-name">札记</span><span class="chapter-note">技术判断、工具迁移和持续维护的记录。</span></a>
+          <a href="#cta"><span class="num">07</span><span class="chapter-name">诊断</span><span class="chapter-note">复制一份提纲，开始第一次技术诊断。</span></a>
+        </div>
+      </nav>
+      <div class="container wide next-strip" aria-label="下一步入口">
+        <div class="next-strip-track">
+          <div class="next-strip-title">
+            <span>Next / 行动路线</span>
+            <strong>看完首页后</strong>
+          </div>
+          <a href="service.html">
+            <b>读服务时间线</b>
+            <small>研究中方向与已完成能力</small>
+          </a>
+          <a href="download.html">
+            <b>进入下载页</b>
+            <small>桌面端与手机端安装入口</small>
+          </a>
+          <a href="#cta">
+            <b>复制诊断提纲</b>
+            <small>把当前工作流发给阿良判断</small>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="about" id="about" aria-labelledby="about-title">
+        <div class="container about-grid">
+          <figure class="plate" data-reveal>
+            <img src="assets/about.svg" alt="阿良工作室札记拼贴占位图" width="1024" height="1024" loading="lazy" />
+          </figure>
+          <div class="manifesto" data-reveal data-reveal-delay="1">
+            <span class="stamp">良 / 持续服务</span>
+            <div>
+              <div class="label">I / 工作室札记</div>
+              <h2 class="display" id="about-title">不是一次性工具页，而是一间持续维护的 AI coding 工作室<span class="dot">.</span></h2>
+            </div>
+            <p>阿良关注开发者真正会反复遇到的问题：模型服务不稳定、工具链碎片化、移动场景无法继续推进、最新技术没人替你判断。</p>
+            <p>首页承担品牌展示：告诉开发者这里有人持续跟进主流 AI 服务和 coding 工作流。具体服务可以随着技术变化迭代，但底层承诺保持一致。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="capabilities" aria-labelledby="capabilities-title">
+        <div class="container wide capability-layout">
+          <figure class="plate capability-art" data-reveal>
+            <img src="assets/capabilities.svg" alt="阿良四个服务模块拼贴占位图" width="1024" height="1024" loading="lazy" />
+          </figure>
+          <div>
+            <div class="section-header" data-reveal>
+              <div>
+                <div class="label">II / 能力</div>
+                <h2 class="display" id="capabilities-title">把开发者每天要碰的 AI 能力，整理成可执行的服务模块<span class="dot">.</span></h2>
+              </div>
+              <p class="lead">服务可以继续扩展，但首屏先让人看见三件事：模型服务、开发工具链、移动端 coding 续航。</p>
+            </div>
+            <div class="capability-list">
+              <article class="cap-card" data-reveal>
+                <span class="num">01</span><span class="tag">中转</span>
+                <div class="cap-body"><h3>主流 AI 中转代理</h3><p>统一接入 OpenAI、Anthropic 等格式，降低服务切换和环境配置成本。</p></div>
+              </article>
+              <article class="cap-card" data-reveal data-reveal-delay="1">
+                <span class="num">02</span><span class="tag">工具链</span>
+                <div class="cap-body"><h3>VSCode / Cursor 使用能力</h3><p>围绕真实工程场景整理提示词、上下文组织、调试和重构工作流。</p></div>
+              </article>
+              <article class="cap-card" data-reveal data-reveal-delay="2">
+                <span class="num">03</span><span class="tag">移动端</span>
+                <div class="cap-body"><h3>手机端 vibecoding</h3><p>在手机上继续发起、跟进和整理 coding 任务，减少离开电脑后的断点。</p></div>
+              </article>
+              <article class="cap-card" data-reveal data-reveal-delay="3">
+                <span class="num">04</span><span class="tag">技术雷达</span>
+                <div class="cap-body"><h3>持续技术跟进</h3><p>跟踪模型、工具和接口变化，把可用的新能力转译成开发者能直接尝试的方案。</p></div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="labs" aria-labelledby="labs-title">
+        <div class="container wide">
+          <div class="labs-head" data-reveal>
+            <div>
+              <div class="label">III / 实验室目录</div>
+              <h2 class="display" id="labs-title">一个持续更新的 AI coding 服务目录<span class="dot">.</span></h2>
+            </div>
+            <div class="filter-pills" aria-label="实验室分类筛选">
+              <button type="button" data-filter="all" aria-pressed="true">全部</button>
+              <button type="button" data-filter="模型服务" aria-pressed="false">模型服务</button>
+              <button type="button" data-filter="工具链" aria-pressed="false">工具链</button>
+              <button type="button" data-filter="移动端" aria-pressed="false">移动端</button>
+              <button type="button" data-filter="校验" aria-pressed="false">校验</button>
+              <button type="button" data-filter="技术雷达" aria-pressed="false">技术雷达</button>
+            </div>
+          </div>
+          <p class="filter-status" id="filter-status" aria-live="polite">当前显示全部 5 个实验室方向。</p>
+          <div class="labs-progress" aria-hidden="true"><span id="labs-progress"></span></div>
+          <div class="labs-grid">
+            <article class="lab-card" data-filter-card="模型服务" data-reveal>
+              <img src="assets/lab-1.svg" alt="模型服务拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="kicker">中转</span><h3>多模型格式适配</h3><p>把不同模型服务整理成更稳定的接入方式，减少项目切换成本。</p>
+            </article>
+            <article class="lab-card" data-filter-card="工具链" data-reveal data-reveal-delay="1">
+              <img src="assets/lab-2.svg" alt="工具链拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="kicker">上下文</span><h3>上下文与任务拆解</h3><p>帮助开发者把模糊需求拆成可交给 AI 执行的工程任务。</p>
+            </article>
+            <article class="lab-card" data-filter-card="移动端" data-reveal data-reveal-delay="2">
+              <img src="assets/lab-3.svg" alt="移动端远程 vibecoding 拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="kicker">移动端</span><h3>远程 vibecoding</h3><p>在移动场景中继续描述、生成、检查和追踪代码任务。</p>
+            </article>
+            <article class="lab-card" data-filter-card="校验" data-reveal data-reveal-delay="3">
+              <img src="assets/lab-4.svg" alt="代码与产物校验拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="kicker">校验</span><h3>代码与产物校验</h3><p>把 AI 输出放回真实工程约束里检查，而不是只看生成速度。</p>
+            </article>
+            <article class="lab-card" data-filter-card="技术雷达" data-reveal>
+              <img src="assets/lab-5.svg" alt="最新能力观察拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="kicker">雷达</span><h3>最新能力观察</h3><p>筛选值得关注的模型更新、IDE 功能和开发者工具变化。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="method" aria-labelledby="method-title">
+        <div class="container">
+          <div class="section-header" data-reveal>
+            <div>
+              <div class="label">IV / 方法</div>
+              <h2 class="display" id="method-title">从问题到可用工作流，按四步推进<span class="dot">.</span></h2>
+            </div>
+            <p class="lead">阿良不把 AI coding 当成一次安装，而是把它整理成可复用、可复盘、可迁移的工作方法。</p>
+          </div>
+          <div class="method-grid">
+            <article class="method-step" data-reveal>
+              <img src="assets/method-1.svg" alt="识别瓶颈拼贴占位图" width="816" height="816" loading="lazy" />
+              <span class="num">01</span><h3>识别瓶颈</h3><p>先看你现在卡在模型、工具、环境还是任务拆解。</p>
+            </article>
+            <article class="method-step" data-reveal data-reveal-delay="1">
+              <img src="assets/method-2.svg" alt="整理上下文拼贴占位图" width="816" height="816" loading="lazy" />
+              <span class="num">02</span><h3>整理上下文</h3><p>把项目、代码、目标和约束变成 AI 能稳定理解的输入。</p>
+            </article>
+            <article class="method-step" data-reveal data-reveal-delay="2">
+              <img src="assets/method-3.svg" alt="接入服务拼贴占位图" width="816" height="816" loading="lazy" />
+              <span class="num">03</span><h3>接入服务</h3><p>根据场景配置中转、IDE、手机端或混合工作流。</p>
+            </article>
+            <article class="method-step" data-reveal data-reveal-delay="3">
+              <img src="assets/method-4.svg" alt="持续复盘拼贴占位图" width="816" height="816" loading="lazy" />
+              <span class="num">04</span><h3>持续复盘</h3><p>随着模型和工具变化，保留有效做法，替换过期路径。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="work" id="work" aria-labelledby="work-title">
+        <div class="container wide work-grid">
+          <div data-reveal>
+            <div class="label">V / 选定工作</div>
+            <h2 class="display" id="work-title">阿良更像一个工作室入口，而不是单点功能陈列<span class="dot">.</span></h2>
+            <p class="lead">首页负责建立品牌信任；具体服务拆到服务页和下载页里，用时间线和平台入口展示。</p>
+          </div>
+          <div class="work-cards">
+            <article class="work-card" data-reveal data-reveal-delay="1">
+              <img src="assets/work-1.svg" alt="服务页能力展示拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="work-chip">服务页 / 研究时间线</span>
+              <h3>服务页：已完成与研究中的能力路线</h3>
+              <p>面向开发者解释 Cursor、VSCode、API 中转和手机 vibecoding 的服务状态。</p>
+            </article>
+            <article class="work-card" data-reveal data-reveal-delay="2">
+              <img src="assets/work-2.svg" alt="手机 app vibecoding 演示拼贴占位图" width="768" height="1024" loading="lazy" />
+              <span class="work-chip">下载页 / 平台入口</span>
+              <h3>下载页：桌面端与移动端安装入口</h3>
+              <p>拆分 Windows、Linux、macOS、Android 和 iOS 状态，让用户直接判断可用平台。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="testimonial" aria-labelledby="testimonial-title">
+        <div class="container testimonial-grid">
+          <div data-reveal>
+            <div class="label">VI / 现场札记</div>
+            <h2 class="quote" id="testimonial-title">“开发者不缺一个新的按钮，缺的是能持续跟进技术变化的人和工作流。”</h2>
+            <div class="quote-author">阿良工作室札记</div>
+            <div class="partner-row" aria-label="服务关键词">
+              <span>模型</span><span>IDE</span><span>接口</span><span>移动</span><span>工程</span>
+            </div>
+          </div>
+          <figure class="plate" data-reveal data-reveal-delay="1">
+            <img src="assets/testimonial.svg" alt="阿良开发者札记拼贴占位图" width="1024" height="1024" loading="lazy" />
+          </figure>
+        </div>
+      </section>
+
+      <section class="cta" id="cta" aria-labelledby="cta-title">
+        <div class="container cta-grid">
+          <div data-reveal>
+            <div class="label">VII / 合作入口</div>
+            <h2 class="display" id="cta-title">把你的开发工作流交给阿良做一次诊断<span class="dot">.</span></h2>
+            <p class="lead">如果你正在搭建 AI coding 服务、优化 Cursor / VSCode 流程，或想把手机端远程 vibecoding 做成可用产品，可以从一次技术诊断开始。</p>
+            <div class="button-row">
+              <button class="btn primary" type="button" id="copy-brief">复制诊断提纲</button>
+              <a class="btn" href="service.html">阅读服务时间线</a>
+            </div>
+            <p class="copy-status" id="copy-status" aria-live="polite"></p>
+            <div class="fallback-brief" id="fallback-brief" hidden>
+              <b>手动诊断提纲</b>
+              <pre id="fallback-brief-text"></pre>
+            </div>
+            <span class="ribbon">持续 AI coding 工作室</span>
+          </div>
+          <figure class="plate" data-reveal data-reveal-delay="1">
+            <img src="assets/cta.svg" alt="预约技术诊断拼贴占位图" width="1024" height="1024" loading="lazy" />
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container wide">
+        <div class="footer-grid">
+          <div>
+            <h4>阿良</h4>
+            <p>阿良是一家面向开发者的 AI coding 工作室，围绕主流 AI 服务、最新技术判断和真实开发工作流持续提供服务。</p>
+          </div>
+          <div><h4>站点</h4><ul><li><a href="index.html">首页</a></li><li><a href="service.html">服务</a></li><li><a href="download.html">下载</a></li><li><a href="#cta">诊断</a></li></ul></div>
+          <div><h4>能力</h4><ul><li>AI 中转代理</li><li>Cursor 工作流</li><li>手机 vibecoding</li><li>技术雷达</li></ul></div>
+          <div><h4>对象</h4><ul><li>独立开发者</li><li>AI 服务团队</li><li>工具链采购者</li><li>内部研发团队</li></ul></div>
+          <div><h4>下一步</h4><ul><li>预约诊断</li><li>查看案例</li><li>提出需求</li><li>订阅更新</li></ul></div>
+        </div>
+        <div class="footer-mega display">保持 <em>coding</em> 持续向前<span class="dot">.</span></div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var nav = document.querySelector(".nav");
+      var navLinks = Array.prototype.slice.call(document.querySelectorAll(".section-dock a[href^='#']"));
+      var sectionTargets = navLinks.map(function (link) {
+        return document.querySelector(link.getAttribute("href"));
+      });
+      var lastY = window.scrollY;
+      var ticking = false;
+
+      function updateNav() {
+        var currentY = window.scrollY;
+        if (nav) {
+          nav.classList.toggle("is-docked", currentY > 18);
+          nav.classList.toggle("is-hidden", currentY > 420 && currentY > lastY);
+        }
+        var activeIndex = -1;
+        sectionTargets.forEach(function (section, index) {
+          if (!section) return;
+          var rect = section.getBoundingClientRect();
+          if (rect.top <= 150 && rect.bottom > 150) activeIndex = index;
+        });
+        navLinks.forEach(function (link, index) {
+          if (index === activeIndex) {
+            link.setAttribute("aria-current", "true");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        });
+        lastY = currentY;
+        ticking = false;
+      }
+
+      window.addEventListener("scroll", function () {
+        if (!ticking) {
+          window.requestAnimationFrame(updateNav);
+          ticking = true;
+        }
+      }, { passive: true });
+
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
+      if (reduceMotion || !("IntersectionObserver" in window)) {
+        revealItems.forEach(function (el) { el.classList.add("is-visible"); });
+      } else {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.16, rootMargin: "0px 0px -8% 0px" });
+        revealItems.forEach(function (el) { observer.observe(el); });
+      }
+
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-filter]"));
+      var cards = Array.prototype.slice.call(document.querySelectorAll("[data-filter-card]"));
+      var progress = document.getElementById("labs-progress");
+      var filterStatus = document.getElementById("filter-status");
+      var copyBrief = document.getElementById("copy-brief");
+      var copyStatus = document.getElementById("copy-status");
+      var fallbackBrief = document.getElementById("fallback-brief");
+      var fallbackBriefText = document.getElementById("fallback-brief-text");
+      var diagnosisText = "阿良技术诊断提纲：\n1. 当前 AI coding 场景：\n2. 使用的模型 / 中转 / IDE：\n3. 最大阻塞点：\n4. 是否需要手机端远程 vibecoding：\n5. 希望阿良优先诊断的结果：";
+
+      function refreshStatusAnimation(el) {
+        if (!el || reduceMotion) return;
+        el.classList.remove("is-fresh");
+        window.requestAnimationFrame(function () {
+          el.classList.add("is-fresh");
+        });
+      }
+
+      function setFilter(filter) {
+        var visible = 0;
+        buttons.forEach(function (button) {
+          button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+        });
+        cards.forEach(function (card) {
+          var show = filter === "all" || card.dataset.filterCard === filter;
+          card.classList.toggle("is-hidden", !show);
+          card.hidden = !show;
+          if (show) visible += 1;
+        });
+        if (progress) {
+          progress.style.transform = "scaleX(" + Math.max(visible / cards.length, 0.08) + ")";
+        }
+        if (filterStatus) {
+          filterStatus.textContent = filter === "all"
+            ? "当前显示全部 " + visible + " 个实验室方向。"
+            : "当前筛选：" + filter + "，显示 " + visible + " 个方向。";
+          refreshStatusAnimation(filterStatus);
+        }
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          setFilter(button.dataset.filter);
+        });
+      });
+      setFilter("all");
+
+      if (copyBrief) {
+        copyBrief.addEventListener("click", function () {
+          function done(ok) {
+            if (!copyStatus) return;
+            copyStatus.classList.remove("is-fresh");
+            copyStatus.classList.toggle("is-success", ok);
+            copyStatus.classList.toggle("is-error", !ok);
+            copyStatus.textContent = ok ? "诊断提纲已复制，可以直接粘贴补充。" : "复制失败，请手动记录诊断提纲。";
+            if (fallbackBrief) {
+              fallbackBrief.hidden = ok;
+            }
+            if (fallbackBriefText) {
+              fallbackBriefText.textContent = diagnosisText;
+            }
+            refreshStatusAnimation(copyStatus);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(diagnosisText).then(function () { done(true); }).catch(function () { done(false); });
+          } else {
+            done(false);
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

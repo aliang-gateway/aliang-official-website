@@ -82,3 +82,7 @@ docker build --build-arg CDN_URL="https://aliang-1305838434.cos.ap-nanjing.myqcl
 docker exec -e COS_SECRET_ID="xxx" -e COS_SECRET_KEY="xxx" aliang-frontend bash /app/scripts/upload-to-cdn.sh
 
 ```
+
+
+## test
+

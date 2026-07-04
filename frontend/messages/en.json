@@ -16,6 +16,498 @@
     "searchPlaceholder": "Search architecture...",
     "userMenu": "User menu"
   },
+  "editorial": {
+    "brandName": "ALiang",
+    "brandMark": "良",
+    "brandSmall": "ALiang Gateway",
+    "brandAria": "Back to ALiang home",
+    "topbarLead": "AI gateway for developers",
+    "topbarMid": [
+      "Frontier AI services",
+      "Tracking latest tech",
+      "Mobile vibecoding"
+    ],
+    "statusLive": "Actively maintained",
+    "edition": "Edition 01",
+    "year": "2026",
+    "navAria": "Primary",
+    "pagesAria": "Site pages",
+    "navHome": "Home",
+    "navServices": "Services",
+    "navDownload": "Download",
+    "navDoc": "Docs",
+    "navBlog": "Blog",
+    "navAbout": "About",
+    "footerAbout": "ALiang is a reliable gateway connecting you to the world's leading large models — redefining AI API services with a stable architecture, smart routing, and edge-grade latency.",
+    "footerSite": "Site",
+    "footerResources": "Resources",
+    "footerProduct": "Products",
+    "footerCompany": "Company",
+    "footerSecurity": "Security",
+    "footerPrivacy": "Privacy",
+    "footerTerms": "Terms",
+    "footerMegaPre": "Keep",
+    "footerMegaEm": "coding",
+    "footerMegaPost": "moving forward",
+    "home": {
+      "heroLabel": "Editorial / AI coding studio",
+      "heroTitlePre": "ALiang turns",
+      "heroTitleEm": "AI coding",
+      "heroTitlePost": "into a continuous service",
+      "heroLead": "From model proxy and tooling integration to mobile vibecoding, ALiang offers developers a continuously updated AI coding studio service.",
+      "heroPrimary": "Book a tech diagnosis",
+      "heroSecondary": "See the service timeline",
+      "statsAria": "Service summary",
+      "stats": [
+        {
+          "value": "Always",
+          "label": "Tracking mainstream models and tooling"
+        },
+        {
+          "value": "3",
+          "label": "Proxy / desktop IDE / mobile vibecoding"
+        },
+        {
+          "value": "1",
+          "label": "Unified developer workflow"
+        }
+      ],
+      "heroIndex": [
+        "Frontier AI proxy",
+        "VSCode / Cursor workflows",
+        "Remote mobile vibecoding",
+        "Continuously updated judgment"
+      ],
+      "dockAria": "Home chapters",
+      "dockKicker": "Index / Reading route",
+      "dockTitle": "Home chapters",
+      "dockNote": "Judge the studio in one page: ethos first, then capabilities, method, and entry points.",
+      "dockItems": [
+        {
+          "name": "Ethos",
+          "note": "Why ALiang runs a continuous AI coding studio."
+        },
+        {
+          "name": "Capabilities",
+          "note": "Proxy, toolchain, mobile, and team-verification combined."
+        },
+        {
+          "name": "Lab",
+          "note": "A usable catalog of shifting models and tools."
+        },
+        {
+          "name": "Method",
+          "note": "The rhythm from requirement breakdown to delivery."
+        },
+        {
+          "name": "Work",
+          "note": "Real directions on the services page and mobile vibecoding."
+        },
+        {
+          "name": "Notes",
+          "note": "Records of technical judgment, tooling migrations, upkeep."
+        },
+        {
+          "name": "Diagnosis",
+          "note": "Copy a brief and start your first tech diagnosis."
+        }
+      ],
+      "nextAria": "Next steps",
+      "nextTitle": "Next / Action route",
+      "nextLabel": "After the home page",
+      "nextItems": [
+        {
+          "b": "Read the service timeline",
+          "small": "Research directions and shipped capabilities",
+          "href": "/services"
+        },
+        {
+          "b": "Open the download page",
+          "small": "Desktop and mobile install entry points",
+          "href": "/download"
+        },
+        {
+          "b": "Copy the diagnosis brief",
+          "small": "Send ALiang your current workflow",
+          "href": "#cta"
+        }
+      ],
+      "aboutStamp": "良 / Continuous service",
+      "aboutLabel": "I / Studio notes",
+      "aboutTitle": "Not a one-off tool page, but a continuously maintained AI coding studio",
+      "aboutLead1": "ALiang focuses on the problems developers hit again and again: flaky model services, fragmented toolchains, mobile scenarios that stall, and nobody to judge the latest tech for you.",
+      "aboutLead2": "The home page carries the brand: it tells developers someone is continuously tracking mainstream AI services and coding workflows. Specific services can iterate with the tech, but the underlying promise stays constant.",
+      "capLabel": "II / Capabilities",
+      "capTitle": "The AI capabilities developers touch every day, organized into executable service modules",
+      "capLead": "Services can keep expanding, but the first screen shows three things: model services, dev toolchains, and mobile coding continuity.",
+      "capCards": [
+        {
+          "num": "01",
+          "tag": "Proxy",
+          "title": "Frontier AI proxy",
+          "desc": "Unified access to OpenAI, Anthropic, and other formats — less service-switching and config overhead."
+        },
+        {
+          "num": "02",
+          "tag": "Toolchain",
+          "title": "VSCode / Cursor proficiency",
+          "desc": "Prompts, context organization, debugging, and refactoring workflows organized around real engineering."
+        },
+        {
+          "num": "03",
+          "tag": "Mobile",
+          "title": "Mobile vibecoding",
+          "desc": "Keep starting, tracking, and organizing coding tasks from your phone — fewer breaks when you leave the desk."
+        },
+        {
+          "num": "04",
+          "tag": "Radar",
+          "title": "Continuous tech tracking",
+          "desc": "Track model, tool, and API changes; translate new capabilities into things developers can try directly."
+        }
+      ],
+      "labsLabel": "III / Lab catalog",
+      "labsTitle": "A continuously updated AI coding service catalog",
+      "filterAria": "Filter lab categories",
+      "filters": [
+        {
+          "key": "all",
+          "label": "All"
+        },
+        {
+          "key": "模型服务",
+          "label": "Models"
+        },
+        {
+          "key": "工具链",
+          "label": "Tooling"
+        },
+        {
+          "key": "移动端",
+          "label": "Mobile"
+        },
+        {
+          "key": "校验",
+          "label": "Verify"
+        },
+        {
+          "key": "技术雷达",
+          "label": "Radar"
+        }
+      ],
+      "filterStatusAll": "Showing all {count} lab directions.",
+      "filterStatusFiltered": "Filtered: {filter}, showing {count} directions.",
+      "labCards": [
+        {
+          "kicker": "Proxy",
+          "title": "Multi-model format adapter",
+          "desc": "Organize different model services into a more stable access pattern, less project-switching cost.",
+          "category": "模型服务",
+          "img": "/editorial/lab-1.svg"
+        },
+        {
+          "kicker": "Context",
+          "title": "Context and task breakdown",
+          "desc": "Help developers split fuzzy requirements into engineering tasks AI can execute.",
+          "category": "工具链",
+          "img": "/editorial/lab-2.svg"
+        },
+        {
+          "kicker": "Mobile",
+          "title": "Remote vibecoding",
+          "desc": "Keep describing, generating, checking, and tracking code tasks from mobile.",
+          "category": "移动端",
+          "img": "/editorial/lab-3.svg"
+        },
+        {
+          "kicker": "Verify",
+          "title": "Code and artifact verification",
+          "desc": "Check AI output against real engineering constraints, not just generation speed.",
+          "category": "校验",
+          "img": "/editorial/lab-4.svg"
+        },
+        {
+          "kicker": "Radar",
+          "title": "Latest capability watch",
+          "desc": "Filter noteworthy model updates, IDE features, and dev-tool changes.",
+          "category": "技术雷达",
+          "img": "/editorial/lab-5.svg"
+        }
+      ],
+      "methodLabel": "IV / Method",
+      "methodTitle": "From problem to usable workflow, in four steps",
+      "methodLead": "ALiang treats AI coding not as a one-time install but as a reusable, reviewable, portable working method.",
+      "methodSteps": [
+        {
+          "title": "Find the bottleneck",
+          "desc": "First see whether you're stuck on models, tools, environment, or task breakdown."
+        },
+        {
+          "title": "Organize context",
+          "desc": "Turn projects, code, goals, and constraints into inputs AI can understand reliably."
+        },
+        {
+          "title": "Onboard services",
+          "desc": "Configure proxy, IDE, mobile, or a hybrid workflow per scenario."
+        },
+        {
+          "title": "Review continuously",
+          "desc": "As models and tools shift, keep what works, replace what expired."
+        }
+      ],
+      "workLabel": "V / Selected work",
+      "workTitle": "ALiang is more a studio entrance than a list of single features",
+      "workLead": "The home page builds brand trust; specific services live on the services and download pages, shown via a timeline and platform entries.",
+      "workCards": [
+        {
+          "chip": "Services / Research timeline",
+          "title": "Services: shipped and in-research capability routes",
+          "desc": "Explains the service status of Cursor, VSCode, API proxy, and mobile vibecoding for developers.",
+          "img": "/editorial/work-1.svg"
+        },
+        {
+          "chip": "Download / Platform entry",
+          "title": "Download: desktop and mobile install entry points",
+          "desc": "Splits Windows, Linux, macOS, Android, and iOS status so users can judge available platforms directly.",
+          "img": "/editorial/work-2.svg"
+        }
+      ],
+      "quoteLabel": "VI / Field notes",
+      "quoteText": "Developers don't lack another button — they lack a person and workflow that keeps up with a changing tech landscape.",
+      "quoteAuthor": "ALiang studio notes",
+      "partnersAria": "Service keywords",
+      "partners": [
+        "Models",
+        "IDE",
+        "API",
+        "Mobile",
+        "Engineering"
+      ],
+      "ctaLabel": "VII / Get started",
+      "ctaTitle": "Hand your dev workflow to ALiang for a diagnosis",
+      "ctaLead": "If you're building AI coding services, optimizing Cursor / VSCode flows, or turning remote mobile vibecoding into a real product, start with a tech diagnosis.",
+      "ctaCopyBtn": "Copy diagnosis brief",
+      "ctaSecondary": "Read the service timeline",
+      "ctaRibbon": "Continuous AI coding studio",
+      "copySuccess": "Diagnosis brief copied — paste and fill it in.",
+      "copyError": "Copy failed — please record the brief manually.",
+      "briefText": "ALiang tech diagnosis brief:\n1. Current AI coding scenario:\n2. Models / proxy / IDE in use:\n3. Biggest blocker:\n4. Need remote mobile vibecoding:\n5. What ALiang should diagnose first:"
+    },
+    "services": {
+      "heroLabel": "Services / Research route",
+      "heroTitlePre": "From latest research back to shipped",
+      "heroTitleEm": "AI services",
+      "heroLead": "The services page shows newest-first: ALiang's in-research AI collaboration directions, then the service foundations already deliverable. No fake dates, no inflated metrics.",
+      "statsAria": "Service status summary",
+      "stats": [
+        {
+          "value": "4",
+          "label": "Shipped service directions"
+        },
+        {
+          "value": "2",
+          "label": "In-research directions"
+        },
+        {
+          "value": "1",
+          "label": "Unified workflow, continuously maintained"
+        }
+      ],
+      "timelineLabel": "Timeline",
+      "timelineTitle": "Latest research first, earliest capabilities last",
+      "timelineLead": "The filter buttons only change what the timeline shows, not the service status. Understand ALiang's next research focus first, then judge which capabilities are already usable.",
+      "filterAria": "Filter service status",
+      "filters": [
+        {
+          "key": "all",
+          "label": "All"
+        },
+        {
+          "key": "done",
+          "label": "Shipped"
+        },
+        {
+          "key": "research",
+          "label": "In research"
+        }
+      ],
+      "filterAll": "Showing all 6 directions, newest research to earliest completion.",
+      "filterDone": "Showing 4 shipped services, latest launch to earliest foundation.",
+      "filterResearch": "Showing 2 in-research directions — ALiang's next research priorities.",
+      "emptyState": "No service directions match this filter. Switch back to All for the full research route.",
+      "statusDone": "Shipped",
+      "statusResearch": "In research",
+      "items": [
+        {
+          "phase": "Latest 01 / In research",
+          "status": "research",
+          "title": "Multi-AI concurrent collaboration",
+          "desc": "Researching how multiple AI sessions divide work, cross-check, and merge conclusions on the same engineering task — without polluting each other's context."
+        },
+        {
+          "phase": "Latest 02 / In research",
+          "status": "research",
+          "title": "State sync",
+          "desc": "Researching task-state sync across desktop, mobile, and cloud sessions so users return to the same coding scene from any device."
+        },
+        {
+          "phase": "Shipped 04 / Recent launch",
+          "status": "done",
+          "title": "Mobile vibecoding",
+          "desc": "Extend coding tasks from desktop to phone — remotely start, track, organize, and continue dev tasks."
+        },
+        {
+          "phase": "Shipped 03 / Stable delivery",
+          "status": "done",
+          "title": "API proxy hub",
+          "desc": "Organize OpenAI, Anthropic, and other mainstream formats into a more stable call entry for dev tools, automation scripts, and internal product integration."
+        },
+        {
+          "phase": "Shipped 02 / Stable delivery",
+          "status": "done",
+          "title": "VSCode Copilot setup service",
+          "desc": "Environment prep, usage-path config, and dev-scenario adaptation for VSCode and Copilot workflows — lower team onboarding cost."
+        },
+        {
+          "phase": "Shipped 01 / Earliest foundation",
+          "status": "done",
+          "title": "Cursor Pro setup service",
+          "desc": "Onboarding, configuration, and maintenance for Cursor Pro scenarios — put AI coding capability into real project cadence."
+        }
+      ],
+      "closingLabel": "Next step",
+      "closingTitle": "Install the client first, then plug in your workflow",
+      "closingLead": "The download page splits desktop and mobile entry points; iOS is clearly marked unsupported to avoid misclicks.",
+      "closingBtn": "Go to download",
+      "topbarCtx": "Service timeline",
+      "topbarMid": [
+        "Latest research first",
+        "Shipped capabilities"
+      ]
+    },
+    "download": {
+      "heroLabel": "Download / Platform entry",
+      "heroTitle": "Bring ALiang to desktop and mobile",
+      "heroLead": "The download page is split by platform: Windows, Linux, macOS are desktop entries; Android is the mobile entry; iOS is clearly marked unsupported for now.",
+      "headLabel": "Platform choice",
+      "headTitle": "Pick a platform first, then enter the install flow",
+      "headLead": "No marketing modules here — only downloads, system requirements, and current support status.",
+      "groupDesktopLabel": "Desktop",
+      "groupDesktopTitle": "Desktop clients",
+      "groupMobileLabel": "Mobile",
+      "groupMobileTitle": "Mobile clients",
+      "available": "Available",
+      "unsupported": "Coming soon",
+      "downloadBtn": "Download {name}",
+      "macArm": "Apple Silicon",
+      "macIntel": "Intel",
+      "statusMacSelect": "{name} ({variant}) selected. Confirm your architecture to get the package.",
+      "cards": [
+        {
+          "name": "Windows",
+          "platform": "desktop",
+          "icon": "Win",
+          "desc": "For main dev machines, Cursor / VSCode workflows, and local proxy debugging.",
+          "meta": [
+            "Arch: x64 / arm64",
+            "Type: Desktop client"
+          ]
+        },
+        {
+          "name": "Linux",
+          "platform": "desktop",
+          "icon": "Lin",
+          "desc": "For servers, dev containers, remote workstations, and automation environments.",
+          "meta": [
+            "Arch: x64",
+            "Type: AppImage / tar"
+          ]
+        },
+        {
+          "name": "macOS",
+          "platform": "desktop",
+          "icon": "Mac",
+          "desc": "For IDEs on MacBook, model proxy, and mobile-linked debugging.",
+          "meta": [
+            "Arch: Apple Silicon / Intel",
+            "Type: dmg"
+          ]
+        },
+        {
+          "name": "Android",
+          "platform": "mobile",
+          "icon": "And",
+          "desc": "For remote mobile vibecoding — quickly start, track, and organize coding tasks.",
+          "meta": [
+            "Version: Android 10+",
+            "Type: APK"
+          ]
+        },
+        {
+          "name": "iOS",
+          "platform": "mobile",
+          "icon": "iOS",
+          "disabled": true,
+          "desc": "The iOS client is on the way. For now, enjoy the full workflow on Android and desktop.",
+          "meta": [
+            "Status: Coming soon",
+            "Next: In planning, stay tuned"
+          ]
+        }
+      ],
+      "installTitle": "Confirm your workflow before desktop install",
+      "installDefault": "# ALiang client pre-install check\n1. Confirm current IDE: Cursor / VSCode / other\n2. Confirm model entry: API proxy hub / direct service\n3. Confirm whether mobile remote vibecoding is needed",
+      "installSteps": {
+        "Windows": "# Windows pre-install check\n1. Choose x64 / arm64 installer\n2. Confirm current Cursor / VSCode version\n3. Connect to the API proxy hub or local proxy",
+        "Linux": "# Linux pre-install check\n1. Choose AppImage or tar package\n2. Confirm remote workstation permissions\n3. Configure model entry in automation tasks",
+        "macOS": "# macOS pre-install check\n1. Distinguish Apple Silicon / Intel\n2. Allow developer-signed sources\n3. Sync with desktop IDE and mobile tasks",
+        "Android": "# Android pre-install check\n1. Confirm Android 10+\n2. Allow APK install\n3. Sign in and connect to remote vibecoding tasks"
+      },
+      "releaseTitle": "Support status",
+      "release": [
+        "Windows, Linux, macOS: desktop download entries.",
+        "Android: mobile vibecoding download entry.",
+        "iOS: Coming soon — the client is on the way."
+      ],
+      "statusSelected": "{name} selected. Confirm your system architecture, then get the current installer.",
+      "closingLabel": "Service route",
+      "closingTitle": "Before downloading, see what ALiang is working on",
+      "closingLead": "The services page lists shipped and in-research directions on a timeline, keeping capabilities of different maturity separate.",
+      "closingBtn": "See the service timeline",
+      "metaVersion": "Version: {version}",
+      "metaLatest": "Latest version",
+      "metaType": "Type: {type}",
+      "metaClient": "Type: Desktop client",
+      "statusDownloading": "{name} download started — confirm your architecture before installing.",
+      "topbarCtx": "Download center",
+      "topbarMid": [
+        "Desktop",
+        "Mobile"
+      ]
+    },
+    "auth": {
+      "loginLabel": "Access",
+      "loginTitle": "Welcome back to ALiang.",
+      "loginLead": "Sign in to your console to manage API keys, usage and subscriptions.",
+      "loginPoint1": "Unify Claude / GPT / GLM and more under one key",
+      "loginPoint2": "Real-time usage and quota monitoring",
+      "loginPoint3": "Secure scan-to-login, no password needed",
+      "registerLabel": "Create account",
+      "registerTitle": "Open your AI gateway.",
+      "registerLead": "Register in a minute and start using stable, reliable AI APIs.",
+      "registerPoint1": "Free trial credits, ready the moment you sign up",
+      "registerPoint2": "Works with Cursor / VSCode / Claude Code",
+      "registerPoint3": "Enterprise-grade stability and 99.9% uptime",
+      "backHome": "Back home"
+    },
+    "docs": {
+      "comingSoonTitle": "Documentation coming soon",
+      "comingSoonLead": "We are still writing the docs. Please check back later.",
+      "sidebarHelpTitle": "Need account setup help?",
+      "sidebarHelpBody": "Start from the account page and issue your first API key in under two minutes.",
+      "sidebarHelpCta": "Go to register"
+    }
+  },
   "footer": {
     "blog": {
       "brandTitle": "ALiang Gateway",
@@ -481,7 +973,7 @@
     "models": "{count} models",
     "empty": "empty",
     "noModelShareData": "No model-share data is available for the selected period yet. The pie stays empty until at least one model reports non-zero total tokens.",
-    "totalTokens": "{value} total tokens",
+    "totalTokens": "Total tokens",
     "package": "Package",
     "noPackageYet": "No package yet",
     "subscriptionExpires": "Subscription {id} expires on {date}",
@@ -608,7 +1100,6 @@
     "requestId": "Request ID",
     "endpoint": "Endpoint",
     "model": "Model",
-    "totalTokens": "Total tokens",
     "actualCost": "Actual cost",
     "duration": "Duration",
     "noUsageRecordsTitle": "No usage records yet.",

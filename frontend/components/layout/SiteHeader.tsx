@@ -2,59 +2,33 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import ThemeToggle from "@/app/components/ThemeToggle";
 import { MobileMenu } from "@/components/ui/MobileMenu";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { cn } from "@/lib/utils";
-
-const SESSION_TOKEN_KEY = "session_token";
-
-type UserProfile = {
-  email: string;
-  name: string;
-  role: string;
-};
-
-function hasAdminAccess(role: string) {
-  return role === "admin" || role === "distributor";
-}
-
-function adminEntryHref(role: string) {
-  if (role === "distributor") return "/distributor";
-  return "/admin";
-}
-
-function buildAvatarLabel(user: UserProfile | null) {
-  if (!user) {
-    return "??";
-  }
-
-  const source = (user.name || user.email.split("@")[0] || "").trim();
-  if (!source) {
-    return "??";
-  }
-
-  const compact = source.replace(/\s+/g, "");
-  return Array.from(compact).slice(0, 2).join("").toUpperCase() || "??";
-}
+import {
+  useSessionProfile,
+  hasAdminAccess,
+  adminEntryHref,
+} from "@/lib/useSessionProfile";
 
 export function SiteHeader() {
   const t = useTranslations("header");
-  const router = useRouter();
   const pathname = usePathname();
   const activePath = pathname;
   const showSearch = pathname === "/blog";
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<UserProfile | null>(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
 
+  const { user, logout, avatarLabel } = useSessionProfile();
+  const isLoggedIn = user !== null;
+
   const isServices = pathname === "/services";
 
-  const isLoggedIn = user !== null;
   const primaryCta = isLoggedIn
     ? { href: "/dashboard", label: t("dashboard") }
     : { href: "/login", label: t("login") };
@@ -69,40 +43,6 @@ export function SiteHeader() {
   ];
 
   useEffect(() => {
-    const sessionToken = localStorage.getItem(SESSION_TOKEN_KEY);
-    if (!sessionToken) return;
-
-    fetch("/api/auth/me", {
-      method: "GET",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      cache: "no-store",
-    })
-      .then((res) => {
-        if (!res.ok) {
-          localStorage.removeItem(SESSION_TOKEN_KEY);
-          return null;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (!data) return;
-        const profile = data?.data ?? data;
-        if (profile?.email) {
-          setUser({ email: profile.email, name: profile.name ?? "", role: profile.role ?? "user" });
-        } else {
-          localStorage.removeItem(SESSION_TOKEN_KEY);
-        }
-      })
-      .catch(() => {
-        localStorage.removeItem(SESSION_TOKEN_KEY);
-      });
-  }, [pathname]);
-
-  useEffect(() => {
     if (!avatarMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) {
@@ -115,21 +55,7 @@ export function SiteHeader() {
 
   const handleLogout = async () => {
     setAvatarMenuOpen(false);
-    const sessionToken = localStorage.getItem(SESSION_TOKEN_KEY);
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
-        cache: "no-store",
-      });
-    } catch {}
-    localStorage.removeItem(SESSION_TOKEN_KEY);
-    setUser(null);
-    router.replace("/login");
+    await logout();
   };
 
   const isLinkActive = (href: string) => {
@@ -138,8 +64,6 @@ export function SiteHeader() {
     }
     return activePath === href;
   };
-
-  const avatarLabel = buildAvatarLabel(user);
 
   return (
     <>
