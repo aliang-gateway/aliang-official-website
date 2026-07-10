@@ -598,8 +598,9 @@ func TestCreatePackageCheckoutSessionReturnsStripeURL(t *testing.T) {
 			if !strings.Contains(encoded, "metadata%5Btier_code%5D=pro-monthly") {
 				t.Fatalf("expected tier_code metadata in stripe request body, got %s", encoded)
 			}
-			if !strings.Contains(encoded, "line_items%5B0%5D%5Bprice_data%5D%5Bunit_amount%5D=2990") {
-				t.Fatalf("expected cny unit_amount in stripe request body, got %s", encoded)
+			// 套餐价 2990 分 + 小额手续费 300 分（3 元，< 50 元阈值）= 3290 分。
+			if !strings.Contains(encoded, "line_items%5B0%5D%5Bprice_data%5D%5Bunit_amount%5D=3290") {
+				t.Fatalf("expected cny unit_amount (price + surcharge) in stripe request body, got %s", encoded)
 			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -651,6 +652,70 @@ func TestCreatePackageCheckoutSessionReturnsStripeURL(t *testing.T) {
 	}
 	if recordStatus != "checkout_created" || recordTier != "pro-monthly" {
 		t.Fatalf("unexpected payment record values: status=%q tier=%q", recordStatus, recordTier)
+	}
+}
+
+func TestCreatePackageCheckoutAcceptsBalanceWithSubscriptionGroup(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "balance-sub", "Balance With Subscription Group")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 1000000, value_type = 'balance', value_amount = 1000000, is_enabled = 1, is_published = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+	insertTierGroupBinding(t, ctx, database, tierID, 11)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":[{"id":11,"name":"Monthly Subscription","subscription_type":"monthly"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithOptions(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout}, proxy.ClientOptions{AdminAPIKey: "admin-key-123"})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+	stripeClient, err := portalstripe.NewClientWithHTTPClient(portalstripe.Config{
+		SecretKey:     "sk_test_checkout",
+		WebhookSecret: "whsec_checkout",
+		SuccessURL:    "https://portal.example.com/dashboard?checkout=success",
+		CancelURL:     "https://portal.example.com/dashboard?checkout=cancelled",
+		Currency:      "cny",
+	}, &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			// balance 套餐绑订阅组现在允许（fulfillment 跳过订阅组，只加余额 + 标准组），stripe 应被调用。
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"cs_test_balance","url":"https://checkout.stripe.com/c/pay/cs_test_balance"}`)),
+			}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("new stripe client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{
+		AdminBootstrapSecret: "test-admin-secret",
+		ProxyClient:          proxyClient,
+		StripeClient:         stripeClient,
+	})
+	_, sessionToken := createUserViaAPI(t, mux, "checkout-balance-sub@example.com", "Checkout Balance Sub User", "user", "")
+
+	req := httptest.NewRequest(http.MethodPost, "/checkout/package", bytes.NewBufferString(`{"tier_code":"balance-sub"}`))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, sessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	// balance + 订阅组：checkout 通过（订阅组在 fulfillment 跳过，只加余额 + 标准组）。
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d (balance+subscription group now allowed), got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cs_test_balance") {
+		t.Fatalf("expected stripe checkout url, got %s", rec.Body.String())
 	}
 }
 
@@ -3880,10 +3945,18 @@ func TestPublicPackagesReturnsOnlyVisible(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(payload.Packages) != 1 {
-		t.Fatalf("expected 1 public package, got %d", len(payload.Packages))
+	// 公开页返回所有 is_visible 的套餐，不再按 level 过滤（distributor 套餐也对终端用户公开售卖）。
+	if len(payload.Packages) != 2 {
+		t.Fatalf("expected 2 public packages (free + distributor-visible), got %d", len(payload.Packages))
 	}
-	if payload.Packages[0].Code != "free" {
-		t.Fatalf("expected package code 'free', got %s", payload.Packages[0].Code)
+	codes := map[string]bool{}
+	for _, p := range payload.Packages {
+		codes[p.Code] = true
+	}
+	if !codes["free"] || !codes["distributor-visible"] {
+		t.Fatalf("expected free + distributor-visible in response, got %v", codes)
+	}
+	if codes["hidden"] {
+		t.Fatalf("is_visible=false tier should not be returned")
 	}
 }

@@ -163,6 +163,23 @@ type Download struct {
 	UpdatedAt    time.Time
 }
 
+// ServiceDirection is a single entry on the /services marketing timeline.
+// status is "research" or "done"; copy fields are bilingual (zh/en).
+type ServiceDirection struct {
+	ID          int64
+	Status      string
+	PhaseZh     string
+	PhaseEn     string
+	TitleZh     string
+	TitleEn     string
+	DescZh      string
+	DescEn      string
+	SortOrder   int
+	IsPublished bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type DocCategory struct {
 	ID          int64
 	Slug        string

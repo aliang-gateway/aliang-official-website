@@ -23,6 +23,9 @@ type AdminPackage = {
   price_micros: number;
   value_type: string;
   value_amount: number;
+  rate: number;
+  min_topup_micros: number;
+  max_topup_micros: number;
   description: string;
   features: string[];
   is_enabled: boolean;
@@ -48,6 +51,9 @@ type PackageFormState = {
   priceMicros: number;
   valueType: string;
   valueAmount: number;
+  rate: number;
+  minTopupMicros: number;
+  maxTopupMicros: number;
   description: string;
   features: string[];
   isVisible: boolean;
@@ -62,6 +68,9 @@ const defaultFormState: PackageFormState = {
   priceMicros: 0,
   valueType: "",
   valueAmount: 0,
+  rate: 0,
+  minTopupMicros: 0,
+  maxTopupMicros: 0,
   description: "",
   features: [],
   isVisible: true,
@@ -177,6 +186,11 @@ export default function AdminPackagesPage() {
   const [rowLoadingCode, setRowLoadingCode] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
 
+  const [surchargeEnabled, setSurchargeEnabled] = useState(false);
+  const [surchargeAmount, setSurchargeAmount] = useState("");
+  const [surchargeThreshold, setSurchargeThreshold] = useState("");
+  const [surchargeSaving, setSurchargeSaving] = useState(false);
+
   useEffect(() => {
     setIsHydrated(true);
     setSessionToken(localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "");
@@ -282,6 +296,57 @@ export default function AdminPackagesPage() {
     }
   }, [buildHeaders, handleAuthFailure, sessionToken]);
 
+  // ── 支付手续费配置（读写 config-center global-vars）──────────────
+  const loadSurcharge = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const res = await fetch("/api/admin/config-center/global-vars", { headers: buildHeaders(), cache: "no-store" });
+      const payload = (await res.json()) as { vars?: { var_key: string; var_value: string }[]; data?: { vars?: { var_key: string; var_value: string }[] } };
+      if (!res.ok) return;
+      const vars = payload?.vars ?? payload?.data?.vars ?? [];
+      const find = (k: string) => vars.find((v) => v.var_key === k)?.var_value ?? "";
+      setSurchargeEnabled(find("payment_surcharge_enabled") === "true");
+      setSurchargeAmount(find("payment_surcharge_amount") || "");
+      setSurchargeThreshold(find("payment_surcharge_threshold") || "");
+    } catch {
+      // 配置缺失时不阻塞页面
+    }
+  }, [buildHeaders, sessionToken]);
+
+  const saveSurcharge = useCallback(async () => {
+    setGlobalError(null);
+    setGlobalSuccess(null);
+    setSurchargeSaving(true);
+    const entries = [
+      { var_key: "payment_surcharge_enabled", var_value: surchargeEnabled ? "true" : "false", description: "Enable handling fee for small payments" },
+      { var_key: "payment_surcharge_amount", var_value: surchargeAmount.trim() || "0", description: "Handling fee amount in CNY yuan" },
+      { var_key: "payment_surcharge_threshold", var_value: surchargeThreshold.trim() || "0", description: "Threshold in CNY yuan" },
+    ];
+    try {
+      for (const e of entries) {
+        const res = await fetch("/api/admin/config-center/global-vars", {
+          method: "POST",
+          headers: { ...buildHeaders(), "content-type": "application/json" },
+          body: JSON.stringify(e),
+        });
+        if (!res.ok) {
+          const p = (await res.json()) as { error?: string };
+          throw new Error(p?.error ?? "Failed to save surcharge");
+        }
+      }
+      setGlobalSuccess("支付手续费配置已保存。");
+      await loadSurcharge();
+    } catch (e) {
+      setGlobalError(e instanceof Error ? e.message : "Failed to save surcharge");
+    } finally {
+      setSurchargeSaving(false);
+    }
+  }, [buildHeaders, surchargeEnabled, surchargeAmount, surchargeThreshold, loadSurcharge]);
+
+  useEffect(() => {
+    if (isHydrated && sessionToken) void loadSurcharge();
+  }, [isHydrated, sessionToken, loadSurcharge]);
+
   useEffect(() => {
     if (!isHydrated) {
       return;
@@ -307,7 +372,10 @@ export default function AdminPackagesPage() {
         if (key === "level") {
           return { ...prev, level: value === "distributor" ? value : "admin" };
         }
-        if (key === "priceMicros" || key === "valueAmount") {
+        if (key === "rate") {
+          return { ...prev, rate: Math.max(0, parseFloat(String(value)) || 0) };
+        }
+        if (key === "priceMicros" || key === "valueAmount" || key === "minTopupMicros" || key === "maxTopupMicros") {
           return { ...prev, [key]: Math.max(0, parseInt(String(value), 10) || 0) };
         }
         if (key === "features") {
@@ -389,6 +457,9 @@ export default function AdminPackagesPage() {
         priceMicros: Number(pkg.price_micros) || 0,
         valueType: String(pkg.value_type ?? ""),
         valueAmount: Number(pkg.value_amount) || 0,
+        rate: Number(pkg.rate) || 0,
+        minTopupMicros: Number(pkg.min_topup_micros) || 0,
+        maxTopupMicros: Number(pkg.max_topup_micros) || 0,
         description: String(pkg.description ?? ""),
         features: Array.isArray(pkg.features) ? pkg.features : [],
         isVisible: pkg.is_visible !== false,
@@ -442,6 +513,9 @@ export default function AdminPackagesPage() {
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
           value_amount: formState.valueAmount,
+          rate: formState.rate,
+          min_topup_micros: formState.minTopupMicros,
+          max_topup_micros: formState.maxTopupMicros,
           description: formState.description,
           features_json: JSON.stringify(formState.features.filter((f: string) => f.trim() !== "")),
           is_visible: formState.isVisible,
@@ -456,6 +530,9 @@ export default function AdminPackagesPage() {
           price_micros: formState.priceMicros,
           value_type: formState.valueType,
           value_amount: formState.valueAmount,
+          rate: formState.rate,
+          min_topup_micros: formState.minTopupMicros,
+          max_topup_micros: formState.maxTopupMicros,
           description: formState.description,
           features_json: JSON.stringify(formState.features.filter((f: string) => f.trim() !== "")),
           is_visible: formState.isVisible,
@@ -545,6 +622,40 @@ export default function AdminPackagesPage() {
             Manage tier-as-package entries and replace their bound admin groups from one workflow.
           </p>
         </div>
+      </div>
+
+      <div className="block-card space-y-3 p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--portal-ink)]">支付手续费 / Payment Surcharge</h2>
+          <p className="mt-1 text-sm text-[var(--portal-muted)]">
+            启用后，订单金额 <b>低于阈值</b> 的加收固定手续费。前端会公示「低于 ¥{surchargeThreshold || "50"} 收取 ¥{surchargeAmount || "3"} 手续费」并在加量包卡按需计入账单。
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+            <span>启用手续费</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={surchargeEnabled}
+              onClick={() => setSurchargeEnabled(!surchargeEnabled)}
+              className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (surchargeEnabled ? "bg-[var(--portal-accent)]" : "bg-[var(--portal-line)]")}
+            >
+              <span className={"inline-block size-4 rounded-full bg-white transition-transform " + (surchargeEnabled ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </label>
+          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+            <span>手续费金额（元）</span>
+            <input className="field" type="number" min="0" step="0.01" value={surchargeAmount} onChange={(e) => setSurchargeAmount(e.target.value)} placeholder="3" disabled={surchargeSaving} />
+          </label>
+          <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+            <span>阈值（元，订单低于此值才收）</span>
+            <input className="field" type="number" min="0" step="0.01" value={surchargeThreshold} onChange={(e) => setSurchargeThreshold(e.target.value)} placeholder="50" disabled={surchargeSaving} />
+          </label>
+        </div>
+        <button type="button" className="btn-primary w-fit" onClick={() => void saveSurcharge()} disabled={surchargeSaving}>
+          {surchargeSaving ? "保存中..." : "保存手续费配置"}
+        </button>
       </div>
 
       <div className="block-card space-y-3">
@@ -811,7 +922,7 @@ export default function AdminPackagesPage() {
                 {/* Value Amount */}
                 {formState.valueType ? (
                   <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
-                    <span>{formState.valueType === "days" ? "Days" : "Amount (micros)"}</span>
+                    <span>{formState.valueType === "days" ? "Days" : "Amount (micros, ignored when rate > 0)"}</span>
                     <input
                       className="field"
                       type="number"
@@ -822,6 +933,59 @@ export default function AdminPackagesPage() {
                       required
                     />
                   </label>
+                ) : null}
+
+                {/* Top-up rate + range (balance + rate = 加量包, user pays any amount) */}
+                {formState.valueType === "balance" ? (
+                  <div className="grid gap-2 rounded-lg border border-[var(--portal-line)] bg-[var(--portal-bg-elevated)] p-3">
+                    <p className="text-xs font-semibold text-[var(--portal-accent)]">
+                      Top-up (加量包) — set rate &gt; 0 so users can pay any amount; balance = paid CNY × rate (USD)
+                    </p>
+                    <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                      <span>Rate (USD credited per 1 CNY paid)</span>
+                      <input
+                        className="field"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formState.rate || ""}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => handleFormChange("rate", e.target.value)}
+                        disabled={isBlocked || isSubmittingForm}
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                        <span>Min top-up (CNY)</span>
+                        <input
+                          className="field"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formState.minTopupMicros ? (formState.minTopupMicros / 1000000).toString() : ""}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                            const y = parseFloat(e.target.value) || 0;
+                            handleFormChange("minTopupMicros", String(Math.round(y * 1000000)));
+                        }}
+                        disabled={isBlocked || isSubmittingForm}
+                      />
+                      </label>
+                      <label className="grid gap-1 text-sm text-[var(--portal-muted)]">
+                        <span>Max top-up (CNY, 0 = no limit)</span>
+                        <input
+                          className="field"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formState.maxTopupMicros ? (formState.maxTopupMicros / 1000000).toString() : ""}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                            const y = parseFloat(e.target.value) || 0;
+                            handleFormChange("maxTopupMicros", String(Math.round(y * 1000000)));
+                          }}
+                          disabled={isBlocked || isSubmittingForm}
+                        />
+                      </label>
+                    </div>
+                  </div>
                 ) : null}
 
                 {/* Price */}

@@ -126,7 +126,19 @@ export default function DownloadPage() {
         downloadUrl: item.download_url || undefined,
       });
     }
-    return [...realCards, ...mobileMock.map((c) => ({ ...c }))];
+    // Mobile: Android 用 admin 配的真实下载地址（platform=android），iOS 用 admin 配的 App Store 链接或 mock 占位。
+    const androidReal = (realDownloads ?? []).find((it) => /android/i.test(it.platform ?? ""));
+    const iosReal = (realDownloads ?? []).find((it) => /ios/i.test(it.platform ?? ""));
+    const mobileBuilt = mobileMock.map((c) => {
+      if (c.name === "Android" && androidReal?.download_url) {
+        return { ...c, downloadUrl: androidReal.download_url };
+      }
+      if (c.name === "iOS" && iosReal?.download_url) {
+        return { ...c, downloadUrl: iosReal.download_url, disabled: false };
+      }
+      return { ...c };
+    });
+    return [...realCards, ...mobileBuilt];
   })();
 
   const desktopCards = cards.filter((c) => c.platform === "desktop");
@@ -159,7 +171,8 @@ export default function DownloadPage() {
     return (
       <article
         key={c.name}
-        className={`download-card${c.disabled ? " is-disabled" : ""}${isSel ? " is-selected" : ""}`}
+        className={`download-card${c.disabled ? " is-disabled" : ""}`}
+        data-selected={isSel ? "" : undefined}
         data-platform={c.platform}
         data-reveal
         data-reveal-delay={String(Math.min(i, 4))}

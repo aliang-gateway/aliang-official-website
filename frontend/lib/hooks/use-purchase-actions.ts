@@ -15,7 +15,7 @@ export type PurchaseActions = {
   packageActionLoading: boolean;
   prepaidActionLoading: boolean;
   purchaseMessage: { tone: PurchaseMessageTone; text: string } | null;
-  handlePackagePurchase: () => Promise<void>;
+  handlePackagePurchase: (amountMicros?: number) => Promise<void>;
   handlePrepaidTopUp: () => Promise<void>;
 };
 
@@ -82,7 +82,7 @@ export function usePurchaseActions({ sessionToken, dashboard, reload }: UsePurch
     router.replace(nextHref);
   }, [pathname, reload, router, searchParams, sessionToken, t]);
 
-  const handlePackagePurchase = useCallback(async () => {
+  const handlePackagePurchase = useCallback(async (amountMicros?: number) => {
     setPurchaseMessage(null);
 
     if (!sessionToken) {
@@ -108,6 +108,7 @@ export function usePurchaseActions({ sessionToken, dashboard, reload }: UsePurch
         },
         body: JSON.stringify({
           tier_code: selectedTier.code,
+          ...(amountMicros ? { amount_micros: amountMicros } : {}),
         }),
       });
 

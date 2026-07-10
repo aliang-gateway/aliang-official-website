@@ -25,8 +25,8 @@ type DownloadsResponse = {
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
-const platformOptions = ["linux", "darwin", "windows"];
-const fileTypeOptions = ["dmg", "zip", "exe", "deb", "pkg", "bin", "AppImage", "msi"];
+const platformOptions = ["linux", "darwin", "windows", "android", "ios"];
+const fileTypeOptions = ["dmg", "zip", "exe", "deb", "pkg", "bin", "AppImage", "msi", "arm64-v8a", "apk", "universal"];
 
 const versionRegex = /^v\d+\.\d+\.\d+$/;
 

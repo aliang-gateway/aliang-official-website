@@ -297,7 +297,7 @@
       "heroLabel": "服务 / 研究路线",
       "heroTitlePre": "从最新研究，回看已完成",
       "heroTitleEm": "AI 服务",
-      "heroLead": "服务页按“最新在前”的方式展示：先看阿良正在研究的 AI 协同方向，再回看已经可以交付的服务基础。没有伪日期，没有夸张指标。",
+      "heroLead": "先看阿良正在研究的 AI 协同方向，再看已经稳定交付的服务能力——每项都标明真实状态，不编进度、不堆指标。",
       "statsAria": "服务状态摘要",
       "stats": [
         {
@@ -314,8 +314,8 @@
         }
       ],
       "timelineLabel": "时间线",
-      "timelineTitle": "最新研究在前，最早完成的能力收在后面",
-      "timelineLead": "筛选按钮只改变时间线显示，不改变服务状态。用户可以先理解阿良下一步研究方向，再判断哪些能力现在已经可用。",
+      "timelineTitle": "从研究方向到已落地的能力",
+      "timelineLead": "先了解阿良下一步的研究方向，再看哪些能力现在已经可以直接用，可按状态筛选。",
       "filterAria": "服务状态筛选",
       "filters": [
         {
@@ -331,59 +331,48 @@
           "label": "研究中"
         }
       ],
-      "filterAll": "当前显示全部 6 个方向，按最新研究到最早完成排列。",
-      "filterDone": "当前显示 4 个已完成服务，按最近落地到最早基础排列。",
-      "filterResearch": "当前显示 2 个研究中方向，优先查看阿良下一步研究重点。",
+      "filterAll": "当前显示全部 {count} 个方向。",
+      "filterDone": "当前显示 {count} 个已完成服务。",
+      "filterResearch": "当前显示 {count} 个研究中方向。",
       "emptyState": "当前筛选没有匹配的服务方向。切回“全部”查看完整研究路线。",
       "statusDone": "已完成",
       "statusResearch": "研究中",
-      "items": [
-        {
-          "phase": "最新 01 / 研究中",
-          "status": "research",
-          "title": "多 AI 会话并发协同",
-          "desc": "研究多个 AI 会话并行处理同一工程任务时，如何分工、互相校验、合并结论，并保持上下文不互相污染。"
-        },
-        {
-          "phase": "最新 02 / 研究中",
-          "status": "research",
-          "title": "状态同步",
-          "desc": "研究桌面、移动端和云端会话之间的任务状态同步，确保用户从任意设备回到同一个 coding 现场。"
-        },
-        {
-          "phase": "已完成 04 / 最近落地",
-          "status": "done",
-          "title": "手机 vibecoding",
-          "desc": "把 coding 任务从桌面延伸到手机端，让用户可以远程发起、跟进、整理和继续推进开发任务。"
-        },
-        {
-          "phase": "已完成 03 / 稳定交付",
-          "status": "done",
-          "title": "API 中转站",
-          "desc": "把 OpenAI、Anthropic 等主流格式整理成更稳定的调用入口，服务开发者工具、自动化脚本和内部产品接入。"
-        },
-        {
-          "phase": "已完成 02 / 稳定交付",
-          "status": "done",
-          "title": "VSCode Copilot 破解服务",
-          "desc": "针对 VSCode 与 Copilot 工作流做环境整理、使用路径配置和开发场景适配，降低团队上手成本。"
-        },
-        {
-          "phase": "已完成 01 / 最早基础",
-          "status": "done",
-          "title": "Cursor Pro 破解服务",
-          "desc": "围绕 Cursor Pro 使用场景提供接入、配置和维护支持，让开发者把 AI coding 能力放进真实项目节奏。"
-        }
-      ],
+      "loading": "加载中...",
       "closingLabel": "下一步",
       "closingTitle": "需要先安装客户端，再接入你的工作流",
-      "closingLead": "下载页会把桌面端和手机端入口拆开；iOS 当前明确标注暂不支持，避免用户误点。",
+      "closingLead": "下载页按平台提供桌面端和手机端入口，iOS 暂未上线已明确标注。",
       "closingBtn": "前往下载页",
+      "stampAria": "查看套餐定价",
+      "stampText": "VIEW PLANS · 查看套餐 · ",
+      "stampCenter": "套餐",
       "topbarCtx": "服务时间线",
       "topbarMid": [
-        "最新研究在前",
-        "已完成能力在后"
+        "研究方向",
+        "已交付能力"
       ]
+    },
+    "price": {
+      "heroLabel": "套餐 / 定价",
+      "heroTitle": "选一个适合你的方案",
+      "heroLead": "已发布套餐按周期计价，包含模型与 IDE 集成能力。选择后跳转控制台完成开通。",
+      "unitDays": "天",
+      "unitTokens": "tokens",
+      "cta": "立即订阅",
+      "ctaTopup": "立即充值",
+      "redirecting": "跳转 Stripe…",
+      "surchargeHint": "单笔金额低于 {threshold} 的订单将加收 {amount} 手续费",
+      "creditHint": "充值 {paid} → 到账 {credit} 额度",
+      "billLine": "账单 {bill}",
+      "inclFee": "（含手续费 {fee}）",
+      "groupSubscription": "订阅周期",
+      "groupTopup": "额度加量",
+      "range": "充值范围",
+      "loading": "加载中...",
+      "empty": "暂无已发布套餐，稍后再来。",
+      "closingLabel": "下一步",
+      "closingTitle": "选好套餐，先去下载客户端",
+      "closingLead": "套餐在控制台开通，客户端在各平台下载页安装。",
+      "closingBtn": "前往下载页"
     },
     "download": {
       "heroLabel": "下载 / 平台入口",
@@ -391,7 +380,7 @@
       "heroLead": "下载页按平台拆开：Windows、Linux、macOS 是桌面端入口；Android 是手机端入口；iOS 当前明确标注暂不支持。",
       "headLabel": "平台选择",
       "headTitle": "用户先选平台，再进入安装流程",
-      "headLead": "这里不混入营销模块，只保留下载、系统要求和当前支持状态。",
+      "headLead": "按平台选择对应客户端，附系统要求与当前支持状态。",
       "groupDesktopLabel": "桌面端",
       "groupDesktopTitle": "桌面客户端",
       "groupMobileLabel": "手机端",
@@ -472,7 +461,7 @@
       "statusSelected": "{name} 版已选中。请确认系统架构后获取当前安装包。",
       "closingLabel": "服务路线",
       "closingTitle": "下载之前，也可以先看阿良在做什么",
-      "closingLead": "服务页按时间线列出已完成和研究中的方向，避免把不同成熟度的能力混在一起。",
+      "closingLead": "服务页用时间线区分已完成和研究中方向，让每项能力的成熟度一目了然。",
       "closingBtn": "查看服务时间线",
       "metaVersion": "版本：{version}",
       "metaLatest": "最新版本",
@@ -758,7 +747,8 @@
     "articles": "文章",
     "docs": "文档",
     "configCenter": "配置中心",
-    "downloads": "下载"
+    "downloads": "下载",
+    "services": "服务时间线"
   },
   "adminHome": {
     "checking": "正在检查管理会话...",
@@ -1020,6 +1010,9 @@
     "prepaidTopUp": "预付充值",
     "redeemEndpoint": "充值端点：",
     "currencyHint": "币种提示：{currency}。如果上游充值不可用，此卡片会显示非破坏性错误并保持当前余额不变。",
+    "topupAmountLabel": "充值金额（元）",
+    "topupRateHint": "¥1 = ${rate}，按倍率计入上游额度",
+    "topupRangeLabel": "范围",
     "redeemCode": "充值码",
     "submittingTopUp": "充值提交中...",
     "redeemPrepaidCode": "兑换预付充值码",
@@ -1048,6 +1041,10 @@
     "pasteExistingKey": "粘贴已有的路由用户密钥",
     "keySourceDescription": "这是弹窗中所有模板的唯一密钥来源。粘贴账户列表中已有的路由密钥，并视其为敏感信息。",
     "clearKey": "清除密钥",
+    "createKey": "创建密钥",
+    "creatingKey": "创建中…",
+    "createKeyFailed": "创建密钥失败，可在账户页手动创建。",
+    "defaultKeyName": "默认密钥",
     "sensitiveKeyWarning": "敏感密钥警告：下方渲染的代码片段包含您的真实用户密钥，而非占位符。请避免截图、共享终端和粘贴日志。",
     "template": "模板",
     "renderedClientConfig": "已渲染的客户端配置",

@@ -37,7 +37,6 @@ export function SiteHeader() {
     : undefined;
 
   const navLinks = [
-    { href: "/blog", label: t("blog") },
     { href: "/docs", label: t("document") },
     { href: "/services", label: t("service") },
   ];

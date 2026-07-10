@@ -1,29 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 type Stat = { value: string; label: string };
 type Filter = { key: string; label: string };
-type TimelineItem = { phase: string; status: "research" | "done"; title: string; desc: string };
+type ServiceItem = {
+  id: number;
+  status: "research" | "done";
+  phase: string;
+  title: string;
+  desc: string;
+};
 
 export default function ServicesPage() {
   const s = useTranslations("editorial.services");
+  const locale = useLocale();
+  const lang = locale === "en" ? "en" : "zh";
 
-  const stats = s.raw("stats") as Stat[];
+  const rawStats = s.raw("stats") as Stat[];
   const filters = s.raw("filters") as Filter[];
-  const items = s.raw("items") as TimelineItem[];
+
+  const [items, setItems] = useState<ServiceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/public/services?lang=${encodeURIComponent(lang)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setItems(Array.isArray(data?.services) ? (data.services as ServiceItem[]) : []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
 
   const [filter, setFilter] = useState("all");
   const visible = filter === "all" ? items : items.filter((it) => it.status === filter);
   const feedbackKey = filter as "all" | "done" | "research";
   const feedbackMap: Record<string, string> = {
-    all: s("filterAll"),
-    done: s("filterDone"),
-    research: s("filterResearch"),
+    all: s("filterAll", { count: visible.length }),
+    done: s("filterDone", { count: visible.length }),
+    research: s("filterResearch", { count: visible.length }),
   };
   const empty = visible.length === 0;
+
+  // stats: derive counts from live items so they always match the DB.
+  const doneCount = items.filter((it) => it.status === "done").length;
+  const researchCount = items.filter((it) => it.status === "research").length;
+  const stats = [
+    { value: String(doneCount), label: rawStats[0]?.label ?? "" },
+    { value: String(researchCount), label: rawStats[1]?.label ?? "" },
+    { value: rawStats[2]?.value ?? "1", label: rawStats[2]?.label ?? "" },
+  ];
 
   return (
     <div className="page-services">
@@ -47,6 +84,22 @@ export default function ServicesPage() {
           </div>
           <figure className="plate" data-reveal>
             <img src="/editorial/capabilities.svg" alt="" width={1024} height={1024} loading="lazy" />
+            <Link href="/price" className="price-stamp" aria-label={s("stampAria")}>
+              <span className="stamp-ring" aria-hidden="true">
+                <svg viewBox="0 0 120 120">
+                  <defs>
+                    <path id="stamp-circle-path" d="M60,60 m-46,0 a46,46 0 1,1 92,0 a46,46 0 1,1 -92,0" fill="none" />
+                  </defs>
+                  <text>
+                    <textPath href="#stamp-circle-path" startOffset="0">
+                      {s("stampText")}
+                    </textPath>
+                  </text>
+                </svg>
+              </span>
+              <span className="stamp-center" aria-hidden="true">¥</span>
+              <span className="stamp-sub">{s("stampCenter")}</span>
+            </Link>
           </figure>
         </div>
       </header>
@@ -78,35 +131,26 @@ export default function ServicesPage() {
               ))}
             </div>
             <p className="filter-feedback" aria-live="polite">
-              {empty ? s("emptyState") : feedbackMap[feedbackKey] ?? feedbackMap.all}
+              {loading ? s("loading") : empty ? s("emptyState") : feedbackMap[feedbackKey] ?? feedbackMap.all}
             </p>
 
             <div className="timeline">
-              {items.map((it, i) => {
-                const hidden = filter !== "all" && it.status !== filter;
-                const isFirstVisible = !hidden && visible.indexOf(it) === 0;
-                return (
-                  <article
-                    key={it.title}
-                    className={`timeline-item${hidden ? " is-hidden" : ""}${
-                      isFirstVisible ? " is-current" : ""
-                    }`}
-                    data-status={it.status}
-                    hidden={hidden}
-                    data-reveal
-                    data-reveal-delay={i === 0 ? undefined : String(Math.min(i, 3))}
-                  >
-                    <div className="phase">{it.phase}</div>
-                    <div>
-                      <h3>{it.title}</h3>
-                      <p>{it.desc}</p>
-                    </div>
-                    <span className={`status${it.status === "research" ? " research" : ""}`}>
-                      {it.status === "research" ? s("statusResearch") : s("statusDone")}
-                    </span>
-                  </article>
-                );
-              })}
+              {visible.map((it, i) => (
+                <article
+                  key={it.id}
+                  className={`timeline-item${i === 0 ? " is-current" : ""}`}
+                  data-status={it.status}
+                >
+                  <div className="phase">{it.phase}</div>
+                  <div>
+                    <h3>{it.title}</h3>
+                    <p>{it.desc}</p>
+                  </div>
+                  <span className={`status${it.status === "research" ? " research" : ""}`}>
+                    {it.status === "research" ? s("statusResearch") : s("statusDone")}
+                  </span>
+                </article>
+              ))}
             </div>
           </div>
         </section>

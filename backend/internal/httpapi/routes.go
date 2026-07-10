@@ -32,6 +32,7 @@ import (
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
 	"ai-api-portal/backend/internal/scanlogin"
+	"ai-api-portal/backend/internal/servicedirection"
 	portalstripe "ai-api-portal/backend/internal/stripe"
 	"ai-api-portal/backend/internal/sub2api"
 	"ai-api-portal/backend/internal/sub2apiauth"
@@ -46,6 +47,7 @@ type routes struct {
 	docSvc               *doc.Service
 	configCenterSvc      *configcenter.Service
 	downloadSvc          *download.Service
+	serviceDirectionSvc  *servicedirection.Service
 	fulfillmentSvc       *fulfillment.Service
 	userSvc              *user.Service
 	sub2api              *sub2api.Gateway
@@ -250,6 +252,7 @@ type distributorInvitationResponse struct {
 	DistributorEmail  string `json:"distributor_email,omitempty"`
 	DistributorName   string `json:"distributor_name,omitempty"`
 	UserID            int64  `json:"user_id"`
+	UpstreamUserID    *int64 `json:"upstream_user_id,omitempty"`
 	Email             string `json:"email"`
 	Name              string `json:"name"`
 	Source            string `json:"source"`
@@ -259,6 +262,7 @@ type distributorInvitationResponse struct {
 
 type distributorUserSummaryResponse struct {
 	UserID             int64  `json:"user_id"`
+	UpstreamUserID     *int64 `json:"upstream_user_id,omitempty"`
 	Email              string `json:"email"`
 	Name               string `json:"name"`
 	PackageCode        string `json:"package_code,omitempty"`
@@ -300,7 +304,8 @@ type listDistributorInvitationsResponse struct {
 }
 
 type createPackageCheckoutSessionRequest struct {
-	TierCode string `json:"tier_code"`
+	TierCode     string `json:"tier_code"`
+	AmountMicros int64  `json:"amount_micros,omitempty"`
 }
 
 type createPackageCheckoutSessionResponse struct {
@@ -369,35 +374,41 @@ type adminAvailableGroupsResponse struct {
 }
 
 type adminPackageRequest struct {
-	Code         string  `json:"code,omitempty"`
-	Name         string  `json:"name"`
-	Level        string  `json:"level,omitempty"`
-	GroupIDs     []int64 `json:"group_ids"`
-	PriceMicros  int64   `json:"price_micros"`
-	ValueType    string  `json:"value_type"`
-	ValueAmount  int64   `json:"value_amount"`
-	Description  string  `json:"description"`
-	FeaturesJSON string  `json:"features_json"`
-	IsEnabled    *bool   `json:"is_enabled,omitempty"`
-	IsVisible    *bool   `json:"is_visible,omitempty"`
-	IsPublished  *bool   `json:"is_published,omitempty"`
+	Code           string  `json:"code,omitempty"`
+	Name           string  `json:"name"`
+	Level          string  `json:"level,omitempty"`
+	GroupIDs       []int64 `json:"group_ids"`
+	PriceMicros    int64   `json:"price_micros"`
+	ValueType      string  `json:"value_type"`
+	ValueAmount    int64   `json:"value_amount"`
+	Rate           float64 `json:"rate,omitempty"`
+	MinTopupMicros int64   `json:"min_topup_micros,omitempty"`
+	MaxTopupMicros int64   `json:"max_topup_micros,omitempty"`
+	Description    string  `json:"description"`
+	FeaturesJSON   string  `json:"features_json"`
+	IsEnabled      *bool   `json:"is_enabled,omitempty"`
+	IsVisible      *bool   `json:"is_visible,omitempty"`
+	IsPublished    *bool   `json:"is_published,omitempty"`
 }
 
 type adminPackageResponse struct {
-	Code        string   `json:"code"`
-	Name        string   `json:"name"`
-	Level       string   `json:"level"`
-	GroupIDs    []int64  `json:"group_ids"`
-	PriceMicros int64    `json:"price_micros"`
-	ValueType   string   `json:"value_type"`
-	ValueAmount int64    `json:"value_amount"`
-	Description string   `json:"description"`
-	Features    []string `json:"features"`
-	IsEnabled   bool     `json:"is_enabled"`
-	IsVisible   bool     `json:"is_visible"`
-	IsPublished bool     `json:"is_published"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
+	Code           string   `json:"code"`
+	Name           string   `json:"name"`
+	Level          string   `json:"level"`
+	GroupIDs       []int64  `json:"group_ids"`
+	PriceMicros    int64    `json:"price_micros"`
+	ValueType      string   `json:"value_type"`
+	ValueAmount    int64    `json:"value_amount"`
+	Rate           float64  `json:"rate"`
+	MinTopupMicros int64    `json:"min_topup_micros"`
+	MaxTopupMicros int64    `json:"max_topup_micros"`
+	Description    string   `json:"description"`
+	Features       []string `json:"features"`
+	IsEnabled      bool     `json:"is_enabled"`
+	IsVisible      bool     `json:"is_visible"`
+	IsPublished    bool     `json:"is_published"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
 }
 
 type listAdminPackagesResponse struct {
@@ -405,14 +416,17 @@ type listAdminPackagesResponse struct {
 }
 
 type publicPackageResponse struct {
-	Code        string   `json:"code"`
-	Name        string   `json:"name"`
-	PriceMicros int64    `json:"price_micros"`
-	ValueType   string   `json:"value_type"`
-	ValueAmount int64    `json:"value_amount"`
-	Description string   `json:"description"`
-	Features    []string `json:"features"`
-	IsPublished bool     `json:"is_published"`
+	Code           string   `json:"code"`
+	Name           string   `json:"name"`
+	PriceMicros    int64    `json:"price_micros"`
+	ValueType      string   `json:"value_type"`
+	ValueAmount    int64    `json:"value_amount"`
+	Rate           float64  `json:"rate"`
+	MinTopupMicros int64    `json:"min_topup_micros"`
+	MaxTopupMicros int64    `json:"max_topup_micros"`
+	Description    string   `json:"description"`
+	Features       []string `json:"features"`
+	IsPublished    bool     `json:"is_published"`
 }
 
 type listPublicPackagesResponse struct {
@@ -756,6 +770,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		docSvc:               doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		configCenterSvc:      configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		downloadSvc:          download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		serviceDirectionSvc:  servicedirection.NewService(database, strings.TrimSpace(opts.SQLDialect)),
 		fulfillmentSvc:       fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
 		userSvc:              userSvc,
 		sub2api:              sub2apiGateway,
@@ -886,6 +901,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("GET /public/articles", r.handlePublicListArticles)
 	mux.HandleFunc("GET /public/articles/{slug}", r.handlePublicGetArticle)
 	mux.HandleFunc("GET /public/packages", http.HandlerFunc(r.handlePublicListPackages))
+	mux.HandleFunc("GET /public/payment-config", http.HandlerFunc(r.handlePublicGetPaymentConfig))
 	mux.Handle("POST /subscription", authenticated(http.HandlerFunc(r.handleCreateSubscription)))
 	mux.Handle("POST /checkout/package", authenticated(http.HandlerFunc(r.handleCreatePackageCheckoutSession)))
 	mux.Handle("GET /admin/unit-prices", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListUnitPrices))))
@@ -970,10 +986,16 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("GET /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetDownload))))
 	mux.Handle("PUT /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateDownload))))
 	mux.Handle("DELETE /admin/download-center/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteDownload))))
+	mux.Handle("GET /admin/services", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminListServiceDirections))))
+	mux.Handle("POST /admin/services", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCreateServiceDirection))))
+	mux.Handle("GET /admin/services/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetServiceDirection))))
+	mux.Handle("PUT /admin/services/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateServiceDirection))))
+	mux.Handle("DELETE /admin/services/{id}", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminDeleteServiceDirection))))
 
 	// Download Center: public version check (no auth required)
 	mux.HandleFunc("GET /public/downloads/check", r.handlePublicVersionCheck)
 	mux.HandleFunc("GET /public/downloads", r.handlePublicListDownloads)
+	mux.HandleFunc("GET /public/services", r.handlePublicListServiceDirections)
 
 	mux.HandleFunc("POST /api/ai/request", r.handleAIRequest)
 
@@ -1643,7 +1665,8 @@ func (r *routes) handleUserGroupsAvailablePassthrough(w http.ResponseWriter, req
 }
 
 func (r *routes) handleUserAPIKeysPassthrough(w http.ResponseWriter, req *http.Request) {
-	r.handleFilteredAPIKeysListPassthrough(w, req)
+	// 不过滤：用户能看到自己在 sub2api 的所有 keys（换套餐后旧 group 的 keys 仍可见，不被 active-subscription 过滤）。
+	r.handleDashboardPassthrough(w, req, "/api/v1/api-keys")
 }
 
 func (r *routes) handleUserCodeRedeemPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -1870,7 +1893,6 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
 	isVisible, isPublished := packageFlagsForCreate(normalized)
 
 	tx, err := r.db.BeginTx(req.Context(), nil)
@@ -1882,9 +1904,9 @@ func (r *routes) handleAdminCreatePackage(w http.ResponseWriter, req *http.Reque
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tierID, err := db.InsertID(req.Context(), r.sqlDialect, tx, `
-		INSERT INTO als_tiers(code, name, level, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "id", normalized.Code, normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublished, isVisible, isPublished, now, now)
+		INSERT INTO als_tiers(code, name, level, price_micros, value_type, value_amount, rate, min_topup_micros, max_topup_micros, description, features_json, is_enabled, is_visible, is_published, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "id", normalized.Code, normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Rate, normalized.MinTopupMicros, normalized.MaxTopupMicros, normalized.Description, normalized.FeaturesJSON, isPublished, isVisible, isPublished, now, now)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("failed to create package: %v", err))
 		return
@@ -1957,7 +1979,7 @@ func (r *routes) handleAdminUpdatePackage(w http.ResponseWriter, req *http.Reque
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, level = ?, price_micros = ?, value_type = ?, value_amount = ?, description = ?, features_json = ?, is_enabled = ?, is_visible = ?, is_published = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Description, normalized.FeaturesJSON, isPublishedVal, isVisibleVal, isPublishedVal, now, tierID)
+	result, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `UPDATE als_tiers SET name = ?, level = ?, price_micros = ?, value_type = ?, value_amount = ?, rate = ?, min_topup_micros = ?, max_topup_micros = ?, description = ?, features_json = ?, is_enabled = ?, is_visible = ?, is_published = ?, updated_at = ? WHERE id = ?;`), normalized.Name, normalized.Level, normalized.PriceMicros, normalized.ValueType, normalized.ValueAmount, normalized.Rate, normalized.MinTopupMicros, normalized.MaxTopupMicros, normalized.Description, normalized.FeaturesJSON, isPublishedVal, isVisibleVal, isPublishedVal, now, tierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update package")
 		return
@@ -2274,7 +2296,7 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 
 	slog.Debug("auth passthrough upstream response", "path", upstreamPath, "status", resp.StatusCode)
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/refresh") {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/refresh" || upstreamPath == "/api/v1/auth/register") {
 		localUserID, found, err := r.captureSub2APITokens(req.Context(), req, requestEmail, requestRefreshToken, responseBody)
 		if err != nil {
 			slog.Error("captureSub2APITokens failed", "path", upstreamPath, "error", err)
@@ -3964,12 +3986,11 @@ func (r *routes) handlePublicEstimate(w http.ResponseWriter, req *http.Request) 
 // @Success 200 {object} publicArticleListResponse
 func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Request) {
 	rows, err := r.db.QueryContext(req.Context(), db.Rebind(r.sqlDialect, `
-		SELECT code, name, price_micros, value_type, value_amount, description, features_json, is_published
+		SELECT code, name, price_micros, value_type, value_amount, description, features_json, is_published, rate, min_topup_micros, max_topup_micros
 		FROM als_tiers
 		WHERE is_visible = ?
-			AND level = ?
 		ORDER BY price_micros ASC;
-	`), true, packageLevelAdmin)
+	`), true)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list packages")
 		return
@@ -3987,20 +4008,26 @@ func (r *routes) handlePublicListPackages(w http.ResponseWriter, req *http.Reque
 			description  string
 			featuresJSON string
 			isPublished  bool
+			rate         sql.NullFloat64
+			minTopup     sql.NullInt64
+			maxTopup     sql.NullInt64
 		)
-		if err := rows.Scan(&code, &name, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isPublished); err != nil {
+		if err := rows.Scan(&code, &name, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isPublished, &rate, &minTopup, &maxTopup); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list packages")
 			return
 		}
 		packages = append(packages, publicPackageResponse{
-			Code:        code,
-			Name:        name,
-			PriceMicros: priceMicros,
-			ValueType:   valueType,
-			ValueAmount: valueAmount,
-			Description: description,
-			Features:    parseFeaturesJSON(featuresJSON),
-			IsPublished: isPublished,
+			Code:           code,
+			Name:           name,
+			PriceMicros:    priceMicros,
+			ValueType:      valueType,
+			ValueAmount:    valueAmount,
+			Rate:           rate.Float64,
+			MinTopupMicros: minTopup.Int64,
+			MaxTopupMicros: maxTopup.Int64,
+			Description:    description,
+			Features:       parseFeaturesJSON(featuresJSON),
+			IsPublished:    isPublished,
 		})
 	}
 
@@ -4441,14 +4468,45 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		writeError(w, http.StatusBadRequest, "package is not published")
 		return
 	}
-	if pkg.Level != packageLevelAdmin {
-		writeError(w, http.StatusForbidden, "package is not available for public checkout")
+	if err := r.validatePackageGroupBindings(req.Context(), adminPackageRequest{
+		GroupIDs:    pkg.GroupIDs,
+		ValueType:   pkg.ValueType,
+		ValueAmount: pkg.ValueAmount,
+	}); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	amountMinor, err := microsToCurrencyMinor(pkg.PriceMicros)
+	// 加量包（balance + rate>0）按用户填的金额收款；其他套餐用 tier 固定价。
+	priceMicros := pkg.PriceMicros
+	if pkg.ValueType == "balance" && pkg.Rate > 0 {
+		if payload.AmountMicros <= 0 {
+			writeError(w, http.StatusBadRequest, "amount_micros is required for top-up packages")
+			return
+		}
+		if pkg.MinTopupMicros > 0 && payload.AmountMicros < pkg.MinTopupMicros {
+			writeError(w, http.StatusBadRequest, "amount is below the minimum top-up")
+			return
+		}
+		if pkg.MaxTopupMicros > 0 && payload.AmountMicros > pkg.MaxTopupMicros {
+			writeError(w, http.StatusBadRequest, "amount is above the maximum top-up")
+			return
+		}
+		priceMicros = payload.AmountMicros
+	}
+	// 手续费：enabled 且 订单金额 < 阈值 时加收（admin 通过 global-vars 配置）。
+	feeMicros := int64(0)
+	if surchargeEnabled, feeMicrosCfg, thresholdMicros := r.loadPaymentSurcharge(req.Context()); surchargeEnabled && thresholdMicros > 0 && priceMicros < thresholdMicros {
+		feeMicros = feeMicrosCfg
+	}
+	totalMicros := priceMicros + feeMicros
+	amountMinor, err := microsToCurrencyMinor(totalMicros)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	feeMinor := int64(0)
+	if feeMicros > 0 {
+		feeMinor, _ = microsToCurrencyMinor(feeMicros)
 	}
 
 	customerEmail := strings.TrimSpace(authUser.Email)
@@ -4473,7 +4531,7 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to create stripe checkout session: %v", err))
 		return
 	}
-	if err := r.recordCheckoutSession(req.Context(), "stripe", session.ID, authUser.ID, pkg, customerEmail, amountMinor, r.stripeClient.Currency()); err != nil {
+	if err := r.recordCheckoutSession(req.Context(), "stripe", session.ID, authUser.ID, pkg, customerEmail, amountMinor, r.stripeClient.Currency(), feeMinor); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to persist checkout session")
 		return
 	}
@@ -5166,7 +5224,7 @@ func (r *routes) handleAdminAssignPackage(w http.ResponseWriter, req *http.Reque
 	idempotencyKey := fmt.Sprintf("admin-assign-%s-%d-%d", payload.TierCode, upstreamUserID, time.Now().UTC().UnixNano())
 
 	checkoutSessionID := fmt.Sprintf("cs_admin_%d_%d", upstreamUserID, time.Now().UTC().UnixMilli())
-	if recordErr := r.recordCheckoutSession(req.Context(), "admin", checkoutSessionID, localUserID, pkg, "", pkg.PriceMicros, "cny"); recordErr != nil {
+	if recordErr := r.recordCheckoutSession(req.Context(), "admin", checkoutSessionID, localUserID, pkg, "", pkg.PriceMicros, "cny", 0); recordErr != nil {
 		writeError(w, http.StatusInternalServerError, "failed to record checkout session")
 		return
 	}
@@ -5884,10 +5942,12 @@ func (r *routes) listDistributorInvitations(ctx context.Context, distributorUser
 			u.name,
 			dub.source,
 			dub.created_at,
-			dub.updated_at
+			dub.updated_at,
+			sat.upstream_user_id
 		FROM als_distributor_user_bindings dub
 		JOIN als_users du ON du.id = dub.distributor_user_id
 		JOIN als_users u ON u.id = dub.user_id
+		LEFT JOIN als_sub2api_auth_tokens sat ON sat.user_id = u.id
 	`
 	queryArgs := append([]any(nil), args...)
 	if distributorUserID > 0 {
@@ -5918,6 +5978,7 @@ func (r *routes) listDistributorInvitations(ctx context.Context, distributorUser
 			&item.Source,
 			&createdAt,
 			&updatedAt,
+			&item.UpstreamUserID,
 		); err != nil {
 			return nil, paginationResponse{}, err
 		}
@@ -5944,6 +6005,7 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 	rows, err := r.db.QueryContext(ctx, db.Rebind(r.sqlDialect, `
 		SELECT
 			u.id,
+			sat.upstream_user_id,
 			u.email,
 			u.name,
 			COALESCE(t.code, ''),
@@ -5951,6 +6013,7 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 			COALESCE(s.status, '')
 		FROM als_distributor_user_bindings rub
 		JOIN als_users u ON u.id = rub.user_id
+		LEFT JOIN als_sub2api_auth_tokens sat ON sat.user_id = u.id
 		LEFT JOIN als_subscriptions s ON s.user_id = u.id AND s.status = 'active' AND s.ended_at IS NULL
 		LEFT JOIN als_tiers t ON t.id = s.tier_id
 		WHERE rub.distributor_user_id = ?
@@ -5967,6 +6030,7 @@ func (r *routes) listDistributorUsers(ctx context.Context, distributorUserID int
 		var item distributorUserSummaryResponse
 		if err := rows.Scan(
 			&item.UserID,
+			&item.UpstreamUserID,
 			&item.Email,
 			&item.Name,
 			&item.PackageCode,
@@ -6485,7 +6549,7 @@ type paymentRecord struct {
 	FulfillmentJobID  *int64
 }
 
-func (r *routes) recordCheckoutSession(ctx context.Context, provider, checkoutSessionID string, userID int64, pkg adminPackageResponse, customerEmail string, amountMinor int64, currency string) error {
+func (r *routes) recordCheckoutSession(ctx context.Context, provider, checkoutSessionID string, userID int64, pkg adminPackageResponse, customerEmail string, amountMinor int64, currency string, feeMinor int64) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	payloadJSON, _ := json.Marshal(map[string]any{
 		"checkout_session_id": checkoutSessionID,
@@ -6500,14 +6564,15 @@ func (r *routes) recordCheckoutSession(ctx context.Context, provider, checkoutSe
 			package_name,
 			customer_email,
 			amount_minor,
+			fee_minor,
 			currency,
 			status,
 			payload_json,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-	`), provider, checkoutSessionID, userID, pkg.Code, pkg.Name, strings.TrimSpace(customerEmail), amountMinor, strings.ToLower(strings.TrimSpace(currency)), "checkout_created", string(payloadJSON), now, now)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+	`), provider, checkoutSessionID, userID, pkg.Code, pkg.Name, strings.TrimSpace(customerEmail), amountMinor, feeMinor, strings.ToLower(strings.TrimSpace(currency)), "checkout_created", string(payloadJSON), now, now)
 	return err
 }
 
@@ -6921,12 +6986,22 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 	}
 
 	var fulfillmentErr error
+	isBalance := strings.TrimSpace(pkg.ValueType) == "balance"
 	switch strings.TrimSpace(pkg.ValueType) {
 	case "", "days", "balance":
 		if strings.TrimSpace(pkg.ValueType) == "balance" {
-			amount := microsToFloatCurrency(pkg.ValueAmount)
+			creditAmount := microsToFloatCurrency(pkg.ValueAmount)
+			if pkg.Rate > 0 {
+				// 加量包：余额 = 用户实付元 × 倍率（美元）。实付按 checkout_session_id 查 payment_records。
+				paidMicros, paidErr := r.loadPaidAmountMicrosByCheckoutSession(ctx, strings.TrimSpace(payload.OrderID))
+				if paidErr != nil {
+					fulfillmentErr = paidErr
+					break
+				}
+				creditAmount = microsToFloatCurrency(paidMicros) * pkg.Rate
+			}
 			_, fulfillmentErr = r.proxyClient.UpdateUserBalance(ctx, upstreamUserID, proxy.UpdateUserBalanceRequest{
-				Balance:   amount,
+				Balance:   creditAmount,
 				Operation: "add",
 				Notes:     fmt.Sprintf("stripe package purchase %s", pkg.Code),
 			}, parentIdempotencyKey+":package:balance")
@@ -6935,7 +7010,7 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 			}
 		}
 
-		if pkg.ValueAmount <= 0 {
+		if !isBalance && pkg.ValueAmount <= 0 {
 			if len(classifiedGroups.SubscriptionGroupIDs) > 0 {
 				fulfillmentErr = errors.New("package days value must be positive for subscription groups")
 				break
@@ -6956,21 +7031,24 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		if fulfillmentErr != nil {
 			break
 		}
-		for _, groupID := range classifiedGroups.SubscriptionGroupIDs {
-			fulfillmentErr = r.proxyClient.EnsureAdminSubscriptionInGroup(
-				ctx,
-				upstreamUserID,
-				groupID,
-				validityDays,
-				fmt.Sprintf("stripe package purchase %s", pkg.Code),
-				parentIdempotencyKey,
-			)
-			if fulfillmentErr != nil {
-				break
-			}
-			if ensureErr := r.ensurePackageUserKeyInGroup(ctx, payload.UserID, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
-				fulfillmentErr = ensureErr
-				break
+		// 订阅组：days 套餐按 validityDays 授权；balance 套餐（加量包）无天数概念，跳过，避免配置冗余导致发放失败。
+		if !isBalance {
+			for _, groupID := range classifiedGroups.SubscriptionGroupIDs {
+				fulfillmentErr = r.proxyClient.EnsureAdminSubscriptionInGroup(
+					ctx,
+					upstreamUserID,
+					groupID,
+					validityDays,
+					fmt.Sprintf("stripe package purchase %s", pkg.Code),
+					parentIdempotencyKey,
+				)
+				if fulfillmentErr != nil {
+					break
+				}
+				if ensureErr := r.ensurePackageUserKeyInGroup(ctx, payload.UserID, upstreamUserID, groupID, parentIdempotencyKey); ensureErr != nil {
+					fulfillmentErr = ensureErr
+					break
+				}
 			}
 		}
 	default:
@@ -6990,6 +7068,60 @@ func (r *routes) executePackagePurchaseFulfillment(ctx context.Context, job *ful
 		return applyErr
 	}
 	return nil
+}
+
+// loadPaidAmountMicrosByCheckoutSession returns the user-paid package-price portion
+// (excluding surcharge) in currency micros (1e6 per yuan). Looked up by checkout_session_id
+// because payment_records is created at checkout time, while fulfillment_job_id is only
+// backfilled after fulfillment runs — querying by fulfillment_job_id races and may find no row.
+func (r *routes) loadPaidAmountMicrosByCheckoutSession(ctx context.Context, checkoutSessionID string) (int64, error) {
+	if strings.TrimSpace(checkoutSessionID) == "" {
+		return 0, errors.New("missing checkout session id for paid amount lookup")
+	}
+	var amountMinor, feeMinor int64
+	err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect,
+		`SELECT amount_minor, fee_minor FROM als_payment_records WHERE checkout_session_id = ? ORDER BY id DESC LIMIT 1;`), checkoutSessionID).Scan(&amountMinor, &feeMinor)
+	if err != nil {
+		return 0, fmt.Errorf("load paid amount for checkout session %s: %w", checkoutSessionID, err)
+	}
+	// 余额基数 = 实付 − 手续费（手续费不计入充值额度）；minor(1/100) → micros(1e6) ×1e4。
+	base := amountMinor - feeMinor
+	if base < 0 {
+		base = 0
+	}
+	return base * 10000, nil
+}
+
+// loadPaymentSurcharge reads admin-configurable handling-fee settings from global-vars.
+// Missing/invalid → disabled (zeros).
+func (r *routes) loadPaymentSurcharge(ctx context.Context) (enabled bool, feeMicros int64, thresholdMicros int64) {
+	if r.configCenterSvc == nil {
+		return false, 0, 0
+	}
+	if v, _ := r.configCenterSvc.GetGlobalVar(ctx, "payment_surcharge_enabled"); v != nil {
+		enabled = strings.EqualFold(strings.TrimSpace(v.VarValue), "true")
+	}
+	if v, _ := r.configCenterSvc.GetGlobalVar(ctx, "payment_surcharge_amount"); v != nil {
+		if yuan, err := strconv.ParseFloat(strings.TrimSpace(v.VarValue), 64); err == nil && yuan > 0 {
+			feeMicros = int64(yuan * 1_000_000)
+		}
+	}
+	if v, _ := r.configCenterSvc.GetGlobalVar(ctx, "payment_surcharge_threshold"); v != nil {
+		if yuan, err := strconv.ParseFloat(strings.TrimSpace(v.VarValue), 64); err == nil && yuan > 0 {
+			thresholdMicros = int64(yuan * 1_000_000)
+		}
+	}
+	return
+}
+
+// handlePublicGetPaymentConfig exposes the surcharge rule so the marketing page can display it.
+func (r *routes) handlePublicGetPaymentConfig(w http.ResponseWriter, req *http.Request) {
+	enabled, feeMicros, thresholdMicros := r.loadPaymentSurcharge(req.Context())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"surcharge_enabled":          enabled,
+		"surcharge_amount_micros":    feeMicros,
+		"surcharge_threshold_micros": thresholdMicros,
+	})
 }
 
 func (r *routes) ensurePackageUserKeyInGroup(ctx context.Context, localUserID, upstreamUserID, groupID int64, parentIdempotencyKey string) error {
@@ -7605,6 +7737,9 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			t.is_published,
 			t.created_at,
 			t.updated_at,
+			t.rate,
+			t.min_topup_micros,
+			t.max_topup_micros,
 			tgb.group_id
 		FROM als_tiers t
 		LEFT JOIN als_tier_group_bindings tgb ON tgb.tier_id = t.id
@@ -7635,9 +7770,12 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			isPublished  bool
 			createdAt    string
 			updatedAt    string
+			rate         sql.NullFloat64
+			minTopup     sql.NullInt64
+			maxTopup     sql.NullInt64
 			groupID      sql.NullInt64
 		)
-		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &level, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &isVisible, &isPublished, &createdAt, &updatedAt, &groupID); err != nil {
+		if err := rows.Scan(&tierID, &pkgCode, &pkgName, &level, &priceMicros, &valueType, &valueAmount, &description, &featuresJSON, &isEnabled, &isVisible, &isPublished, &createdAt, &updatedAt, &rate, &minTopup, &maxTopup, &groupID); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(level) == "" {
@@ -7649,20 +7787,23 @@ func (r *routes) listAdminPackages(ctx context.Context) ([]adminPackageResponse,
 			idx = len(packages)
 			packageIndex[tierID] = idx
 			packages = append(packages, adminPackageResponse{
-				Code:        pkgCode,
-				Name:        pkgName,
-				Level:       level,
-				PriceMicros: priceMicros,
-				ValueType:   valueType,
-				ValueAmount: valueAmount,
-				Description: description,
-				Features:    parseFeaturesJSON(featuresJSON),
-				IsEnabled:   isEnabled,
-				IsVisible:   isVisible,
-				IsPublished: isPublished,
-				GroupIDs:    []int64{},
-				CreatedAt:   createdAt,
-				UpdatedAt:   updatedAt,
+				Code:           pkgCode,
+				Name:           pkgName,
+				Level:          level,
+				PriceMicros:    priceMicros,
+				ValueType:      valueType,
+				ValueAmount:    valueAmount,
+				Description:    description,
+				Features:       parseFeaturesJSON(featuresJSON),
+				IsEnabled:      isEnabled,
+				IsVisible:      isVisible,
+				IsPublished:    isPublished,
+				GroupIDs:       []int64{},
+				CreatedAt:      createdAt,
+				UpdatedAt:      updatedAt,
+				Rate:           rate.Float64,
+				MinTopupMicros: minTopup.Int64,
+				MaxTopupMicros: maxTopup.Int64,
 			})
 		}
 
@@ -8338,11 +8479,15 @@ func validatePackageValueForClassifiedGroups(valueType string, valueAmount int64
 		return fmt.Errorf("package contains groups that do not exist in sub2api: %s", joinInt64s(classified.MissingGroupIDs))
 	}
 	if len(classified.SubscriptionGroupIDs) > 0 {
-		if strings.TrimSpace(valueType) != "days" {
-			return fmt.Errorf("packages with subscription groups must use value_type 'days'; subscription group_ids: %s", joinInt64s(classified.SubscriptionGroupIDs))
-		}
-		if valueAmount <= 0 {
-			return errors.New("value_amount must be > 0 for subscription groups")
+		if strings.TrimSpace(valueType) == "balance" {
+			// balance（加量包）无天数概念，绑订阅组时 fulfillment 会忽略订阅组（只加余额 + 标准组），允许。
+		} else {
+			if strings.TrimSpace(valueType) != "days" {
+				return fmt.Errorf("packages with subscription groups must use value_type 'days' (or 'balance', which skips subscription groups); subscription group_ids: %s", joinInt64s(classified.SubscriptionGroupIDs))
+			}
+			if valueAmount <= 0 {
+				return errors.New("value_amount must be > 0 for subscription groups")
+			}
 		}
 	}
 	return nil

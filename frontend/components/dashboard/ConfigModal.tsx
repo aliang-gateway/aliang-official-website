@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslations } from "next-intl";
 
 import { TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
@@ -20,6 +20,7 @@ type ConfigModalProps = {
   copyState: "idle" | "copied" | "error";
   onCopy: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
+  sessionToken: string;
 };
 
 export function ConfigModal({
@@ -36,11 +37,36 @@ export function ConfigModal({
   copyState,
   onCopy,
   triggerRef,
+  sessionToken,
 }: ConfigModalProps) {
   const t = useTranslations("dashboard");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const hadOpenRef = useRef(false);
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createKeyError, setCreateKeyError] = useState<string | null>(null);
+
+  const handleCreateKey = async () => {
+    setCreateKeyError(null);
+    setCreatingKey(true);
+    try {
+      const res = await fetch("/api-keys", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ name: t("defaultKeyName") }),
+      });
+      const payload = (await res.json()) as { data?: { key?: string }; key?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(payload?.error ?? t("createKeyFailed"));
+      }
+      const createdKey = payload?.data?.key ?? payload?.key ?? "";
+      if (createdKey) onUserKeyChange(createdKey);
+    } catch (e) {
+      setCreateKeyError(e instanceof Error ? e.message : t("createKeyFailed"));
+    } finally {
+      setCreatingKey(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -163,10 +189,16 @@ export function ConfigModal({
               </div>
 
               <div className="flex flex-wrap gap-3">
+                <button type="button" className="btn-primary" onClick={() => void handleCreateKey()} disabled={creatingKey || !sessionToken}>
+                  {creatingKey ? t("creatingKey") : t("createKey")}
+                </button>
                 <button type="button" className="btn-ghost" onClick={() => onUserKeyChange("")}>
                   {t("clearKey")}
                 </button>
               </div>
+              {createKeyError ? (
+                <p className="text-xs leading-5 text-red-500">{createKeyError}</p>
+              ) : null}
 
               <div className="rounded-[1rem] border border-amber-400/40 bg-amber-50/80 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                 {t("sensitiveKeyWarning")}
