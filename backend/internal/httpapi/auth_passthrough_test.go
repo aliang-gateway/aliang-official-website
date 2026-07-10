@@ -347,6 +347,68 @@ func TestDashboardPassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.
 	}
 }
 
+// When the cached sub2api access_token has expired, a dashboard passthrough must
+// transparently rotate it via sub2api /api/v1/auth/refresh and use the fresh
+// token for the upstream data call — instead of surfacing INVALID_TOKEN.
+func TestDashboardPassthroughRotatesExpiredUpstreamToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var dataAuthorization string
+	var refreshCalls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/api/v1/auth/refresh":
+			refreshCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"rotated-access","refresh_token":"rotated-refresh","user":{"id":7003,"email":"rotated@example.com"}}`))
+		case "/api/v1/usage/dashboard/stats":
+			dataAuthorization = req.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"source":"dashboard-upstream"}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	userID, localSessionToken := createUserViaAPI(t, m, "rotate@example.com", "Rotate User", "user", "")
+
+	// Seed an EXPIRED upstream credential.
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token, access_expires_at)
+		VALUES (?, ?, ?, ?);
+	`, userID, "stale-access", "stale-refresh", "2020-01-01 00:00:00"); err != nil {
+		t.Fatalf("seed expired sub2api auth token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/home", nil)
+	req.Header.Set("Authorization", "Bearer "+localSessionToken)
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d (body=%s)", http.StatusAccepted, rec.Code, rec.Body.String())
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected exactly one upstream /api/v1/auth/refresh rotation, got %d", refreshCalls)
+	}
+	if dataAuthorization != "Bearer rotated-access" {
+		t.Fatalf("expected upstream Authorization to use ROTATED token, got %q", dataAuthorization)
+	}
+}
+
 func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
 	t.Parallel()
 

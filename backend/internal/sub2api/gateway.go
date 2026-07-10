@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,11 @@ import (
 type UserResolver interface {
 	FindUserIDBySession(ctx context.Context, sessionToken string) (int64, bool, error)
 	FindUserRoleByID(ctx context.Context, userID int64) (string, bool, error)
+	// EnsureFreshUpstreamAccessToken rotates the user's cached sub2api
+	// access_token via sub2api if it has expired, so passthroughs keep working.
+	// Best-effort: returning an error does not abort the caller, which falls back
+	// to the stored token (or surfaces ErrTokenNotFound).
+	EnsureFreshUpstreamAccessToken(ctx context.Context, userID int64) error
 }
 
 // Gateway combines the proxy client and auth service into a single entry point
@@ -167,6 +173,15 @@ func (g *Gateway) ReplaceAuthHeader(ctx context.Context, headers http.Header, re
 	}
 	if !found {
 		return nil
+	}
+
+	// Keep the cached sub2api access_token fresh: rotate it via sub2api if it has
+	// expired, so data passthroughs don't fail with INVALID_TOKEN just because the
+	// credential aged out. Best-effort — a failure is logged but does not abort
+	// (the stored token may still work, or the caller surfaces ErrTokenNotFound);
+	// a dead token family is cleared inside EnsureFresh to force re-authentication.
+	if refreshErr := resolver.EnsureFreshUpstreamAccessToken(ctx, userID); refreshErr != nil {
+		slog.Warn("replace auth header: ensure fresh upstream token failed", "user_id", userID, "error", refreshErr)
 	}
 
 	upstreamAccessToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)

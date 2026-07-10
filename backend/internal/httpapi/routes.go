@@ -1377,6 +1377,77 @@ func (r *routes) handleAuthRefreshArbiter(w http.ResponseWriter, req *http.Reque
 	_, _ = w.Write(respBody)
 }
 
+// EnsureFreshUpstreamAccessToken makes sure the user's cached sub2api access_token
+// is still usable, rotating it via sub2api when it has expired (or is within
+// refreshEarlyRotateSkew of expiring). It is the reusable core of the refresh
+// arbiter, exposed through UserResolver so the passthrough layer
+// (Gateway.ReplaceAuthHeader) can keep data endpoints (user/profile, api-keys,
+// groups, usage, ...) working when a cached credential has simply aged out —
+// instead of surfacing sub2api's 401 INVALID_TOKEN to the client.
+//
+// Lenient by design: no stored token / no refresh_token → nil (the caller then
+// falls back to GetBearerTokenByUserID and its ErrTokenNotFound handling). Only a
+// failed upstream rotation clears the vault (forcing re-authentication) and
+// returns an error.
+func (r *routes) EnsureFreshUpstreamAccessToken(ctx context.Context, userID int64) error {
+	if r.sub2api == nil || !r.sub2api.IsConfigured() || r.proxyClient == nil || userID <= 0 {
+		return nil
+	}
+
+	lock := r.userRefreshLock(userID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	vault, err := r.sub2api.LoadVault(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("load upstream token vault: %w", err)
+	}
+	if vault == nil || !vault.HasRefresh {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	// Only rotate proactively when the expiry is KNOWN and past/near. A NULL
+	// access_expires_at (legacy/migrated rows, or capture paths that couldn't
+	// decode an expiry) is treated as "trust the stored token" — this path runs
+	// on every passthrough request, so rotating on unknown expiry would hammer
+	// sub2api. Such tokens self-heal via the explicit /auth/refresh flow.
+	needsRotate := vault.HasAccessExpires && now.After(vault.AccessExpiresAt.Add(-refreshEarlyRotateSkew))
+	if !needsRotate {
+		return nil
+	}
+
+	status, respBody, callErr := r.callSub2APIRefresh(ctx, vault.RefreshToken)
+	if callErr != nil {
+		return fmt.Errorf("upstream refresh call: %w", callErr)
+	}
+	if status < 200 || status >= 300 {
+		// sub2api rejected rotation — the family is dead. Clear the vault so the
+		// user re-authenticates instead of us repeatedly forwarding a doomed token.
+		if clearErr := r.sub2api.ClearVault(ctx, userID); clearErr != nil {
+			slog.Warn("ensure fresh upstream token: clear vault after failed rotation failed", "user_id", userID, "error", clearErr)
+		}
+		slog.Warn("ensure fresh upstream token: upstream rejected rotation; vault cleared", "user_id", userID, "status", status)
+		return fmt.Errorf("upstream rejected token rotation (status %d)", status)
+	}
+
+	accessToken, refreshPtr, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(respBody)
+	if !ok {
+		return fmt.Errorf("parse upstream refresh response")
+	}
+	if err := r.sub2api.CaptureTokens(ctx, sub2apiauth.UpsertTokenInput{
+		UserID:          userID,
+		UpstreamUserID:  upstreamUserID,
+		AccessToken:     accessToken,
+		RefreshToken:    refreshPtr,
+		AccessExpiresAt: accessExpiryOrDefault(accessToken),
+	}); err != nil {
+		return fmt.Errorf("persist rotated tokens: %w", err)
+	}
+	slog.Info("ensure fresh upstream token: rotated expired credential", "user_id", userID)
+	return nil
+}
+
 func (r *routes) handleAuthLogoutPassthrough(w http.ResponseWriter, req *http.Request) {
 	r.handleAuthPassthrough(w, req, "/api/v1/auth/logout")
 }
