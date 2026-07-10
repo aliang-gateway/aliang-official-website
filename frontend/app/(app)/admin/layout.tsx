@@ -18,6 +18,7 @@ const adminNavItems = [
   { href: "/admin/docs", labelKey: "docs", icon: "description" },
   { href: "/admin/config-center", labelKey: "configCenter", icon: "settings" },
   { href: "/admin/download-center", labelKey: "downloads", icon: "cloud_download" },
+  { href: "/admin/services", labelKey: "services", icon: "timeline" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

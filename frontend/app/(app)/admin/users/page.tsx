@@ -70,6 +70,7 @@ type DistributorBinding = {
   distributor_email?: string;
   distributor_name?: string;
   user_id: number;
+  upstream_user_id?: number;
   email: string;
   name: string;
   source: string;
@@ -873,6 +874,14 @@ export default function AdminUsersPage() {
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-[var(--portal-ink)]">{item.name || item.email}</p>
                           <p className="text-xs text-[var(--portal-muted)]">{item.email}</p>
+                          {item.upstream_user_id != null && (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--portal-muted)]">
+                              <code className="font-mono">sub2api #{item.upstream_user_id}</code>
+                              <button type="button" className="btn-ghost px-1.5 py-0 text-xs" onClick={() => void handleCopy(String(item.upstream_user_id))}>
+                                {t("copy")}
+                              </button>
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{item.source || "--"}</td>
                         <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{formatDateTime(item.created_at)}</td>

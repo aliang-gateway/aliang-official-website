@@ -30,6 +30,9 @@ function formatAmount(amountMinor?: number, currency?: string) {
   return `${(amountMinor / 100).toFixed(2)} ${(currency ?? "cny").toUpperCase()}`;
 }
 
+const MONO = { fontFamily: "var(--font-editorial-mono)" } as const;
+const SERIF = { fontFamily: "var(--font-editorial-serif)" } as const;
+
 function CheckoutStatusContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -166,116 +169,158 @@ function CheckoutStatusContent() {
   };
 
   const isPendingStatus = checkoutState === "success" && (isLoading || payload?.status === "processing" || payload?.status === "retrying");
+  const statusTone =
+    payload?.status === "fulfilled"
+      ? { bg: "rgba(20,122,79,0.1)", color: "var(--accent-ink)" }
+      : payload?.status === "failed"
+        ? { bg: "rgba(220,38,38,0.1)", color: "#b91c1c" }
+        : { bg: "rgba(20,122,79,0.1)", color: "var(--accent-ink)" };
 
   return (
-    <section className="portal-shell py-16">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-[var(--stitch-border)] bg-[var(--stitch-bg-elevated)] p-8 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--stitch-primary)]">Stripe checkout</p>
-        <h1 className="mt-3 text-3xl font-black text-[var(--stitch-text)]">{title}</h1>
-        <p className="mt-4 text-sm leading-7 text-[var(--stitch-text-muted)]">{description}</p>
+    <section className="min-h-[78vh]" style={{ background: "var(--bone)" }}>
+      <div className="mx-auto max-w-2xl px-6 py-20">
+        <p className="text-xs font-bold uppercase tracking-[0.22em]" style={{ color: "var(--ink-faint)", ...MONO }}>
+          Stripe Checkout · 支付确认
+        </p>
+        <h1 className="mt-3 text-4xl font-black leading-[1.05] md:text-5xl" style={{ color: "var(--ink)", ...SERIF }}>
+          {title}
+          <span style={{ color: "var(--accent)" }}>.</span>
+        </h1>
+        <p className="mt-4 text-base leading-7" style={{ color: "var(--ink-muted)" }}>
+          {description}
+        </p>
 
         {isPendingStatus ? (
-          <div className="mt-8 rounded-2xl border border-[var(--stitch-primary)]/15 bg-[var(--stitch-primary)]/5 p-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                <div className="relative flex h-14 w-14 items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-2 border-[var(--stitch-primary)]/20" />
-                  <div className="absolute inset-1 rounded-full border-2 border-transparent border-t-[var(--stitch-primary)] animate-spin" />
-                  <div className="h-3 w-3 rounded-full bg-[var(--stitch-primary)] animate-pulse" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[var(--stitch-text)]">Waiting for backend confirmation</p>
-                  <p className="mt-1 text-xs leading-6 text-[var(--stitch-text-muted)]">
-                    Stripe has returned control to the app. We are now waiting for webhook confirmation and final entitlement fulfillment.
-                  </p>
-                </div>
+          <div
+            className="mt-8 rounded-lg border p-6"
+            style={{ borderColor: "rgba(20,122,79,0.25)", background: "rgba(20,122,79,0.06)" }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="relative flex h-12 w-12 items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-2" style={{ borderColor: "rgba(20,122,79,0.2)" }} />
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-transparent animate-spin"
+                  style={{ borderTopColor: "var(--accent)" }}
+                />
+                <div className="h-2 w-2 rounded-full animate-pulse" style={{ background: "var(--accent)" }} />
               </div>
-
-              <div className="grid gap-2 sm:min-w-[180px]">
-                <div className="h-2 overflow-hidden rounded-full bg-[var(--stitch-border)]">
-                  <div className="h-full w-1/2 rounded-full bg-[var(--stitch-primary)] animate-pulse" />
-                </div>
-                <div className="flex gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[var(--stitch-primary)] animate-bounce [animation-delay:-0.2s]" />
-                  <span className="h-2 w-2 rounded-full bg-[var(--stitch-primary)] animate-bounce [animation-delay:-0.1s]" />
-                  <span className="h-2 w-2 rounded-full bg-[var(--stitch-primary)] animate-bounce" />
-                </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold" style={{ color: "var(--ink)" }}>
+                  等待后端确认 / Waiting for confirmation
+                </p>
+                <p className="mt-1 text-xs leading-6" style={{ color: "var(--ink-muted)", ...MONO }}>
+                  Stripe has returned control. Awaiting webhook + entitlement fulfillment.
+                </p>
               </div>
+            </div>
+            <div className="mt-5 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ background: "var(--accent)", animationDelay: "-0.2s" }} />
+              <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ background: "var(--accent)", animationDelay: "-0.1s" }} />
+              <span className="h-1.5 w-1.5 rounded-full animate-bounce" style={{ background: "var(--accent)" }} />
             </div>
           </div>
         ) : null}
 
         {checkoutState === "success" ? (
-          <div className="mt-8 rounded-xl border border-[var(--stitch-border)] bg-[var(--stitch-bg)] p-5">
-            <dl className="grid gap-3 text-sm">
-              <div className="grid gap-2 border-b border-[var(--stitch-border)] pb-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:items-start">
-                <dt className="text-[var(--stitch-text-muted)]">Session</dt>
-                <dd className="flex min-w-0 flex-col items-start gap-2 text-[var(--stitch-text)]">
-                  <span className="w-full break-all rounded-lg bg-[var(--stitch-bg-elevated)] px-3 py-2 font-mono text-xs leading-6">
-                    {sessionID || "--"}
-                  </span>
-                  {sessionID ? (
-                    <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => void handleCopy(sessionID)}>
-                      Copy
-                    </button>
-                  ) : null}
-                </dd>
-              </div>
-              <div className="grid gap-2 border-b border-[var(--stitch-border)] pb-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:items-start">
-                <dt className="text-[var(--stitch-text-muted)]">Package</dt>
-                <dd className="text-[var(--stitch-text)]">{payload?.package_name || payload?.tier_code || "--"}</dd>
-              </div>
-              <div className="grid gap-2 border-b border-[var(--stitch-border)] pb-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:items-start">
-                <dt className="text-[var(--stitch-text-muted)]">Amount</dt>
-                <dd className="text-[var(--stitch-text)]">{formatAmount(payload?.amount_minor, payload?.currency) || "--"}</dd>
-              </div>
-              <div className="grid gap-2 border-b border-[var(--stitch-border)] pb-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:items-start">
-                <dt className="text-[var(--stitch-text-muted)]">Status</dt>
-                <dd className="text-[var(--stitch-text)]">
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                    payload?.status === "fulfilled"
-                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                      : payload?.status === "failed"
-                        ? "bg-red-500/10 text-red-700 dark:text-red-300"
-                        : "bg-[var(--stitch-primary)]/10 text-[var(--stitch-primary)]"
-                  }`}>
-                    {payload?.status || (isLoading ? "processing" : "--")}
-                  </span>
-                </dd>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)] sm:items-start">
-                <dt className="text-[var(--stitch-text-muted)]">Payment Event</dt>
-                <dd className="flex min-w-0 flex-col items-start gap-2 text-[var(--stitch-text)]">
-                  <span className="w-full break-all rounded-lg bg-[var(--stitch-bg-elevated)] px-3 py-2 font-mono text-xs leading-6">
-                    {payload?.payment_event_id || "--"}
-                  </span>
-                  {payload?.payment_event_id ? (
-                    <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => void handleCopy(payload.payment_event_id!)}>
-                      Copy
-                    </button>
-                  ) : null}
-                </dd>
-              </div>
+          <div
+            className="mt-8 overflow-hidden rounded-lg border"
+            style={{ borderColor: "var(--line)", background: "rgba(255,255,255,0.45)" }}
+          >
+            <dl className="divide-y" style={{ borderColor: "var(--line)" }}>
+              <Row label="Session">
+                <span
+                  className="block w-full break-all rounded px-3 py-2 text-xs leading-6"
+                  style={{ background: "var(--bone)", color: "var(--ink)", ...MONO }}
+                >
+                  {sessionID || "--"}
+                </span>
+                {sessionID ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs underline"
+                    style={{ color: "var(--accent-ink)" }}
+                    onClick={() => void handleCopy(sessionID)}
+                  >
+                    Copy
+                  </button>
+                ) : null}
+              </Row>
+              <Row label="Package">
+                <span style={{ color: "var(--ink)" }}>{payload?.package_name || payload?.tier_code || "--"}</span>
+              </Row>
+              <Row label="Amount">
+                <span style={{ color: "var(--ink)" }}>{formatAmount(payload?.amount_minor, payload?.currency) || "--"}</span>
+              </Row>
+              <Row label="Status">
+                <span
+                  className="inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider"
+                  style={{ background: statusTone.bg, color: statusTone.color }}
+                >
+                  {payload?.status || (isLoading ? "processing" : "--")}
+                </span>
+              </Row>
+              <Row label="Payment Event" last>
+                <span
+                  className="block w-full break-all rounded px-3 py-2 text-xs leading-6"
+                  style={{ background: "var(--bone)", color: "var(--ink)", ...MONO }}
+                >
+                  {payload?.payment_event_id || "--"}
+                </span>
+                {payload?.payment_event_id ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs underline"
+                    style={{ color: "var(--accent-ink)" }}
+                    onClick={() => void handleCopy(payload.payment_event_id!)}
+                  >
+                    Copy
+                  </button>
+                ) : null}
+              </Row>
             </dl>
           </div>
         ) : null}
 
         {hasTimedOut ? (
-          <div className="mt-6 rounded-xl border border-amber-400/35 bg-amber-500/10 p-4 text-sm text-amber-700 dark:border-amber-400/45 dark:bg-amber-500/20 dark:text-amber-300">
+          <div
+            className="mt-6 rounded-lg border p-4 text-sm"
+            style={{ borderColor: "rgba(180,83,9,0.35)", background: "rgba(245,158,11,0.1)", color: "#92400e" }}
+          >
             Contact support if this remains unresolved. Include your Stripe checkout session ID and payment event ID so we can locate the fulfillment job quickly.
           </div>
         ) : null}
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/dashboard" className="btn-primary inline-flex items-center justify-center no-underline">
+        <div className="mt-10 flex flex-wrap gap-3">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center justify-center rounded-full no-underline transition-transform hover:-translate-y-0.5"
+            style={{ background: "var(--ink)", color: "var(--bone)", padding: "12px 28px", fontWeight: 800, fontSize: 13 }}
+          >
             Go to dashboard
           </Link>
-          <Link href="/services" className="btn-ghost inline-flex items-center justify-center no-underline">
+          <Link
+            href="/services"
+            className="inline-flex items-center justify-center rounded-full border no-underline transition-colors"
+            style={{ borderColor: "var(--ink)", color: "var(--ink)", padding: "12px 28px", fontWeight: 800, fontSize: 13 }}
+          >
             Back to packages
           </Link>
         </div>
       </div>
     </section>
+  );
+}
+
+function Row({ label, children, last }: { label: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div className="grid gap-2 px-6 py-4 sm:grid-cols-[140px_minmax(0,1fr)] sm:items-start" style={{ borderColor: "var(--line)", borderTopWidth: last ? 0 : undefined }}>
+      <dt className="text-xs uppercase tracking-wider" style={{ color: "var(--ink-faint)", ...MONO }}>
+        {label}
+      </dt>
+      <dd className="flex min-w-0 flex-col items-start" style={{ color: "var(--ink)" }}>
+        {children}
+      </dd>
+    </div>
   );
 }
 

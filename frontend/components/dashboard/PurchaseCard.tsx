@@ -1,16 +1,29 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { usePurchaseActions } from "@/lib/hooks/use-purchase-actions";
 import type { DashboardHomeResponse } from "@/lib/dashboard-types";
 
+type PublicPackage = {
+  code: string;
+  value_type: string;
+  rate: number;
+  min_topup_micros: number;
+  max_topup_micros: number;
+};
+
 type PurchaseCardProps = {
   sessionToken: string;
   dashboard: DashboardHomeResponse | null;
   onReload: () => Promise<void>;
 };
+
+function formatMoneyMicros(value: number) {
+  return `¥${((value || 0) / 1000000).toFixed(2)}`;
+}
 
 export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCardProps) {
   const t = useTranslations("dashboard");
@@ -26,9 +39,37 @@ export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCard
     handlePrepaidTopUp,
   } = usePurchaseActions({ sessionToken, dashboard, reload: onReload });
 
+  const [packages, setPackages] = useState<PublicPackage[]>([]);
+  const [topupYuan, setTopupYuan] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/packages", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setPackages(Array.isArray(data?.packages) ? (data.packages as PublicPackage[]) : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const purchaseOptions = dashboard?.purchase_options;
   const packageTiers = purchaseOptions?.package_purchase.tiers ?? [];
   const redeemEndpoint = purchaseOptions?.prepaid_topup.redeem_endpoint ?? "/api/wallet/redeem";
+
+  const selectedPackage = packages.find((p) => p.code === selectedTierCode);
+  const isTopup = selectedPackage?.value_type === "balance" && (selectedPackage?.rate ?? 0) > 0;
+  const parsedYuan = parseFloat(topupYuan);
+  const topupMicros = isTopup && !Number.isNaN(parsedYuan) && parsedYuan > 0 ? Math.round(parsedYuan * 1_000_000) : 0;
+  const topupAmountValid = !isTopup || topupMicros > 0;
+  const topupRangeHint =
+    isTopup && (selectedPackage?.min_topup_micros > 0 || selectedPackage?.max_topup_micros > 0)
+      ? `${formatMoneyMicros(selectedPackage?.min_topup_micros ?? 0)} – ${formatMoneyMicros(selectedPackage?.max_topup_micros ?? 0)}`
+      : "";
+
   const purchaseMessageClassName =
     purchaseMessage?.tone === "error"
       ? "text-red-500 dark:text-red-400"
@@ -69,7 +110,10 @@ export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCard
                 id="dashboard-package-tier"
                 className="field mt-2"
                 value={selectedTierCode}
-                onChange={(event) => setSelectedTierCode(event.target.value)}
+                onChange={(event) => {
+                  setSelectedTierCode(event.target.value);
+                  setTopupYuan("");
+                }}
                 disabled={packageTiers.length === 0 || packageActionLoading}
               >
                 {packageTiers.length === 0 ? <option value="">{t("noPublicTiers")}</option> : null}
@@ -81,12 +125,36 @@ export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCard
               </select>
             </div>
 
+            {isTopup && (
+              <div>
+                <label htmlFor="dashboard-topup-amount" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
+                  {t("topupAmountLabel")}
+                </label>
+                <input
+                  id="dashboard-topup-amount"
+                  className="field mt-2"
+                  type="number"
+                  min={selectedPackage?.min_topup_micros ? selectedPackage.min_topup_micros / 1_000_000 : undefined}
+                  max={selectedPackage?.max_topup_micros ? selectedPackage.max_topup_micros / 1_000_000 : undefined}
+                  step="0.01"
+                  placeholder="80"
+                  value={topupYuan}
+                  onChange={(event) => setTopupYuan(event.target.value)}
+                  disabled={packageActionLoading}
+                />
+                <p className="mt-1 text-xs text-[var(--portal-muted)]">
+                  {t("topupRateHint", { rate: (selectedPackage?.rate ?? 0).toFixed(2) })}
+                  {topupRangeHint ? ` · ${t("topupRangeLabel")}: ${topupRangeHint}` : ""}
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 className="btn-primary w-fit"
-                onClick={() => void handlePackagePurchase()}
-                disabled={packageActionLoading}
+                onClick={() => void handlePackagePurchase(isTopup ? topupMicros : undefined)}
+                disabled={packageActionLoading || !topupAmountValid}
               >
                 {packageActionLoading ? t("redirectingToStripe") : t("checkoutWithStripe")}
               </button>

@@ -297,7 +297,7 @@
       "heroLabel": "Services / Research route",
       "heroTitlePre": "From latest research back to shipped",
       "heroTitleEm": "AI services",
-      "heroLead": "The services page shows newest-first: ALiang's in-research AI collaboration directions, then the service foundations already deliverable. No fake dates, no inflated metrics.",
+      "heroLead": "See ALiang's in-research AI collaboration directions first, then the service foundations already shipped — every item shows its real status, no invented progress, no inflated metrics.",
       "statsAria": "Service status summary",
       "stats": [
         {
@@ -314,8 +314,8 @@
         }
       ],
       "timelineLabel": "Timeline",
-      "timelineTitle": "Latest research first, earliest capabilities last",
-      "timelineLead": "The filter buttons only change what the timeline shows, not the service status. Understand ALiang's next research focus first, then judge which capabilities are already usable.",
+      "timelineTitle": "From research directions to shipped capabilities",
+      "timelineLead": "See where ALiang's research is heading next, then which capabilities are ready to use today — filter by status to focus on what matters to you.",
       "filterAria": "Filter service status",
       "filters": [
         {
@@ -331,59 +331,48 @@
           "label": "In research"
         }
       ],
-      "filterAll": "Showing all 6 directions, newest research to earliest completion.",
-      "filterDone": "Showing 4 shipped services, latest launch to earliest foundation.",
-      "filterResearch": "Showing 2 in-research directions — ALiang's next research priorities.",
+      "filterAll": "Showing all {count} directions.",
+      "filterDone": "Showing {count} shipped services.",
+      "filterResearch": "Showing {count} in-research directions.",
       "emptyState": "No service directions match this filter. Switch back to All for the full research route.",
       "statusDone": "Shipped",
       "statusResearch": "In research",
-      "items": [
-        {
-          "phase": "Latest 01 / In research",
-          "status": "research",
-          "title": "Multi-AI concurrent collaboration",
-          "desc": "Researching how multiple AI sessions divide work, cross-check, and merge conclusions on the same engineering task — without polluting each other's context."
-        },
-        {
-          "phase": "Latest 02 / In research",
-          "status": "research",
-          "title": "State sync",
-          "desc": "Researching task-state sync across desktop, mobile, and cloud sessions so users return to the same coding scene from any device."
-        },
-        {
-          "phase": "Shipped 04 / Recent launch",
-          "status": "done",
-          "title": "Mobile vibecoding",
-          "desc": "Extend coding tasks from desktop to phone — remotely start, track, organize, and continue dev tasks."
-        },
-        {
-          "phase": "Shipped 03 / Stable delivery",
-          "status": "done",
-          "title": "API proxy hub",
-          "desc": "Organize OpenAI, Anthropic, and other mainstream formats into a more stable call entry for dev tools, automation scripts, and internal product integration."
-        },
-        {
-          "phase": "Shipped 02 / Stable delivery",
-          "status": "done",
-          "title": "VSCode Copilot setup service",
-          "desc": "Environment prep, usage-path config, and dev-scenario adaptation for VSCode and Copilot workflows — lower team onboarding cost."
-        },
-        {
-          "phase": "Shipped 01 / Earliest foundation",
-          "status": "done",
-          "title": "Cursor Pro setup service",
-          "desc": "Onboarding, configuration, and maintenance for Cursor Pro scenarios — put AI coding capability into real project cadence."
-        }
-      ],
+      "loading": "Loading...",
       "closingLabel": "Next step",
       "closingTitle": "Install the client first, then plug in your workflow",
-      "closingLead": "The download page splits desktop and mobile entry points; iOS is clearly marked unsupported to avoid misclicks.",
+      "closingLead": "The download page offers desktop and mobile entries by platform, with iOS clearly marked as not yet available.",
       "closingBtn": "Go to download",
+      "stampAria": "View plans and pricing",
+      "stampText": "VIEW PLANS · SEE PRICING · ",
+      "stampCenter": "Plans",
       "topbarCtx": "Service timeline",
       "topbarMid": [
-        "Latest research first",
-        "Shipped capabilities"
+        "In research",
+        "Shipped"
       ]
+    },
+    "price": {
+      "heroLabel": "Plans / Pricing",
+      "heroTitle": "Pick a plan that fits",
+      "heroLead": "Published plans are billed per cycle and include model + IDE integrations. Subscribe from the console.",
+      "unitDays": "days",
+      "unitTokens": "tokens",
+      "cta": "Subscribe now",
+      "ctaTopup": "Top up now",
+      "redirecting": "Redirecting to Stripe…",
+      "surchargeHint": "Orders below {threshold} incur a {amount} handling fee",
+      "creditHint": "Pay {paid} → receive {credit} credit",
+      "billLine": "Bill {bill}",
+      "inclFee": "(incl. {fee} fee)",
+      "groupSubscription": "Subscriptions",
+      "groupTopup": "Balance top-up",
+      "range": "Range",
+      "loading": "Loading...",
+      "empty": "No published plans yet. Check back soon.",
+      "closingLabel": "Next step",
+      "closingTitle": "Picked a plan? Grab the client next",
+      "closingLead": "Subscribe in the console, install the client from the download page.",
+      "closingBtn": "Go to download"
     },
     "download": {
       "heroLabel": "Download / Platform entry",
@@ -391,7 +380,7 @@
       "heroLead": "The download page is split by platform: Windows, Linux, macOS are desktop entries; Android is the mobile entry; iOS is clearly marked unsupported for now.",
       "headLabel": "Platform choice",
       "headTitle": "Pick a platform first, then enter the install flow",
-      "headLead": "No marketing modules here — only downloads, system requirements, and current support status.",
+      "headLead": "Pick the client for your platform, with system requirements and current support status.",
       "groupDesktopLabel": "Desktop",
       "groupDesktopTitle": "Desktop clients",
       "groupMobileLabel": "Mobile",
@@ -472,7 +461,7 @@
       "statusSelected": "{name} selected. Confirm your system architecture, then get the current installer.",
       "closingLabel": "Service route",
       "closingTitle": "Before downloading, see what ALiang is working on",
-      "closingLead": "The services page lists shipped and in-research directions on a timeline, keeping capabilities of different maturity separate.",
+      "closingLead": "The services page separates shipped and in-research directions on a timeline, so each capability's maturity is clear at a glance.",
       "closingBtn": "See the service timeline",
       "metaVersion": "Version: {version}",
       "metaLatest": "Latest version",
@@ -758,7 +747,8 @@
     "articles": "Articles",
     "docs": "Docs",
     "configCenter": "Config Center",
-    "downloads": "Downloads"
+    "downloads": "Downloads",
+    "services": "Services"
   },
   "adminHome": {
     "checking": "Checking admin session...",
@@ -1020,6 +1010,9 @@
     "prepaidTopUp": "Prepaid top-up",
     "redeemEndpoint": "Redeem-code endpoint: ",
     "currencyHint": "Currency hint: {currency}. If redeem is unavailable upstream, this card shows a non-destructive error and keeps your current balance unchanged.",
+    "topupAmountLabel": "Top-up amount (CNY)",
+    "topupRateHint": "¥1 = ${rate}, credited at this rate",
+    "topupRangeLabel": "Range",
     "redeemCode": "Redeem code",
     "submittingTopUp": "Submitting top-up...",
     "redeemPrepaidCode": "Redeem prepaid code",
@@ -1048,6 +1041,10 @@
     "pasteExistingKey": "Paste an existing routed user key",
     "keySourceDescription": "This is the only key source for every template in the modal. Paste an existing routed key from your account list and treat it as sensitive.",
     "clearKey": "Clear key",
+    "createKey": "Create key",
+    "creatingKey": "Creating…",
+    "createKeyFailed": "Failed to create key. You can create one on the account page.",
+    "defaultKeyName": "Default key",
     "sensitiveKeyWarning": "Sensitive-key warning: the rendered snippets below contain your real user key, not a placeholder. Avoid screenshots, shared terminals, and pasted logs.",
     "template": "Template",
     "renderedClientConfig": "Rendered client config",

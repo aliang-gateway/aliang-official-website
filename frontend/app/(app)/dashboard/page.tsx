@@ -83,6 +83,7 @@ function DashboardPageContent() {
         copyState={config.copyState}
         onCopy={config.handleCopy}
         triggerRef={configTriggerRef}
+        sessionToken={data.sessionToken}
       />
     </section>
   );
