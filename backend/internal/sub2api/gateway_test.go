@@ -52,6 +52,10 @@ func (m *mockResolver) FindUserRoleByID(_ context.Context, _ int64) (string, boo
 	return m.role, m.roleFound, m.roleErr
 }
 
+func (m *mockResolver) EnsureFreshUpstreamAccessToken(_ context.Context, _ int64) error {
+	return nil
+}
+
 // Since Gateway uses concrete types, we test via the Gateway struct
 // with real sub2apiauth.Service (in-memory) or by testing individual methods
 // that only depend on the auth interface.
