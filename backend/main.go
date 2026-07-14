@@ -20,6 +20,7 @@ import (
 	"ai-api-portal/backend/internal/mailer"
 	"ai-api-portal/backend/internal/proxy"
 	portalstripe "ai-api-portal/backend/internal/stripe"
+	"ai-api-portal/backend/internal/sub2apiauth"
 	"ai-api-portal/backend/internal/user"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -61,6 +62,10 @@ func main() {
 		slog.Error("failed to load config: sub2api_base_url is required (set in config file or SUB2API_BASE_URL env)")
 		os.Exit(1)
 	}
+	if err := sub2apiauth.ValidateTokenEncryptionKey(cfg.Sub2APITokenEncryptionKey); err != nil {
+		slog.Error("failed to load config: invalid sub2api token encryption key", "error", err)
+		os.Exit(1)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -82,6 +87,14 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("database migrations applied")
+	tokenStore := sub2apiauth.NewServiceWithDialectAndKey(database, cfg.Database.Driver, cfg.Sub2APITokenEncryptionKey)
+	encryptionCtx, cancelEncryption := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancelEncryption()
+	if err := tokenStore.ReencryptLegacyCredentials(encryptionCtx); err != nil {
+		slog.Error("failed to encrypt stored sub2api credentials", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("stored sub2api credentials encrypted")
 
 	opts := user.ServiceOptions{
 		AllowedEmailDomains:      cfg.Register.AllowedEmailDomains,
@@ -151,12 +164,13 @@ func main() {
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.Handle("/swagger/", httpSwagger.Handler())
 	httpapi.RegisterRoutesWithOptions(mux, database, httpapi.RoutesOptions{
-		UserService:          userSvc,
-		ProxyClient:          proxyClient,
-		StripeClient:         stripeClient,
-		UserUsageCache:       userUsageCache,
-		AdminBootstrapSecret: cfg.Auth.AdminBootstrapSecret,
-		SQLDialect:           cfg.Database.Driver,
+		UserService:               userSvc,
+		ProxyClient:               proxyClient,
+		StripeClient:              stripeClient,
+		UserUsageCache:            userUsageCache,
+		AdminBootstrapSecret:      cfg.Auth.AdminBootstrapSecret,
+		SQLDialect:                cfg.Database.Driver,
+		Sub2APITokenEncryptionKey: cfg.Sub2APITokenEncryptionKey,
 	})
 
 	handler := requestLogger(mux)

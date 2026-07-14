@@ -61,6 +61,34 @@ stripe:
 	}
 }
 
+func TestLoad_RequiresValidSub2APITokenEncryptionKey(t *testing.T) {
+	t.Setenv("SUB2API_BASE_URL", "")
+	t.Setenv("SUB2API_TOKEN_ENCRYPTION_KEY", "")
+	for _, tc := range []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "missing", want: "sub2api_token_encryption_key is required"},
+		{name: "invalid", key: "too-short", want: "must encode exactly 32 bytes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			body := "server:\n  port: \"8081\"\ndatabase:\n  path: \"./test.db\"\nsub2api_base_url: \"https://sub2api.example.com\"\n"
+			if tc.key != "" {
+				body += "sub2api_token_encryption_key: \"" + tc.key + "\"\n"
+			}
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoad_UsesEnvSub2APIBaseURLAndTrimsTrailingSlash(t *testing.T) {
 	t.Setenv("SUB2API_BASE_URL", "https://sub2api.internal.example.com///")
 
@@ -250,7 +278,9 @@ func writeConfigFile(t *testing.T, body string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte(strings.TrimSpace(body)), 0o600); err != nil {
+	const testTokenEncryptionKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	body = strings.TrimSpace(body) + "\nsub2api_token_encryption_key: \"" + testTokenEncryptionKey + "\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write config file: %v", err)
 	}
 

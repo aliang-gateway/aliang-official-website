@@ -45,26 +45,17 @@ type SessionMinter interface {
 	MintSessionForUser(ctx context.Context, userID int64) (plaintext, tokenHash string, err error)
 }
 
-// RefreshTokenResolver 由上层（sub2api Gateway）实现，按 user_id 取回 sub2api refresh_token。
-// authorized 状态下用它把 refresh_token 连同本地 st_ 一起下发给 PC，使 PC 端刷新器与密码登录等价。
-// 可选依赖：未注入时 authorized 响应只含 st_（无刷新能力），不影响状态机本身。
-type RefreshTokenResolver interface {
-	UpstreamRefreshToken(ctx context.Context, userID int64) (refreshToken string, found bool, err error)
-}
-
 type Options struct {
-	Dialect              string
-	Minter               SessionMinter
-	RefreshTokenResolver RefreshTokenResolver
-	Now                  func() time.Time // 测试注入时钟
+	Dialect string
+	Minter  SessionMinter
+	Now     func() time.Time // 测试注入时钟
 }
 
 type Service struct {
-	db                   *sql.DB
-	dialect              string
-	minter               SessionMinter
-	refreshTokenResolver RefreshTokenResolver
-	now                  func() time.Time
+	db      *sql.DB
+	dialect string
+	minter  SessionMinter
+	now     func() time.Time
 }
 
 func NewService(database *sql.DB, opts Options) *Service {
@@ -73,11 +64,10 @@ func NewService(database *sql.DB, opts Options) *Service {
 		now = time.Now
 	}
 	return &Service{
-		db:                   database,
-		dialect:              opts.Dialect,
-		minter:               opts.Minter,
-		refreshTokenResolver: opts.RefreshTokenResolver,
-		now:                  now,
+		db:      database,
+		dialect: opts.Dialect,
+		minter:  opts.Minter,
+		now:     now,
 	}
 }
 
@@ -182,14 +172,9 @@ func (s *Service) Status(ctx context.Context, deviceCode string) (*StatusResult,
 			res.User = u
 		}
 		res.SessionToken = sessionToken.String
-		// 取回 sub2api refresh_token：让 PC 端拿到与密码登录等价的令牌对（st_ + refresh_token），
-		// 其刷新器即可通过 /api/v1/auth/refresh 轮换 sub2api 令牌并顺带续命本地 st_。
-		// resolver 未注入、取数失败或该用户无 upstream 令牌时静默省略，不阻断状态查询。
-		if s.refreshTokenResolver != nil {
-			if rt, found, _ := s.refreshTokenResolver.UpstreamRefreshToken(ctx, userID.Int64); found && strings.TrimSpace(rt) != "" {
-				res.RefreshToken = strings.TrimSpace(rt)
-			}
-		}
+		// The public refresh credential is the device-specific local session.
+		// Upstream credentials remain private to the gateway token broker.
+		res.RefreshToken = sessionToken.String
 	}
 	return res, nil
 }

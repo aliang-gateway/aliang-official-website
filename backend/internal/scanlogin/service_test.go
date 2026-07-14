@@ -56,17 +56,6 @@ func (m stubMinter) MintSessionForUser(ctx context.Context, userID int64) (strin
 	return plaintext, tokenHash, err
 }
 
-// stubRefreshResolver 模拟 sub2api Gateway.UpstreamRefreshToken，可控地返回 refresh_token / found。
-type stubRefreshResolver struct {
-	token string
-	found bool
-	err   error
-}
-
-func (s stubRefreshResolver) UpstreamRefreshToken(ctx context.Context, userID int64) (string, bool, error) {
-	return s.token, s.found, s.err
-}
-
 func TestInitCreatesRowAndReturnsCodes(t *testing.T) {
 	svc, db := newTestService(t)
 	res, err := svc.Init(context.Background(), "1.2.3.4")
@@ -156,9 +145,9 @@ func TestStatusLifecycle(t *testing.T) {
 	}
 }
 
-func TestStatusAuthorizedExposesRefreshToken(t *testing.T) {
+func TestStatusAuthorizedReturnsOnlyLocalSessionCredential(t *testing.T) {
 	_, db := newTestService(t)
-	harness := newResolverHarness(t, db, stubRefreshResolver{token: "rt_secret", found: true})
+	harness := newResolverHarness(t, db)
 
 	got, err := harness.Status(context.Background(), harness.deviceCode)
 	if err != nil {
@@ -170,54 +159,48 @@ func TestStatusAuthorizedExposesRefreshToken(t *testing.T) {
 	if got.SessionToken != "st_xyz" {
 		t.Fatalf("session token: %q", got.SessionToken)
 	}
-	if got.RefreshToken != "rt_secret" {
-		t.Fatalf("want refresh_token rt_secret, got %q", got.RefreshToken)
+	if got.RefreshToken != "st_xyz" {
+		t.Fatalf("want local refresh credential st_xyz, got %q", got.RefreshToken)
 	}
 }
 
-func TestStatusAuthorizedOmitsRefreshTokenWhenAbsent(t *testing.T) {
+func TestStatusAuthorizedDoesNotDependOnUpstreamRefreshToken(t *testing.T) {
 	_, db := newTestService(t)
-	// resolver 报告 not-found（用户无 upstream 令牌）：refresh_token 应缺席，st_ 仍下发。
-	harness := newResolverHarness(t, db, stubRefreshResolver{found: false})
+	harness := newResolverHarness(t, db)
 	got, _ := harness.Status(context.Background(), harness.deviceCode)
 	if got.Status != scanlogin.StatusAuthorized {
 		t.Fatalf("want authorized, got %s", got.Status)
 	}
-	if got.RefreshToken != "" {
-		t.Fatalf("refresh_token should be omitted when not found, got %q", got.RefreshToken)
+	if got.RefreshToken != "st_xyz" {
+		t.Fatalf("refresh_token should be the local session, got %q", got.RefreshToken)
 	}
 	if got.SessionToken != "st_xyz" {
 		t.Fatalf("session token still delivered: %q", got.SessionToken)
 	}
 }
 
-func TestStatusAuthorizedOmitsRefreshTokenWithoutResolver(t *testing.T) {
+func TestStatusAuthorizedReturnsLocalRefreshWithoutResolver(t *testing.T) {
 	_, db := newTestService(t)
-	// 不注入 resolver（nil）：authorized 仍正常，refresh_token 缺席。
-	harness := newResolverHarness(t, db, nil)
+	harness := newResolverHarness(t, db)
 	got, _ := harness.Status(context.Background(), harness.deviceCode)
 	if got.Status != scanlogin.StatusAuthorized {
 		t.Fatalf("want authorized, got %s", got.Status)
 	}
-	if got.RefreshToken != "" {
-		t.Fatalf("refresh_token should be omitted without resolver, got %q", got.RefreshToken)
+	if got.RefreshToken != "st_xyz" {
+		t.Fatalf("refresh_token should be the local session without resolver, got %q", got.RefreshToken)
 	}
 }
 
-// newResolverHarness 把一条 scan code 推进到 authorized（含 session_token + user_id）并 seed 用户，
-// 返回一个带指定 resolver 的 Service 及其 device_code。resolver 为 nil 时不注入。
+// newResolverHarness 把一条 scan code 推进到 authorized（含 session_token + user_id）并 seed 用户。
 type resolverHarness struct {
 	*scanlogin.Service
 	deviceCode string
 }
 
-func newResolverHarness(t *testing.T, db *sql.DB, resolver scanlogin.RefreshTokenResolver) *resolverHarness {
+func newResolverHarness(t *testing.T, db *sql.DB) *resolverHarness {
 	t.Helper()
 	frozen := time.Now()
 	opts := scanlogin.Options{Minter: stubMinter{db: db}, Now: func() time.Time { return frozen }}
-	if resolver != nil {
-		opts.RefreshTokenResolver = resolver
-	}
 	svc := scanlogin.NewService(db, opts)
 	init, err := svc.Init(context.Background(), "")
 	if err != nil {

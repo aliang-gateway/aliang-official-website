@@ -38,3 +38,5 @@ stripe:
 
 sub2api_base_url: "https://sub2api.example.com"
 sub2api_admin_key: ""
+# 32 random bytes encoded as base64. Generate with: openssl rand -base64 32
+sub2api_token_encryption_key: ""

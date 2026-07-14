@@ -139,6 +139,139 @@ func TestServiceGetRefreshTokenByUserID(t *testing.T) {
 	}
 }
 
+func TestServiceRotationStateMachine(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database := setupTestDB(t)
+	service := NewServiceWithDialect(database, testDialect())
+	userID := createUser(t, ctx, database, "rotation@example.com", "Rotation", "user")
+	refresh0 := "upstream-r0"
+	expires0 := time.Now().UTC().Add(-time.Minute)
+	if err := service.UpsertToken(ctx, UpsertTokenInput{UserID: userID, AccessToken: "upstream-a0", RefreshToken: &refresh0, AccessExpiresAt: &expires0}); err != nil {
+		t.Fatalf("seed vault: %v", err)
+	}
+	if err := service.BeginRotation(ctx, userID, refresh0, 0); err != nil {
+		t.Fatalf("BeginRotation() error = %v", err)
+	}
+	rotating, err := service.LoadVault(ctx, userID)
+	if err != nil {
+		t.Fatalf("LoadVault(rotating) error = %v", err)
+	}
+	if rotating.RotationState != "rotating" || !rotating.HasRotationStarted {
+		t.Fatalf("rotating vault state = %+v", rotating)
+	}
+	if err := service.BeginRotation(ctx, userID, refresh0, 0); !errors.Is(err, ErrRotationConflict) {
+		t.Fatalf("second BeginRotation() error = %v, want ErrRotationConflict", err)
+	}
+
+	refresh1 := "upstream-r1"
+	expires1 := time.Now().UTC().Add(time.Hour)
+	if err := service.CompleteRotation(ctx, refresh0, 0, UpsertTokenInput{UserID: userID, AccessToken: "upstream-a1", RefreshToken: &refresh1, AccessExpiresAt: &expires1}); err != nil {
+		t.Fatalf("CompleteRotation() error = %v", err)
+	}
+	stable, err := service.LoadVault(ctx, userID)
+	if err != nil {
+		t.Fatalf("LoadVault(stable) error = %v", err)
+	}
+	if stable.RotationState != "stable" || stable.RefreshToken != refresh1 || stable.PrevRefreshToken != refresh0 || stable.AccessToken != "upstream-a1" || stable.Version != 1 {
+		t.Fatalf("completed vault = %+v", stable)
+	}
+	if err := service.BeginRotation(ctx, userID, refresh0, 1); !errors.Is(err, ErrRotationConflict) {
+		t.Fatalf("BeginRotation(old token) error = %v, want ErrRotationConflict", err)
+	}
+	if err := service.BeginRotation(ctx, userID, refresh1, 1); err != nil {
+		t.Fatalf("BeginRotation(current token) error = %v", err)
+	}
+	if err := service.ResetRotation(ctx, userID, refresh1, 1); err != nil {
+		t.Fatalf("ResetRotation() error = %v", err)
+	}
+	reset, err := service.LoadVault(ctx, userID)
+	if err != nil || reset.RotationState != "stable" || reset.RefreshToken != refresh1 {
+		t.Fatalf("reset vault = %+v err=%v", reset, err)
+	}
+}
+
+func TestServiceEncryptsUpstreamCredentialsAtRest(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database := setupTestDB(t)
+	const key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	service := NewServiceWithDialectAndKey(database, testDialect(), key)
+	userID := createUser(t, ctx, database, "encrypted@example.com", "Encrypted", "user")
+	refresh := "plain-refresh-secret"
+	if err := service.UpsertToken(ctx, UpsertTokenInput{UserID: userID, AccessToken: "plain-access-secret", RefreshToken: &refresh}); err != nil {
+		t.Fatalf("UpsertToken() error = %v", err)
+	}
+	var storedAccess, storedRefresh string
+	if err := database.QueryRowContext(ctx, db.Rebind(testDialect(), `SELECT access_token, refresh_token FROM als_sub2api_auth_tokens WHERE user_id = ?`), userID).Scan(&storedAccess, &storedRefresh); err != nil {
+		t.Fatalf("query encrypted tokens: %v", err)
+	}
+	if storedAccess == "plain-access-secret" || storedRefresh == refresh || !strings.HasPrefix(storedAccess, encryptedTokenPrefix) || !strings.HasPrefix(storedRefresh, encryptedTokenPrefix) {
+		t.Fatalf("credentials were not encrypted at rest: access=%q refresh=%q", storedAccess, storedRefresh)
+	}
+	if got, err := service.GetBearerTokenByUserID(ctx, userID); err != nil || got != "plain-access-secret" {
+		t.Fatalf("GetBearerTokenByUserID() = %q, %v", got, err)
+	}
+	vault, err := service.LoadVault(ctx, userID)
+	if err != nil || vault.AccessToken != "plain-access-secret" || vault.RefreshToken != refresh {
+		t.Fatalf("LoadVault() = %+v, %v", vault, err)
+	}
+}
+
+func TestServiceCompleteRotationRejectsStaleVersion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database := setupTestDB(t)
+	service := NewServiceWithDialect(database, testDialect())
+	userID := createUser(t, ctx, database, "stale-version@example.com", "Stale Version", "user")
+	refresh0 := "r0"
+	if err := service.UpsertToken(ctx, UpsertTokenInput{UserID: userID, AccessToken: "a0", RefreshToken: &refresh0}); err != nil {
+		t.Fatalf("seed vault: %v", err)
+	}
+	if err := service.BeginRotation(ctx, userID, refresh0, 0); err != nil {
+		t.Fatalf("BeginRotation() error = %v", err)
+	}
+	if _, err := database.ExecContext(ctx, db.Rebind(testDialect(), `UPDATE als_sub2api_auth_tokens SET version = version + 1 WHERE user_id = ?`), userID); err != nil {
+		t.Fatalf("simulate competing writer: %v", err)
+	}
+	refresh1 := "r1"
+	err := service.CompleteRotation(ctx, refresh0, 0, UpsertTokenInput{UserID: userID, AccessToken: "a1", RefreshToken: &refresh1})
+	if !errors.Is(err, ErrRotationConflict) {
+		t.Fatalf("CompleteRotation() error = %v, want ErrRotationConflict", err)
+	}
+}
+
+func TestServiceReencryptsLegacyPlaintextCredentials(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database := setupTestDB(t)
+	userID := createUser(t, ctx, database, "legacy-encryption@example.com", "Legacy Encryption", "user")
+	if _, err := database.ExecContext(ctx, db.Rebind(testDialect(), `
+		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token, prev_refresh_token)
+		VALUES (?, ?, ?, ?)
+	`), userID, "legacy-access", "legacy-refresh", "legacy-prev"); err != nil {
+		t.Fatalf("seed legacy plaintext credentials: %v", err)
+	}
+	const key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	service := NewServiceWithDialectAndKey(database, testDialect(), key)
+	if err := service.ReencryptLegacyCredentials(ctx); err != nil {
+		t.Fatalf("ReencryptLegacyCredentials() error = %v", err)
+	}
+	var storedAccess, storedRefresh, storedPrev string
+	if err := database.QueryRowContext(ctx, db.Rebind(testDialect(), `SELECT access_token, refresh_token, prev_refresh_token FROM als_sub2api_auth_tokens WHERE user_id = ?`), userID).Scan(&storedAccess, &storedRefresh, &storedPrev); err != nil {
+		t.Fatalf("query migrated credentials: %v", err)
+	}
+	for name, value := range map[string]string{"access": storedAccess, "refresh": storedRefresh, "previous": storedPrev} {
+		if !strings.HasPrefix(value, encryptedTokenPrefix) {
+			t.Fatalf("%s credential was not migrated: %q", name, value)
+		}
+	}
+	vault, err := service.LoadVault(ctx, userID)
+	if err != nil || vault.AccessToken != "legacy-access" || vault.RefreshToken != "legacy-refresh" || vault.PrevRefreshToken != "legacy-prev" {
+		t.Fatalf("LoadVault() after migration = %+v, %v", vault, err)
+	}
+}
+
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 

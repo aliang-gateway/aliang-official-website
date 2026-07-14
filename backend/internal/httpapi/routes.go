@@ -58,19 +58,24 @@ type routes struct {
 	scanLogin            *scanlogin.Service
 	// refreshArbiter serializes refreshes per user so concurrent/multi-device
 	// refreshes never reach sub2api twice with the same token (which would trip
-	// its refresh-token replay detection and revoke the whole family). The map
-	// is lazily initialised and never shrinks; keyed by user id.
+	// its refresh-token replay detection and revoke the whole family).
 	refreshMu     sync.Mutex
-	refreshUserMu map[int64]*sync.Mutex
+	refreshUserMu map[int64]*userRefreshMutex
+}
+
+type userRefreshMutex struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type RoutesOptions struct {
-	UserService          *user.Service
-	ProxyClient          *proxy.Client
-	StripeClient         *portalstripe.Client
-	UserUsageCache       UserUsageCache
-	AdminBootstrapSecret string
-	SQLDialect           string
+	UserService               *user.Service
+	ProxyClient               *proxy.Client
+	StripeClient              *portalstripe.Client
+	UserUsageCache            UserUsageCache
+	AdminBootstrapSecret      string
+	SQLDialect                string
+	Sub2APITokenEncryptionKey string
 }
 
 type UserUsageCache interface {
@@ -759,9 +764,9 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	if userSvc == nil {
 		userSvc = user.NewServiceWithOptions(database, user.ServiceOptions{SQLDialect: strings.TrimSpace(opts.SQLDialect)})
 	}
-	// 共享同一个 sub2api Gateway：既作为 upstream passthrough 入口，
-	// 也作为扫码登录的 refresh_token 解析器（authorized 时把 sub2api refresh_token 连同 st_ 下发）。
-	sub2apiGateway := sub2api.NewGateway(opts.ProxyClient, sub2apiauth.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)))
+	// Shared sub2api gateway: public clients receive only local sessions while
+	// this broker keeps the upstream token family private.
+	sub2apiGateway := sub2api.NewGateway(opts.ProxyClient, sub2apiauth.NewServiceWithDialectAndKey(database, strings.TrimSpace(opts.SQLDialect), opts.Sub2APITokenEncryptionKey))
 	r := &routes{
 		db:                   database,
 		sqlDialect:           strings.TrimSpace(opts.SQLDialect),
@@ -778,7 +783,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		stripeClient:         opts.StripeClient,
 		adminBootstrapSecret: strings.TrimSpace(opts.AdminBootstrapSecret),
 		userUsageCache:       opts.UserUsageCache,
-		scanLogin:            scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc, RefreshTokenResolver: sub2apiGateway}),
+		scanLogin:            scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
 
@@ -1177,20 +1182,57 @@ func (r *routes) handleAuthRefreshPassthrough(w http.ResponseWriter, req *http.R
 // that expires before its next request.
 const refreshEarlyRotateSkew = 2 * time.Minute
 
-// userRefreshLock returns a per-user mutex that serialises refresh rotations.
-// Lazy-initialised; the map never shrinks (one entry per user is negligible).
-func (r *routes) userRefreshLock(userID int64) *sync.Mutex {
+func (r *routes) lockLocalUserRefresh(userID int64) func() {
 	r.refreshMu.Lock()
-	defer r.refreshMu.Unlock()
 	if r.refreshUserMu == nil {
-		r.refreshUserMu = make(map[int64]*sync.Mutex)
+		r.refreshUserMu = make(map[int64]*userRefreshMutex)
 	}
-	mu, ok := r.refreshUserMu[userID]
+	entry, ok := r.refreshUserMu[userID]
 	if !ok {
-		mu = &sync.Mutex{}
-		r.refreshUserMu[userID] = mu
+		entry = &userRefreshMutex{}
+		r.refreshUserMu[userID] = entry
 	}
-	return mu
+	entry.refs++
+	r.refreshMu.Unlock()
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		r.refreshMu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(r.refreshUserMu, userID)
+		}
+		r.refreshMu.Unlock()
+	}
+}
+
+// lockUserRefresh combines the in-process mutex with a PostgreSQL advisory lock.
+// The latter is connection-scoped, so every backend replica sharing Postgres
+// serializes rotations for the same user. SQLite deployments retain the local
+// lock because they are supported only as a single-process deployment mode.
+func (r *routes) lockUserRefresh(ctx context.Context, userID int64) (func(), error) {
+	unlockLocal := r.lockLocalUserRefresh(userID)
+	if strings.EqualFold(strings.TrimSpace(r.sqlDialect), "postgres") {
+		conn, err := r.db.Conn(ctx)
+		if err != nil {
+			unlockLocal()
+			return nil, fmt.Errorf("acquire refresh lock connection: %w", err)
+		}
+		key := int64(0x4155544800000000) ^ userID
+		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1);`, key); err != nil {
+			_ = conn.Close()
+			unlockLocal()
+			return nil, fmt.Errorf("acquire refresh advisory lock: %w", err)
+		}
+		return func() {
+			unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_, _ = conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock($1);`, key)
+			cancel()
+			_ = conn.Close()
+			unlockLocal()
+		}, nil
+	}
+	return unlockLocal, nil
 }
 
 // accessTokenExpiry decodes a JWT's `exp` claim WITHOUT verifying the signature.
@@ -1261,21 +1303,128 @@ func (r *routes) callSub2APIRefresh(ctx context.Context, refreshToken string) (i
 	return resp.StatusCode, respBody, nil
 }
 
+func upstreamRefreshDefinitelyInvalid(status int, body []byte) bool {
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return true
+	}
+	if status != http.StatusBadRequest {
+		return false
+	}
+	lower := strings.ToLower(string(body))
+	for _, marker := range []string{"invalid_refresh", "invalid refresh", "refresh_token_invalid", "token_reuse", "token reuse", "refresh_token_expired", "refresh token expired", "revoked"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// rotateUpstreamVaultLocked performs one durable upstream rotation. The caller
+// must hold lockUserRefresh for userID.
+func (r *routes) rotateUpstreamVaultLocked(ctx context.Context, userID int64, vault *sub2apiauth.VaultTokens) (int, []byte, error) {
+	if vault == nil || !vault.HasRefresh || vault.RotationState != "stable" {
+		return 0, nil, sub2apiauth.ErrRotationUncertain
+	}
+	expectedRefresh := vault.RefreshToken
+	expectedVersion := vault.Version
+	if err := r.sub2api.BeginRotation(ctx, userID, expectedRefresh, expectedVersion); err != nil {
+		return 0, nil, err
+	}
+
+	status, respBody, callErr := r.callSub2APIRefresh(ctx, expectedRefresh)
+	if callErr != nil {
+		if markErr := r.sub2api.MarkRotationUncertain(ctx, userID, expectedRefresh, expectedVersion); markErr != nil {
+			slog.Error("mark ambiguous upstream rotation failed", "user_id", userID, "error", markErr)
+		}
+		if revokeErr := r.userSvc.RevokeAllSessions(ctx, userID); revokeErr != nil {
+			slog.Error("revoke sessions after ambiguous upstream rotation failed", "user_id", userID, "error", revokeErr)
+		}
+		return 0, nil, callErr
+	}
+	if status < 200 || status >= 300 {
+		if upstreamRefreshDefinitelyInvalid(status, respBody) {
+			if clearErr := r.sub2api.ClearVault(ctx, userID); clearErr != nil {
+				return status, respBody, fmt.Errorf("clear invalid upstream token vault: %w", clearErr)
+			}
+			if revokeErr := r.userSvc.RevokeAllSessions(ctx, userID); revokeErr != nil {
+				return status, respBody, fmt.Errorf("revoke sessions for invalid upstream token family: %w", revokeErr)
+			}
+			slog.Warn("upstream refresh credential rejected; vault cleared", "user_id", userID, "status", status)
+		} else if resetErr := r.sub2api.ResetRotation(ctx, userID, expectedRefresh, expectedVersion); resetErr != nil {
+			return status, respBody, resetErr
+		}
+		return status, respBody, nil
+	}
+
+	accessToken, refreshPtr, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(respBody)
+	if !ok {
+		_ = r.sub2api.MarkRotationUncertain(ctx, userID, expectedRefresh, expectedVersion)
+		_ = r.userSvc.RevokeAllSessions(ctx, userID)
+		return 0, nil, fmt.Errorf("parse upstream refresh response")
+	}
+	if refreshPtr == nil || strings.TrimSpace(*refreshPtr) == "" {
+		_ = r.sub2api.MarkRotationUncertain(ctx, userID, expectedRefresh, expectedVersion)
+		_ = r.userSvc.RevokeAllSessions(ctx, userID)
+		return 0, nil, fmt.Errorf("upstream refresh response omitted rotated refresh token")
+	}
+	input := sub2apiauth.UpsertTokenInput{
+		UserID:          userID,
+		UpstreamUserID:  upstreamUserID,
+		AccessToken:     accessToken,
+		RefreshToken:    refreshPtr,
+		AccessExpiresAt: accessExpiryOrDefault(accessToken),
+	}
+	var persistErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		persistErr = r.sub2api.CompleteRotation(ctx, expectedRefresh, expectedVersion, input)
+		if persistErr == nil {
+			return status, respBody, nil
+		}
+		if errors.Is(persistErr, sub2apiauth.ErrRotationConflict) {
+			break
+		}
+	}
+	_ = r.sub2api.MarkRotationUncertain(ctx, userID, expectedRefresh, expectedVersion)
+	_ = r.userSvc.RevokeAllSessions(ctx, userID)
+	return 0, nil, fmt.Errorf("persist rotated upstream tokens: %w", persistErr)
+}
+
+func (r *routes) writeLocalSessionRefresh(w http.ResponseWriter, ctx context.Context, userID int64, sessionToken string) {
+	expiresAt, err := r.extendLocalSessionExpiry(ctx, userID, sessionToken)
+	if err != nil {
+		if errors.Is(err, user.ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, "local session is no longer valid")
+			return
+		}
+		slog.Error("extend local session failed", "user_id", userID, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to extend local session")
+		return
+	}
+	expiresIn := int(time.Until(expiresAt).Seconds())
+	if expiresIn < 1 {
+		expiresIn = 1
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"code":    0,
+		"message": "success",
+		"data": map[string]any{
+			"access_token":  sessionToken,
+			"refresh_token": sessionToken,
+			"expires_in":    expiresIn,
+			"token_type":    "Bearer",
+		},
+	})
+}
+
 // handleAuthRefreshArbiter is the multi-device-safe refresh endpoint.
 //
-// The caller contract is unchanged: POST {refresh_token} → {access_token,
-// refresh_token, expires_in}. Internally it serialises per user and only calls
-// sub2api when the cached access_token is near expiry, serving the cached pair
-// otherwise — so sub2api never observes a refresh-token reuse (which would
-// revoke the whole token family and kick every device of that user offline).
-//
-// A refresh_token equal to the current OR the immediately-previous stored value
-// is accepted (one-generation grace window). Anything older is rejected so the
-// client re-authenticates rather than risk a replay-detection nuke upstream.
+// POST {refresh_token: local st_} returns the same device-specific local session
+// after extending it. The shared sub2api pair is never returned to the caller;
+// it is rotated under the per-user distributed lock only when near expiry.
 func (r *routes) handleAuthRefreshArbiter(w http.ResponseWriter, req *http.Request) {
 	if r.sub2api == nil || !r.sub2api.IsConfigured() || r.proxyClient == nil {
-		// No upstream configured — preserve the original passthrough behaviour.
-		r.handleAuthPassthrough(w, req, "/api/v1/auth/refresh")
+		writeError(w, http.StatusServiceUnavailable, "authentication broker is not configured")
 		return
 	}
 
@@ -1292,22 +1441,34 @@ func (r *routes) handleAuthRefreshArbiter(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	userID, found, err := r.sub2api.FindUserIDByRefreshOrPrev(req.Context(), presentedRefresh)
+	userID, found, err := r.findLocalUserIDBySessionToken(req.Context(), presentedRefresh)
 	if err != nil {
 		slog.Error("refresh arbiter: resolve user failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to resolve session")
 		return
 	}
 	if !found {
-		// Unknown or too-stale token. Do NOT forward upstream — we can't identify
-		// the family, and forwarding a stale token risks a replay-detection nuke.
-		writeError(w, http.StatusUnauthorized, "refresh token is no longer valid")
+		writeError(w, http.StatusUnauthorized, "local session is no longer valid")
 		return
 	}
 
-	lock := r.userRefreshLock(userID)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, err := r.lockUserRefresh(req.Context(), userID)
+	if err != nil {
+		slog.Error("refresh arbiter: acquire user lock failed", "user_id", userID, "error", err)
+		writeError(w, http.StatusServiceUnavailable, "failed to refresh session")
+		return
+	}
+	defer unlock()
+
+	// Revalidate after waiting for the lock. This closes the time-of-check/time-of-use
+	// window where a session could be revoked while another rotation was in flight.
+	if lockedUserID, stillValid, validateErr := r.findLocalUserIDBySessionToken(req.Context(), presentedRefresh); validateErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to resolve session")
+		return
+	} else if !stillValid || lockedUserID != userID {
+		writeError(w, http.StatusUnauthorized, "local session is no longer valid")
+		return
+	}
 
 	vault, err := r.sub2api.LoadVault(req.Context(), userID)
 	if err != nil {
@@ -1321,82 +1482,38 @@ func (r *routes) handleAuthRefreshArbiter(w http.ResponseWriter, req *http.Reque
 		writeError(w, http.StatusUnauthorized, "refresh token is no longer valid")
 		return
 	}
+	if vault.RotationState != "stable" {
+		slog.Warn("refresh arbiter: upstream token rotation is uncertain", "user_id", userID, "state", vault.RotationState)
+		if revokeErr := r.userSvc.RevokeAllSessions(req.Context(), userID); revokeErr != nil {
+			slog.Error("refresh arbiter: revoke uncertain user sessions failed", "user_id", userID, "error", revokeErr)
+		}
+		writeError(w, http.StatusUnauthorized, "upstream session requires re-authentication")
+		return
+	}
 
 	now := time.Now().UTC()
 	needsRotate := !vault.HasAccessExpires || now.After(vault.AccessExpiresAt.Add(-refreshEarlyRotateSkew))
 
 	if !needsRotate {
-		// Cached access_token still good: serve the CURRENT pair WITHOUT calling
-		// sub2api. This is the dedup path that prevents replay-detection nukes —
-		// regardless of whether the caller presented the current or previous
-		// refresh_token, they converge onto the current pair.
-		expiresIn := int(time.Until(vault.AccessExpiresAt).Seconds())
-		if expiresIn < 1 {
-			expiresIn = 1
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"code":    0,
-			"message": "success",
-			"data": map[string]any{
-				"access_token":  vault.AccessToken,
-				"refresh_token": vault.RefreshToken,
-				"expires_in":    expiresIn,
-				"token_type":    "Bearer",
-			},
-		})
+		r.writeLocalSessionRefresh(w, req.Context(), userID, presentedRefresh)
 		return
 	}
 
-	// Rotation needed — always rotate using the CURRENT refresh, never the
-	// possibly-previous token the caller presented. Single-flight under the lock
-	// guarantees only one sub2api call per rotation cycle.
-	status, respBody, callErr := r.callSub2APIRefresh(req.Context(), vault.RefreshToken)
+	status, respBody, callErr := r.rotateUpstreamVaultLocked(req.Context(), userID, vault)
 	if callErr != nil {
 		slog.Error("refresh arbiter: upstream refresh call failed", "user_id", userID, "error", callErr)
-		writeError(w, http.StatusBadGateway, "failed to refresh session")
+		writeError(w, http.StatusServiceUnavailable, "failed to refresh session")
 		return
 	}
 
 	if status < 200 || status >= 300 {
-		// sub2api rejected the rotation — the family is dead/invalid. Clear the
-		// vault so the user re-authenticates instead of us repeatedly forwarding
-		// a doomed token (which would keep tripping replay detection).
-		if clearErr := r.sub2api.ClearVault(req.Context(), userID); clearErr != nil {
-			slog.Warn("refresh arbiter: clear vault after failed rotation failed", "user_id", userID, "error", clearErr)
-		}
-		slog.Warn("refresh arbiter: upstream rejected rotation; vault cleared", "user_id", userID, "status", status)
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(status)
 		_, _ = w.Write(respBody)
 		return
 	}
-
-	// Success: capture the rotated pair (UpsertToken maintains prev_refresh_token
-	// automatically) and extend the local session.
-	accessToken, refreshPtr, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(respBody)
-	if !ok {
-		slog.Error("refresh arbiter: could not parse upstream refresh response", "user_id", userID)
-		writeError(w, http.StatusBadGateway, "failed to parse refresh response")
-		return
-	}
-	if err := r.sub2api.CaptureTokens(req.Context(), sub2apiauth.UpsertTokenInput{
-		UserID:          userID,
-		UpstreamUserID:  upstreamUserID,
-		AccessToken:     accessToken,
-		RefreshToken:    refreshPtr,
-		AccessExpiresAt: accessExpiryOrDefault(accessToken),
-	}); err != nil {
-		slog.Error("refresh arbiter: capture rotated tokens failed", "user_id", userID, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to persist refreshed session")
-		return
-	}
-	if extendErr := r.extendLocalSessionExpiry(req.Context(), userID); extendErr != nil {
-		slog.Warn("refresh arbiter: extend local session failed", "user_id", userID, "error", extendErr)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(respBody)
+	r.writeLocalSessionRefresh(w, req.Context(), userID, presentedRefresh)
 }
 
 // EnsureFreshUpstreamAccessToken makes sure the user's cached sub2api access_token
@@ -1416,9 +1533,11 @@ func (r *routes) EnsureFreshUpstreamAccessToken(ctx context.Context, userID int6
 		return nil
 	}
 
-	lock := r.userRefreshLock(userID)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, err := r.lockUserRefresh(ctx, userID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	vault, err := r.sub2api.LoadVault(ctx, userID)
 	if err != nil {
@@ -1426,6 +1545,10 @@ func (r *routes) EnsureFreshUpstreamAccessToken(ctx context.Context, userID int6
 	}
 	if vault == nil || !vault.HasRefresh {
 		return nil
+	}
+	if vault.RotationState != "stable" {
+		_ = r.userSvc.RevokeAllSessions(ctx, userID)
+		return sub2apiauth.ErrRotationUncertain
 	}
 
 	now := time.Now().UTC()
@@ -1439,39 +1562,46 @@ func (r *routes) EnsureFreshUpstreamAccessToken(ctx context.Context, userID int6
 		return nil
 	}
 
-	status, respBody, callErr := r.callSub2APIRefresh(ctx, vault.RefreshToken)
+	status, _, callErr := r.rotateUpstreamVaultLocked(ctx, userID, vault)
 	if callErr != nil {
 		return fmt.Errorf("upstream refresh call: %w", callErr)
 	}
 	if status < 200 || status >= 300 {
-		// sub2api rejected rotation — the family is dead. Clear the vault so the
-		// user re-authenticates instead of us repeatedly forwarding a doomed token.
-		if clearErr := r.sub2api.ClearVault(ctx, userID); clearErr != nil {
-			slog.Warn("ensure fresh upstream token: clear vault after failed rotation failed", "user_id", userID, "error", clearErr)
-		}
-		slog.Warn("ensure fresh upstream token: upstream rejected rotation; vault cleared", "user_id", userID, "status", status)
 		return fmt.Errorf("upstream rejected token rotation (status %d)", status)
-	}
-
-	accessToken, refreshPtr, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(respBody)
-	if !ok {
-		return fmt.Errorf("parse upstream refresh response")
-	}
-	if err := r.sub2api.CaptureTokens(ctx, sub2apiauth.UpsertTokenInput{
-		UserID:          userID,
-		UpstreamUserID:  upstreamUserID,
-		AccessToken:     accessToken,
-		RefreshToken:    refreshPtr,
-		AccessExpiresAt: accessExpiryOrDefault(accessToken),
-	}); err != nil {
-		return fmt.Errorf("persist rotated tokens: %w", err)
 	}
 	slog.Info("ensure fresh upstream token: rotated expired credential", "user_id", userID)
 	return nil
 }
 
 func (r *routes) handleAuthLogoutPassthrough(w http.ResponseWriter, req *http.Request) {
-	r.handleAuthPassthrough(w, req, "/api/v1/auth/logout")
+	token, _ := extractBearerToken(req.Header.Get("Authorization"))
+	if strings.TrimSpace(token) == "" && req.Body != nil {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid logout request")
+			return
+		}
+		token = extractAuthRefreshTokenFromRequestBody(body)
+	}
+	userID, found, err := r.findLocalUserIDBySessionToken(req.Context(), token)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to resolve session")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusUnauthorized, "local session is no longer valid")
+		return
+	}
+	if err := r.userSvc.Logout(req.Context(), userID, token); err != nil {
+		if errors.Is(err, user.ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, "local session is no longer valid")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to logout")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "message": "success", "data": map[string]bool{"revoked": true}})
 }
 
 func (r *routes) handleDashboardHomePassthrough(w http.ResponseWriter, req *http.Request) {
@@ -2254,7 +2384,7 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 
 	requestEmail := ""
 	requestRefreshToken := ""
-	if upstreamPath == "/api/v1/auth/login" && len(requestBody) > 0 {
+	if (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register") && len(requestBody) > 0 {
 		requestEmail = extractAuthEmailFromRequestBody(requestBody)
 		slog.Debug("auth login request", "email", requestEmail)
 	}
@@ -2262,17 +2392,39 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 		requestRefreshToken = extractAuthRefreshTokenFromRequestBody(requestBody)
 	}
 
+	// Existing users serialize password login with every upstream refresh. A login
+	// can replace the upstream token family just like a refresh, so allowing the
+	// two operations to overlap would reintroduce the replay race the arbiter is
+	// designed to prevent.
+	var releaseLoginLock func()
+	if (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register") && requestEmail != "" {
+		if localUserID, found, lookupErr := r.findLocalUserIDByEmail(req.Context(), requestEmail); lookupErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve login")
+			return
+		} else if found {
+			unlock, lockErr := r.lockUserRefresh(req.Context(), localUserID)
+			if lockErr != nil {
+				writeError(w, http.StatusServiceUnavailable, "failed to serialize login")
+				return
+			}
+			releaseLoginLock = unlock
+			defer releaseLoginLock()
+		}
+	}
+
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
 	forwarded.Header.Del("X-User-Id")
-	if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
-		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
-			slog.Warn("auth passthrough: upstream session unavailable", "path", upstreamPath)
-			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+	if upstreamPath == "/api/v1/auth/me" {
+		if err := r.sub2api.ReplaceAuthHeader(req.Context(), forwarded.Header, r); err != nil {
+			if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+				slog.Warn("auth passthrough: upstream session unavailable", "path", upstreamPath)
+				writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to resolve upstream session")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to resolve upstream session")
-		return
 	}
 	if requestBody != nil {
 		forwarded.Body = io.NopCloser(bytes.NewReader(requestBody))
@@ -2297,6 +2449,12 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 	slog.Debug("auth passthrough upstream response", "path", upstreamPath, "status", resp.StatusCode)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/refresh" || upstreamPath == "/api/v1/auth/register") {
+		if upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register" {
+			if _, refreshToken, _, _, containsCredential := extractSub2APITokensFromAuthResponse(responseBody); containsCredential && (refreshToken == nil || strings.TrimSpace(*refreshToken) == "") {
+				writeError(w, http.StatusBadGateway, "upstream auth response missing refresh token")
+				return
+			}
+		}
 		localUserID, found, err := r.captureSub2APITokens(req.Context(), req, requestEmail, requestRefreshToken, responseBody)
 		if err != nil {
 			slog.Error("captureSub2APITokens failed", "path", upstreamPath, "error", err)
@@ -2304,7 +2462,13 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 			return
 		}
 		slog.Debug("captureSub2APITokens result", "path", upstreamPath, "found", found, "user_id", localUserID)
-		if upstreamPath == "/api/v1/auth/login" && found {
+		if !found && (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register") {
+			if _, _, _, _, containsUpstreamCredential := extractSub2APITokensFromAuthResponse(responseBody); containsUpstreamCredential {
+				writeError(w, http.StatusBadGateway, "failed to establish local session")
+				return
+			}
+		}
+		if (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register") && found {
 			sessionToken, sessionErr := r.createLocalSessionToken(req.Context(), localUserID)
 			if sessionErr != nil {
 				writeError(w, http.StatusInternalServerError, "failed to create local session")
@@ -2326,13 +2490,11 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 			resp.ContentLength = int64(len(responseBody))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(responseBody)))
 		}
-		if upstreamPath == "/api/v1/auth/refresh" && found {
-			if extendErr := r.extendLocalSessionExpiry(req.Context(), localUserID); extendErr != nil {
-				slog.Warn("failed to extend session on refresh", "error", extendErr)
-			} else {
-				slog.Debug("session extended on refresh", "user_id", localUserID)
-			}
-		}
+	}
+	if upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register" || upstreamPath == "/api/v1/auth/refresh" {
+		resp.Header.Set("Cache-Control", "no-store")
+		resp.Header.Del("Set-Cookie")
+		resp.Header.Del("Authorization")
 	}
 
 	if err := proxy.CopyResponse(w, resp); err != nil {
@@ -2965,20 +3127,28 @@ func (r *routes) createLocalSessionToken(ctx context.Context, userID int64) (str
 	return plaintext, nil
 }
 
-func (r *routes) extendLocalSessionExpiry(ctx context.Context, userID int64) error {
-	newExpiry := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
-	_, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
+func (r *routes) extendLocalSessionExpiry(ctx context.Context, userID int64, sessionToken string) (time.Time, error) {
+	now := time.Now().UTC()
+	newExpiry := now.Add(user.SessionLifetime)
+	result, err := r.db.ExecContext(ctx, db.Rebind(r.sqlDialect, `
 		UPDATE als_sessions
 		SET expires_at = ?
 		WHERE user_id = ?
+		  AND token_hash = ?
 		  AND revoked_at IS NULL
-		ORDER BY created_at DESC
-		LIMIT 1;
-	`), newExpiry, userID)
+		  AND expires_at > ?;
+	`), newExpiry, userID, auth.HashSessionToken(strings.TrimSpace(sessionToken)), now)
 	if err != nil {
-		return fmt.Errorf("extend session expiry: %w", err)
+		return time.Time{}, fmt.Errorf("extend session expiry: %w", err)
 	}
-	return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("extend session expiry rows affected: %w", err)
+	}
+	if rows != 1 {
+		return time.Time{}, user.ErrInvalidCredentials
+	}
+	return newExpiry, nil
 }
 
 func injectLocalSessionIntoAuthResponse(body []byte, sessionToken string, profile *user.UserProfile) ([]byte, error) {
@@ -2988,10 +3158,14 @@ func injectLocalSessionIntoAuthResponse(body []byte, sessionToken string, profil
 	}
 	payload["session_token"] = sessionToken
 	payload["access_token"] = sessionToken
+	payload["refresh_token"] = sessionToken
+	payload["expires_in"] = int(user.SessionLifetime / time.Second)
 	overlayLocalProfile(payload, profile)
 	if data, ok := payload["data"].(map[string]any); ok {
 		data["session_token"] = sessionToken
 		data["access_token"] = sessionToken
+		data["refresh_token"] = sessionToken
+		data["expires_in"] = int(user.SessionLifetime / time.Second)
 		overlayLocalProfile(data, profile)
 		payload["data"] = data
 	}
@@ -4792,6 +4966,20 @@ func (r *routes) handleQuickCreateUser(w http.ResponseWriter, req *http.Request,
 		writeError(w, http.StatusBadGateway, "sub2api register response missing access token")
 		return
 	}
+	if refreshToken == nil || strings.TrimSpace(*refreshToken) == "" {
+		writeError(w, http.StatusBadGateway, "sub2api register response missing refresh token")
+		return
+	}
+	protectedAccessToken, err := r.sub2api.ProtectCredential(accessToken)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to protect upstream access token")
+		return
+	}
+	protectedRefreshToken, err := r.sub2api.ProtectCredential(*refreshToken)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to protect upstream refresh token")
+		return
+	}
 	if upstreamUserID == nil || *upstreamUserID <= 0 {
 		writeError(w, http.StatusBadGateway, "sub2api register response missing user id")
 		return
@@ -4827,26 +5015,31 @@ func (r *routes) handleQuickCreateUser(w http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	var refreshTokenValue any
-	if refreshToken != nil && strings.TrimSpace(*refreshToken) != "" {
-		refreshTokenValue = strings.TrimSpace(*refreshToken)
-	}
 	if _, err := tx.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
 		INSERT INTO als_sub2api_auth_tokens(
 			user_id,
 			upstream_user_id,
 			access_token,
 			refresh_token,
+			access_expires_at,
+			prev_refresh_token,
+			rotation_state,
+			rotation_started_at,
+			version,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, NULL, 'stable', NULL, 0, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			upstream_user_id = COALESCE(excluded.upstream_user_id, als_sub2api_auth_tokens.upstream_user_id),
 			access_token = excluded.access_token,
 			refresh_token = COALESCE(excluded.refresh_token, als_sub2api_auth_tokens.refresh_token),
+			access_expires_at = excluded.access_expires_at,
+			rotation_state = 'stable',
+			rotation_started_at = NULL,
+			version = als_sub2api_auth_tokens.version + 1,
 			updated_at = excluded.updated_at
-	`), userID, *upstreamUserID, strings.TrimSpace(accessToken), refreshTokenValue, now, now); err != nil {
+	`), userID, *upstreamUserID, protectedAccessToken, protectedRefreshToken, accessExpiryOrDefault(accessToken), now, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to store upstream auth token")
 		return
 	}
@@ -5424,6 +5617,11 @@ func (r *routes) syncSub2APIAuthTokensWithPassword(ctx context.Context, userID i
 	if userID <= 0 || email == "" || password == "" {
 		return nil
 	}
+	unlock, err := r.lockUserRefresh(ctx, userID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	body, status, err := r.loginSub2APIUser(ctx, email, password)
 	if err != nil {
@@ -5436,6 +5634,9 @@ func (r *routes) syncSub2APIAuthTokensWithPassword(ctx context.Context, userID i
 	accessToken, refreshToken, _, upstreamUserID, ok := extractSub2APITokensFromAuthResponse(body)
 	if !ok || strings.TrimSpace(accessToken) == "" {
 		return errors.New("sub2api login response missing access token")
+	}
+	if refreshToken == nil || strings.TrimSpace(*refreshToken) == "" {
+		return errors.New("sub2api login response missing refresh token")
 	}
 
 	if err := r.sub2api.CaptureTokens(ctx, sub2apiauth.UpsertTokenInput{

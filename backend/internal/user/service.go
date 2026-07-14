@@ -430,6 +430,20 @@ func (s *Service) Logout(ctx context.Context, userID int64, sessionToken string)
 	return nil
 }
 
+func (s *Service) RevokeAllSessions(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return ErrInvalidCredentials
+	}
+	if _, err := s.db.ExecContext(ctx, s.rebind(`
+		UPDATE als_sessions
+		SET revoked_at = ?
+		WHERE user_id = ? AND revoked_at IS NULL;
+	`), time.Now().UTC(), userID); err != nil {
+		return fmt.Errorf("revoke all user sessions: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) Register(ctx context.Context, email, name, password string) (*RegisterResult, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	name = strings.TrimSpace(name)

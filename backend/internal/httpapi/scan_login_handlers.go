@@ -22,6 +22,7 @@ func (r *routes) handleScanInit(w http.ResponseWriter, req *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create scan code")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -35,6 +36,7 @@ func (r *routes) handleScanStatus(w http.ResponseWriter, req *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to query status")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, res)
 }
 

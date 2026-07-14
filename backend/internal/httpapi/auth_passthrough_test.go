@@ -11,8 +11,11 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
+	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/proxy"
 )
 
@@ -34,6 +37,8 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Set-Cookie", "upstream_refresh=secret; HttpOnly")
+		w.Header().Set("Authorization", "Bearer upstream-secret")
 		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"up-at-1","refresh_token":"up-rt-1","role":"user","user":{"id":7001,"email":"token-login@example.com","role":"user"}}}`))
 	}))
 	t.Cleanup(upstream.Close)
@@ -54,6 +59,15 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
+	if got := rec.Header().Get("Set-Cookie"); got != "" {
+		t.Fatalf("upstream auth cookie leaked to client: %q", got)
+	}
+	if got := rec.Header().Get("Authorization"); got != "" {
+		t.Fatalf("upstream authorization header leaked to client: %q", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
 	var payload map[string]any
 	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&payload); err != nil {
 		t.Fatalf("decode login response payload: %v", err)
@@ -68,8 +82,8 @@ func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
 	if data["access_token"] != payload["session_token"] {
 		t.Fatalf("expected data.access_token to be replaced with session_token, got %#v", data["access_token"])
 	}
-	if data["refresh_token"] != "up-rt-1" {
-		t.Fatalf("expected refresh_token up-rt-1, got %#v", data["refresh_token"])
+	if data["refresh_token"] != payload["session_token"] {
+		t.Fatalf("expected local refresh credential to equal session_token, got %#v", data["refresh_token"])
 	}
 	if got := data["session_token"]; got == nil || got == "" {
 		t.Fatalf("expected nested session_token to be injected, got %#v", got)
@@ -139,6 +153,13 @@ func TestAuthRefreshPassthroughUpdatesStoredSub2APITokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed als_sub2api_auth_tokens row: %v", err)
 	}
+	localSession, localHash, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatalf("mint local session: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sessions(user_id, token_hash, expires_at) VALUES (?, ?, ?);`, userID, localHash, time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatalf("seed local session: %v", err)
+	}
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/api/v1/auth/refresh" {
@@ -157,7 +178,7 @@ func TestAuthRefreshPassthroughUpdatesStoredSub2APITokens(t *testing.T) {
 	m := http.NewServeMux()
 	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader([]byte(`{"refresh_token":"old-refresh"}`)))
+	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader([]byte(`{"refresh_token":"`+localSession+`"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	m.ServeHTTP(rec, req)
@@ -165,8 +186,8 @@ func TestAuthRefreshPassthroughUpdatesStoredSub2APITokens(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
-	if rec.Body.String() != `{"access_token":"new-access","refresh_token":"new-refresh"}` {
-		t.Fatalf("expected unchanged passthrough body, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), localSession) || strings.Contains(rec.Body.String(), "new-refresh") || strings.Contains(rec.Body.String(), "new-access") {
+		t.Fatalf("expected only the local session in refresh response, got %q", rec.Body.String())
 	}
 
 	var (
@@ -450,8 +471,8 @@ func TestAuthPassthroughMissingLocalUserDoesNotFail(t *testing.T) {
 	if payload["access_token"] != payload["session_token"] {
 		t.Fatalf("expected access_token to be replaced with session_token, got %#v", payload["access_token"])
 	}
-	if payload["refresh_token"] != "missing-user-refresh" {
-		t.Fatalf("expected refresh_token missing-user-refresh, got %#v", payload["refresh_token"])
+	if payload["refresh_token"] != payload["session_token"] {
+		t.Fatalf("expected local refresh credential to equal session_token, got %#v", payload["refresh_token"])
 	}
 	userPayload, ok := payload["user"].(map[string]any)
 	if !ok {
@@ -525,13 +546,6 @@ func TestAuthPassthroughRoutesForwardMethodPathAndBody(t *testing.T) {
 			upstreamPath: "/api/v1/auth/me",
 			query:        "include=profile",
 		},
-		{
-			name:         "logout",
-			method:       http.MethodPost,
-			routePath:    "/auth/logout",
-			upstreamPath: "/api/v1/auth/logout",
-			body:         `{"all_devices":true}`,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -597,6 +611,53 @@ func TestAuthPassthroughRoutesForwardMethodPathAndBody(t *testing.T) {
 				t.Fatalf("expected passthrough body %q, got %q", `{"source":"upstream"}`, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestAuthLogoutRevokesOnlyLocalSessionAndNeverCallsUpstream(t *testing.T) {
+	t.Parallel()
+	database := setupTestDB(t)
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		upstreamCalls++
+		t.Errorf("local logout must not reach upstream: %s", req.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(upstream.Close)
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
+	userID, sessionToken := createUserViaAPI(t, mux, "logout-local@example.com", "Logout Local", "user", "")
+	otherSession, otherHash, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatalf("mint second local session: %v", err)
+	}
+	if _, err := database.Exec(`INSERT INTO als_sessions(user_id, token_hash, expires_at) VALUES (?, ?, ?)`, userID, otherHash, time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatalf("persist second local session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Authorization", "Bearer "+sessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream logout calls=%d, want 0", upstreamCalls)
+	}
+	var revoked sql.NullTime
+	if err := database.QueryRow(`SELECT revoked_at FROM als_sessions WHERE user_id = ? AND token_hash = ?`, userID, auth.HashSessionToken(sessionToken)).Scan(&revoked); err != nil {
+		t.Fatalf("query revoked local session: %v", err)
+	}
+	if !revoked.Valid {
+		t.Fatal("local session was not revoked")
+	}
+	if _, found, err := (&routes{db: database}).findLocalUserIDBySessionToken(context.Background(), otherSession); err != nil || !found {
+		t.Fatalf("other device session should remain valid, found=%v err=%v", found, err)
 	}
 }
 

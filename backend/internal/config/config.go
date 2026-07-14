@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -9,16 +11,17 @@ import (
 )
 
 type Config struct {
-	Server          ServerConfig   `yaml:"server"`
-	LogLevel        string         `yaml:"log_level"`
-	Database        DatabaseConfig `yaml:"database"`
-	Auth            AuthConfig     `yaml:"auth"`
-	Register        RegisterConfig `yaml:"register"`
-	SMTP            SMTPConfig     `yaml:"smtp"`
-	Redis           RedisConfig    `yaml:"redis"`
-	Stripe          StripeConfig   `yaml:"stripe"`
-	Sub2APIBaseURL  string         `yaml:"sub2api_base_url"`
-	Sub2APIAdminKey string         `yaml:"sub2api_admin_key"`
+	Server                    ServerConfig   `yaml:"server"`
+	LogLevel                  string         `yaml:"log_level"`
+	Database                  DatabaseConfig `yaml:"database"`
+	Auth                      AuthConfig     `yaml:"auth"`
+	Register                  RegisterConfig `yaml:"register"`
+	SMTP                      SMTPConfig     `yaml:"smtp"`
+	Redis                     RedisConfig    `yaml:"redis"`
+	Stripe                    StripeConfig   `yaml:"stripe"`
+	Sub2APIBaseURL            string         `yaml:"sub2api_base_url"`
+	Sub2APIAdminKey           string         `yaml:"sub2api_admin_key"`
+	Sub2APITokenEncryptionKey string         `yaml:"sub2api_token_encryption_key"`
 }
 
 type ServerConfig struct {
@@ -70,12 +73,12 @@ type RedisConfig struct {
 }
 
 type StripeConfig struct {
-	SecretKey     string `yaml:"secret_key"`
+	SecretKey      string `yaml:"secret_key"`
 	PublishableKey string `yaml:"publishable_key"`
-	WebhookSecret string `yaml:"webhook_secret"`
-	Currency      string `yaml:"currency"`
-	SuccessURL    string `yaml:"success_url"`
-	CancelURL     string `yaml:"cancel_url"`
+	WebhookSecret  string `yaml:"webhook_secret"`
+	Currency       string `yaml:"currency"`
+	SuccessURL     string `yaml:"success_url"`
+	CancelURL      string `yaml:"cancel_url"`
 }
 
 func Load(path string) (*Config, error) {
@@ -96,6 +99,7 @@ func Load(path string) (*Config, error) {
 
 	applyEnvString(&cfg.Sub2APIBaseURL, "SUB2API_BASE_URL")
 	applyEnvString(&cfg.Sub2APIAdminKey, "SUB2API_ADMIN_KEY")
+	applyEnvString(&cfg.Sub2APITokenEncryptionKey, "SUB2API_TOKEN_ENCRYPTION_KEY")
 	applyEnvString(&cfg.Stripe.SecretKey, "STRIPE_SECRET_KEY")
 	applyEnvString(&cfg.Stripe.PublishableKey, "STRIPE_PUBLISHABLE_KEY")
 	applyEnvString(&cfg.Stripe.WebhookSecret, "STRIPE_WEBHOOK_SECRET")
@@ -115,6 +119,7 @@ func Load(path string) (*Config, error) {
 func (c *Config) applyDefaults() {
 	c.Sub2APIBaseURL = strings.TrimRight(strings.TrimSpace(c.Sub2APIBaseURL), "/")
 	c.Sub2APIAdminKey = strings.TrimSpace(c.Sub2APIAdminKey)
+	c.Sub2APITokenEncryptionKey = strings.TrimSpace(c.Sub2APITokenEncryptionKey)
 	c.Stripe.SecretKey = strings.TrimSpace(c.Stripe.SecretKey)
 	c.Stripe.PublishableKey = strings.TrimSpace(c.Stripe.PublishableKey)
 	c.Stripe.WebhookSecret = strings.TrimSpace(c.Stripe.WebhookSecret)
@@ -159,6 +164,12 @@ func (c *Config) validate() error {
 	if c.Sub2APIBaseURL == "" {
 		return fmt.Errorf("sub2api_base_url is required (set in config file or SUB2API_BASE_URL env)")
 	}
+	if c.Sub2APITokenEncryptionKey == "" {
+		return fmt.Errorf("sub2api_token_encryption_key is required (set in config file or SUB2API_TOKEN_ENCRYPTION_KEY env)")
+	}
+	if !isEncoded32ByteKey(c.Sub2APITokenEncryptionKey) {
+		return fmt.Errorf("sub2api_token_encryption_key must encode exactly 32 bytes (base64 or hex)")
+	}
 	if c.Stripe.SecretKey != "" || c.Stripe.WebhookSecret != "" || c.Stripe.SuccessURL != "" || c.Stripe.CancelURL != "" {
 		if c.Stripe.SecretKey == "" || c.Stripe.WebhookSecret == "" || c.Stripe.SuccessURL == "" || c.Stripe.CancelURL == "" {
 			return fmt.Errorf("stripe secret_key, webhook_secret, success_url, and cancel_url must all be set together")
@@ -172,6 +183,15 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+func isEncoded32ByteKey(value string) bool {
+	for _, decode := range []func(string) ([]byte, error){base64.StdEncoding.DecodeString, base64.RawStdEncoding.DecodeString, hex.DecodeString} {
+		if key, err := decode(strings.TrimSpace(value)); err == nil && len(key) == 32 {
+			return true
+		}
+	}
+	return false
 }
 
 func applyEnvString(target *string, key string) {
