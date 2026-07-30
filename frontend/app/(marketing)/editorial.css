@@ -1602,3 +1602,61 @@ section {
   .editorial .docs-layout { grid-template-columns: 1fr; gap: 32px; }
   .editorial .docs-side { position: static; }
 }
+
+/* ===== SSE Parser tool ===== */
+.tool-page { padding: 64px 0 96px; }
+.tool-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 32px; }
+@media (max-width: 960px) { .tool-layout { grid-template-columns: 1fr; } }
+
+.tool-input { display: flex; flex-direction: column; gap: 14px; }
+.tool-input textarea {
+  width: 100%; min-height: 320px; resize: vertical;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  padding: 16px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper-warm); color: var(--ink);
+}
+.tool-input textarea:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.tool-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.tool-controls select {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--paper); color: var(--ink);
+}
+
+.tool-result { min-width: 0; }
+.tool-tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.tool-tabs button {
+  padding: 10px 14px; border: 0; background: transparent; cursor: pointer;
+  font-weight: 600; color: var(--ink-muted); border-bottom: 3px solid transparent;
+}
+.tool-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+.tool-panel { background: var(--paper-warm); border: 1px solid var(--line-soft); border-radius: 14px; padding: 20px; }
+.tool-panel pre { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.tool-copy { margin-top: 12px; }
+
+.tool-usage { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tool-usage th, .tool-usage td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+.tool-usage th { color: var(--ink-muted); font-weight: 600; }
+.tool-usage td.num { font-family: var(--mono); text-align: right; }
+
+.tool-call { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: var(--paper); }
+.tool-call-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 8px; }
+.tool-call-name { font-family: var(--mono); font-weight: 700; color: var(--accent-ink); }
+.tool-call-id { font-family: var(--mono); font-size: 12px; color: var(--ink-muted); }
+.tool-call pre { background: var(--paper-warm); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
+
+.tool-timeline { font-family: var(--mono); font-size: 12.5px; }
+.tool-timeline-row { display: grid; grid-template-columns: 40px 150px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line-soft); }
+.tool-timeline-row.is-error { color: var(--warn); }
+.tool-timeline-row .idx { color: var(--ink-muted); }
+.tool-timeline-row .delta { color: var(--ink-soft); word-break: break-word; white-space: pre-wrap; }
+
+.tool-empty { color: var(--ink-muted); padding: 24px; text-align: center; }
+.tool-note { font-size: 12.5px; color: var(--warn); margin-top: 8px; }
+.tool-error-banner { background: rgba(164,111,22,0.12); color: var(--warn); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+
+/* services 入口卡 */
+.tool-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 28px 32px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper-warm); }
+.tool-card-body { max-width: 640px; }
+.tool-card-body h3 { font-size: 22px; margin-bottom: 6px; }
+.tool-card-body p { color: var(--ink-soft); }
