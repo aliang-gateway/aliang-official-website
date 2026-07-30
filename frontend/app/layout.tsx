@@ -4,9 +4,20 @@ import { getLocale, getMessages } from "next-intl/server";
 import { NextIntlClientProvider } from "next-intl";
 import "./globals.css";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://aliang.one";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "aliang.one - 阿良家的AI",
   description: "阿良家的AI API网关 - 提供稳定可靠的AI接口服务",
+  keywords: ["AI API", "AI 网关", "Anthropic", "OpenAI", "Claude", "ChatGPT", "阿良家的AI"],
+  openGraph: {
+    type: "website",
+    siteName: "阿良家的AI",
+    title: "aliang.one - 阿良家的AI",
+    description: "阿良家的AI API网关 - 提供稳定可靠的AI接口服务",
+    url: SITE_URL,
+  },
 };
 
 const themeInitScript = `(function(){try{var stored=localStorage.getItem('theme');var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var isDark=stored?stored==='dark':prefersDark;document.documentElement.classList.toggle('dark',isDark);}catch(e){}})();`;
