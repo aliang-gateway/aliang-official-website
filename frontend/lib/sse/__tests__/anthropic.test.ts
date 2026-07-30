@@ -37,4 +37,29 @@ describe("reduceAnthropic", () => {
     expect(r.toolCalls[0].id).toBe("toolu_1");
     expect(r.toolCalls[0].arguments).toEqual({ city: "BJ" });
   });
+
+  it("error 事件被收集到 errors 中", () => {
+    const frame = (eventName: string, obj: unknown) =>
+      `event: ${eventName}\ndata: ${JSON.stringify(obj)}`;
+    const raw = [
+      frame("error", { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }),
+    ].join("\n\n");
+    const r = reduceAnthropic(parseSse(raw));
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].error).toBe("Overloaded");
+  });
+
+  it("畸形/非对象负载不会崩溃且不丢失已解析数据", () => {
+    const frame = (eventName: string, obj: unknown) =>
+      `event: ${eventName}\ndata: ${JSON.stringify(obj)}`;
+    const raw = [
+      frame("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } }),
+      `data: {not json}`,
+      frame("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn" } }),
+    ].join("\n\n");
+    const r = reduceAnthropic(parseSse(raw));
+    expect(r.text).toBe("Hi");
+    expect(r.usage.stopReason).toBe("end_turn");
+    expect(r.errors.length).toBeGreaterThanOrEqual(1);
+  });
 });
