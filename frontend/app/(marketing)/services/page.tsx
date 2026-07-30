@@ -156,6 +156,17 @@ export default function ServicesPage() {
         </section>
       </main>
 
+      <section className="container" style={{ padding: "48px 0" }} aria-labelledby="tool-card-title">
+        <div className="tool-card">
+          <div className="tool-card-body">
+            <div className="label">{s("toolCardLabel")}</div>
+            <h3 id="tool-card-title">{s("toolCardTitle")}</h3>
+            <p>{s("toolCardDesc")}</p>
+          </div>
+          <Link className="btn primary" href="/tools/sse-parser">{s("toolCardBtn")}</Link>
+        </div>
+      </section>
+
       <section className="closing" aria-labelledby="closing-title">
         <div className="container closing-grid">
           <div>
