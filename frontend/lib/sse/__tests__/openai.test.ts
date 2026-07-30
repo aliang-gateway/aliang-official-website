@@ -44,4 +44,17 @@ describe("reduceOpenai", () => {
     expect(r.usage.cacheReadTokens).toBe(3);
     expect(r.usage.reasoningTokens).toBe(1);
   });
+
+  it("tool_calls 含 null/非对象元素时不崩溃", () => {
+    const raw = [
+      `data: {"choices":[{"delta":{"content":"Hi"}}]}`,
+      `data: {"choices":[{"delta":{"tool_calls":[null,{"index":0,"function":{"name":"f","arguments":"{}"}}]}}]}`,
+      `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+    ].join("\n\n");
+    const r = reduceOpenai(parseSse(raw));
+    expect(r.text).toBe("Hi");
+    expect(r.usage.stopReason).toBe("stop");
+    expect(r.toolCalls).toHaveLength(1);
+    expect(r.toolCalls[0].name).toBe("f");
+  });
 });

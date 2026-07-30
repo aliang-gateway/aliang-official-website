@@ -25,6 +25,7 @@ export function reduceOpenai(events: SseEvent[]): UnifiedResult {
         if (typeof delta.content === "string") text += delta.content;
         if (Array.isArray(delta.tool_calls)) {
           for (const tc of delta.tool_calls) {
+            if (!tc || typeof tc !== "object") continue;
             const idx = typeof tc.index === "number" ? tc.index : 0;
             let entry = toolMap.get(idx);
             if (!entry) {
