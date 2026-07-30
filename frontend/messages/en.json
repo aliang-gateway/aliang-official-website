@@ -349,7 +349,11 @@
       "topbarMid": [
         "In research",
         "Shipped"
-      ]
+      ],
+      "toolCardLabel": "Dev tool",
+      "toolCardTitle": "SSE Stream Parser",
+      "toolCardDesc": "Parse raw streaming responses (SSE) from Anthropic / OpenAI right in your browser. Extracts full text, token usage, tool calls and the event timeline. Nothing is uploaded.",
+      "toolCardBtn": "Open tool"
     },
     "price": {
       "heroLabel": "Plans / Pricing",
@@ -495,6 +499,47 @@
       "sidebarHelpTitle": "Need account setup help?",
       "sidebarHelpBody": "Start from the account page and issue your first API key in under two minutes.",
       "sidebarHelpCta": "Go to register"
+    },
+    "tools": {
+      "sseParser": {
+        "heroLabel": "Developer tool",
+        "heroTitle": "SSE Stream Parser",
+        "heroLead": "Paste a raw streaming response (SSE) from Anthropic Messages or OpenAI Chat Completions. The protocol is auto-detected and the full text, token usage, tool calls and event timeline are extracted. Everything runs locally in your browser — nothing is uploaded or stored.",
+        "seoIntro": "An online AI streaming response debugger. Parses the Server-Sent Events (SSE) streaming protocol of Anthropic Claude and OpenAI ChatGPT — useful for troubleshooting API integration, token billing, and tool / function calling.",
+        "inputLabel": "Paste raw SSE payload",
+        "inputPlaceholder": "data: {\"choices\":[...]}\n\ndata: {\"choices\":[...]}\n\ndata: [DONE]",
+        "protocolAuto": "Auto-detect",
+        "protocolAnthropic": "Anthropic",
+        "protocolOpenai": "OpenAI",
+        "protocolLabel": "Protocol",
+        "parseBtn": "Parse",
+        "clearBtn": "Clear",
+        "sampleLabel": "Load sample",
+        "tabText": "Full text",
+        "tabUsage": "Token usage",
+        "tabTools": "Tool calls",
+        "tabTimeline": "Event timeline",
+        "copyBtn": "Copy",
+        "copied": "Copied",
+        "noText": "No text content",
+        "noTools": "No tool calls",
+        "noUsage": "No usage included (OpenAI requires stream_options.include_usage)",
+        "usageModel": "Model",
+        "usageInput": "Input tokens",
+        "usageOutput": "Output tokens",
+        "usageTotal": "Total",
+        "usageCacheRead": "Cache hit",
+        "usageCacheCreate": "Cache write",
+        "usageReasoning": "Reasoning tokens",
+        "usageStopReason": "Stop reason",
+        "timelineIndex": "#",
+        "timelineType": "Type",
+        "timelineDelta": "Delta",
+        "unrecognized": "Could not auto-detect the protocol. Choose Anthropic or OpenAI manually.",
+        "empty": "Paste a payload and hit Parse.",
+        "argsHint": "Argument parse failed; raw string kept",
+        "backToServices": "Back to services"
+      }
     }
   },
   "footer": {

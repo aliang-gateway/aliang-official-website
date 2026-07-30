@@ -349,7 +349,11 @@
       "topbarMid": [
         "研究方向",
         "已交付能力"
-      ]
+      ],
+      "toolCardLabel": "开发者工具",
+      "toolCardTitle": "SSE 流式响应解析器",
+      "toolCardDesc": "在线解析 Anthropic / OpenAI 的流式响应报文，提取完整文本、Token 用量、工具调用与事件时间线。纯浏览器端运行，不上传任何数据。",
+      "toolCardBtn": "打开工具"
     },
     "price": {
       "heroLabel": "套餐 / 定价",
@@ -495,6 +499,47 @@
       "sidebarHelpTitle": "需要账户配置帮助？",
       "sidebarHelpBody": "从账户页面开始，两分钟内签发你的第一把 API 密钥。",
       "sidebarHelpCta": "前往注册"
+    },
+    "tools": {
+      "sseParser": {
+        "heroLabel": "开发者工具",
+        "heroTitle": "SSE 流式响应解析器",
+        "heroLead": "把 Anthropic Messages 或 OpenAI Chat Completions 的流式响应（SSE）原始报文粘贴进来，自动识别协议并提取完整文本、Token 用量、工具调用与事件时间线。所有解析在浏览器本地完成，不上传、不存储。",
+        "seoIntro": "这是一个在线的 AI 流式响应调试工具，支持解析 Anthropic Claude 与 OpenAI ChatGPT 的 Server-Sent Events（SSE）流式协议，常用于排查接口对接、token 计费、工具调用（function calling / tool use）等问题。",
+        "inputLabel": "粘贴原始 SSE 报文",
+        "inputPlaceholder": "data: {\"choices\":[...]}\n\ndata: {\"choices\":[...]}\n\ndata: [DONE]",
+        "protocolAuto": "自动识别",
+        "protocolAnthropic": "Anthropic",
+        "protocolOpenai": "OpenAI",
+        "protocolLabel": "协议",
+        "parseBtn": "解析",
+        "clearBtn": "清空",
+        "sampleLabel": "填入示例",
+        "tabText": "完整文本",
+        "tabUsage": "Token 用量",
+        "tabTools": "工具调用",
+        "tabTimeline": "事件时间线",
+        "copyBtn": "复制",
+        "copied": "已复制",
+        "noText": "无文本内容",
+        "noTools": "无工具调用",
+        "noUsage": "未包含用量信息（OpenAI 需开启 stream_options.include_usage）",
+        "usageModel": "模型",
+        "usageInput": "输入 tokens",
+        "usageOutput": "输出 tokens",
+        "usageTotal": "合计",
+        "usageCacheRead": "缓存命中",
+        "usageCacheCreate": "缓存写入",
+        "usageReasoning": "推理 tokens",
+        "usageStopReason": "结束原因",
+        "timelineIndex": "#",
+        "timelineType": "类型",
+        "timelineDelta": "增量",
+        "unrecognized": "未能自动识别协议，请手动选择 Anthropic 或 OpenAI。",
+        "empty": "粘贴报文后点击「解析」查看结果。",
+        "argsHint": "参数解析失败，已保留原始字符串",
+        "backToServices": "返回服务页"
+      }
     }
   },
   "footer": {
