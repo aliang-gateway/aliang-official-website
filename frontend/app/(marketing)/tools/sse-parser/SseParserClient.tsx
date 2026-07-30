@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { parseAndReduce } from "@/lib/sse";
 import { SAMPLES, type SampleKey } from "@/lib/sse/samples";
@@ -13,14 +13,22 @@ export function SseParserClient() {
   const locale = useLocale();
   const isEn = locale === "en";
   const [raw, setRaw] = useState("");
+  const [debouncedRaw, setDebouncedRaw] = useState("");
   const [forced, setForced] = useState<"auto" | Protocol>("auto");
   const [tab, setTab] = useState<Tab>("text");
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedRaw(raw), 250);
+    return () => clearTimeout(timer);
+  }, [raw]);
+
+  const parseNow = () => setDebouncedRaw(raw);
+
   const parsed = useMemo(() => {
-    if (!raw.trim()) return null;
-    return parseAndReduce(raw, forced === "auto" ? null : forced);
-  }, [raw, forced]);
+    if (!debouncedRaw.trim()) return null;
+    return parseAndReduce(debouncedRaw, forced === "auto" ? null : forced);
+  }, [debouncedRaw, forced]);
 
   const result = parsed?.result ?? null;
   const recognized = parsed?.protocol ?? null;
@@ -67,6 +75,7 @@ export function SseParserClient() {
           spellCheck={false}
         />
         <div className="tool-controls">
+          <button type="button" className="btn primary" onClick={parseNow}>{t("parseBtn")}</button>
           <label className="label" htmlFor="sse-proto">{t("protocolLabel")}</label>
           <select
             id="sse-proto"
@@ -97,12 +106,12 @@ export function SseParserClient() {
       </div>
 
       <div className="tool-result">
-        {raw.trim() && !recognized && (
+        {debouncedRaw.trim() && !recognized && (
           <div className="tool-error-banner">{t("unrecognized")}</div>
         )}
 
         {!result ? (
-          <div className="tool-panel tool-empty">{raw.trim() ? "" : t("empty")}</div>
+          <div className="tool-panel tool-empty">{debouncedRaw.trim() ? "" : t("empty")}</div>
         ) : (
           <>
             <div className="tool-tabs" role="tablist">
@@ -169,6 +178,11 @@ export function SseParserClient() {
 
             {tab === "timeline" && (
               <div className="tool-panel tool-timeline">
+                <div className="tool-timeline-row tool-timeline-head" aria-hidden="true">
+                  <span className="idx">{t("timelineIndex")}</span>
+                  <span>{t("timelineType")}</span>
+                  <span>{t("timelineDelta")}</span>
+                </div>
                 {parsed!.events.map((ev) => (
                   <div className={`tool-timeline-row${ev.ok ? "" : " is-error"}`} key={ev.index}>
                     <span className="idx">#{ev.index}</span>

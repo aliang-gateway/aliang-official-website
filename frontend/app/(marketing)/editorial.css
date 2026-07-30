@@ -1660,3 +1660,4 @@ section {
 .tool-card-body { max-width: 640px; }
 .tool-card-body h3 { font-size: 22px; margin-bottom: 6px; }
 .tool-card-body p { color: var(--ink-soft); }
+.tool-timeline-head { font-weight: 700; color: var(--ink-muted); border-bottom: 1px solid var(--line); }
