@@ -174,6 +174,7 @@ type ServiceDirection struct {
 	TitleEn     string
 	DescZh      string
 	DescEn      string
+	RepoURL     string
 	SortOrder   int
 	IsPublished bool
 	CreatedAt   time.Time

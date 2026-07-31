@@ -30,11 +30,12 @@ func (s *Service) rebind(q string) string {
 	return db.Rebind(s.sqlDialect, q)
 }
 
-const columns = `id, status, phase_zh, phase_en, title_zh, title_en, desc_zh, desc_en, sort_order, is_published, created_at, updated_at`
+const columns = `id, status, phase_zh, phase_en, title_zh, title_en, desc_zh, desc_en, repo_url, sort_order, is_published, created_at, updated_at`
 
 func scanServiceDirection(sd *model.ServiceDirection, scanner interface{ Scan(...any) error }) error {
 	return scanner.Scan(
 		&sd.ID, &sd.Status, &sd.PhaseZh, &sd.PhaseEn, &sd.TitleZh, &sd.TitleEn, &sd.DescZh, &sd.DescEn,
+		&sd.RepoURL,
 		&sd.SortOrder, &sd.IsPublished, &sd.CreatedAt, &sd.UpdatedAt,
 	)
 }
@@ -47,6 +48,10 @@ func (s *Service) normalizeAndValidate(sd *model.ServiceDirection) error {
 	sd.TitleEn = strings.TrimSpace(sd.TitleEn)
 	sd.DescZh = strings.TrimSpace(sd.DescZh)
 	sd.DescEn = strings.TrimSpace(sd.DescEn)
+	sd.RepoURL = strings.TrimSpace(sd.RepoURL)
+	if sd.RepoURL != "" && !strings.HasPrefix(sd.RepoURL, "http://") && !strings.HasPrefix(sd.RepoURL, "https://") {
+		return errors.New("repo_url must be an http(s) URL")
+	}
 	if !validStatuses[sd.Status] {
 		return errors.New("status must be 'research' or 'done'")
 	}
@@ -68,10 +73,10 @@ func (s *Service) Create(ctx context.Context, sd *model.ServiceDirection) error 
 	}
 	now := time.Now().UTC()
 	id, err := db.InsertID(ctx, s.sqlDialect, s.db, `
-		INSERT INTO als_service_directions (status, phase_zh, phase_en, title_zh, title_en, desc_zh, desc_en, sort_order, is_published, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO als_service_directions (status, phase_zh, phase_en, title_zh, title_en, desc_zh, desc_en, repo_url, sort_order, is_published, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"id",
-		sd.Status, sd.PhaseZh, sd.PhaseEn, sd.TitleZh, sd.TitleEn, sd.DescZh, sd.DescEn, sd.SortOrder, sd.IsPublished, now, now,
+		sd.Status, sd.PhaseZh, sd.PhaseEn, sd.TitleZh, sd.TitleEn, sd.DescZh, sd.DescEn, sd.RepoURL, sd.SortOrder, sd.IsPublished, now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("insert service direction: %w", err)
@@ -102,9 +107,9 @@ func (s *Service) Update(ctx context.Context, id int64, sd *model.ServiceDirecti
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, s.rebind(`
 		UPDATE als_service_directions
-		SET status = ?, phase_zh = ?, phase_en = ?, title_zh = ?, title_en = ?, desc_zh = ?, desc_en = ?, sort_order = ?, is_published = ?, updated_at = ?
+		SET status = ?, phase_zh = ?, phase_en = ?, title_zh = ?, title_en = ?, desc_zh = ?, desc_en = ?, repo_url = ?, sort_order = ?, is_published = ?, updated_at = ?
 		WHERE id = ?`),
-		sd.Status, sd.PhaseZh, sd.PhaseEn, sd.TitleZh, sd.TitleEn, sd.DescZh, sd.DescEn, sd.SortOrder, sd.IsPublished, now, id,
+		sd.Status, sd.PhaseZh, sd.PhaseEn, sd.TitleZh, sd.TitleEn, sd.DescZh, sd.DescEn, sd.RepoURL, sd.SortOrder, sd.IsPublished, now, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update service direction: %w", err)
