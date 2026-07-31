@@ -350,6 +350,7 @@
         "In research",
         "Shipped"
       ],
+      "viewProject": "View project",
       "toolCardLabel": "Dev tool",
       "toolCardTitle": "SSE Stream Parser",
       "toolCardDesc": "Parse raw streaming responses (SSE) from Anthropic / OpenAI right in your browser. Extracts full text, token usage, tool calls and the event timeline. Nothing is uploaded.",

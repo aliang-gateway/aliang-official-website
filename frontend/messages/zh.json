@@ -350,6 +350,7 @@
         "研究方向",
         "已交付能力"
       ],
+      "viewProject": "查看项目",
       "toolCardLabel": "开发者工具",
       "toolCardTitle": "SSE 流式响应解析器",
       "toolCardDesc": "在线解析 Anthropic / OpenAI 的流式响应报文，提取完整文本、Token 用量、工具调用与事件时间线。纯浏览器端运行，不上传任何数据。",
