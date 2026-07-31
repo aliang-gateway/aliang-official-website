@@ -66,7 +66,7 @@ function ModelSharePieChart({
 
         <div className="grid gap-3 min-w-0">
           {segments.map((segment) => (
-            <div key={`${segment.model}-legend`} className="min-w-0 rounded-[1rem] border border-[var(--portal-line)] bg-white/55 p-3 dark:bg-slate-950/30">
+            <div key={`${segment.model}-legend`} className="min-w-0 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--bone)]/55 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -98,7 +98,6 @@ export function ModelShareCard({ modelShare }: ModelShareCardProps) {
     <article className="block-card min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("modelShare")}</p>
           <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("tokenDistribution")}</h2>
           <p className="mt-2 text-sm text-[var(--portal-muted)]">
             {t("modelShareDescription")}

@@ -12,6 +12,7 @@ import {
   ModelShareCard,
   PackageCard,
   PurchaseCard,
+  SectionLabel,
   TicketCard,
   TokenTrendCard,
 } from "@/components/dashboard";
@@ -37,14 +38,23 @@ function DashboardPageContent() {
   }
 
   return (
-    <section className="portal-shell space-y-6 py-8">
-      <DashboardHeader onRefresh={() => window.location.reload()} onSignOut={data.signOut} />
+    <section className="portal-shell space-y-10 py-10">
+      <DashboardHeader onRefresh={() => data.reload()} onSignOut={data.signOut} />
 
       {data.error ? <p className="notice">{t("errorPrefix")}{data.error}</p> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
-        <div className="grid min-w-0 gap-6">
-          <div className="grid gap-6 xl:grid-cols-2">
+      {/* 账户概览:关键数字横条(余额 / 今日用量 / 累计) */}
+      <div className="space-y-3">
+        <SectionLabel kicker={t("sectionOverview")} />
+        <MetricsCard metricSummary={data.metricSummary} />
+        <p className="text-sm text-[var(--ink-muted)]">{t("metricsDescription")}</p>
+      </div>
+
+      {/* 用量趋势 + 模型分布(主列) / 下一步操作(侧列:充值/配置) */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+        <div className="min-w-0 space-y-8">
+          <div className="space-y-4">
+            <SectionLabel kicker={t("sectionUsage")} />
             <TokenTrendCard
               selectedRange={trend.selectedRange}
               appliedGranularity={trend.appliedGranularity}
@@ -52,22 +62,37 @@ function DashboardPageContent() {
               tokenTrend={data.tokenTrend}
               updateSearchParams={trend.updateSearchParams}
             />
-            <ModelShareCard modelShare={data.modelShare} />
           </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <PackageCard dashboard={data.dashboard} />
-            <MetricsCard metricSummary={data.metricSummary} />
+          <div className="space-y-4">
+            <SectionLabel kicker={t("modelShare")} />
+            <ModelShareCard modelShare={data.modelShare} />
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-6">
-          <ConfigEntryCard onOpen={() => { config.open(); data.clearError(); }} triggerRef={configTriggerRef} />
-          <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
+        <div className="min-w-0 space-y-4">
+          <SectionLabel kicker={t("sectionNext")} />
+          <div className="space-y-4">
+            <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
+            <ConfigEntryCard onOpen={() => { config.open(); data.clearError(); }} triggerRef={configTriggerRef} />
+          </div>
+        </div>
+      </div>
+
+      {/* 套餐 */}
+      <div className="space-y-3">
+        <SectionLabel kicker={t("sectionPlan")} />
+        <PackageCard dashboard={data.dashboard} />
+      </div>
+
+      {/* 更多(次要) */}
+      <div className="space-y-3">
+        <SectionLabel kicker={t("sectionMore")} />
+        <div className="grid gap-6 md:grid-cols-2">
           <TicketCard sessionToken={data.sessionToken} />
           <DetailsLinkCard />
         </div>
       </div>
+
 
       <ConfigModal
         isOpen={config.isOpen}

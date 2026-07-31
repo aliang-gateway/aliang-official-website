@@ -9,43 +9,41 @@ type MetricsCardProps = {
   metricSummary: DashboardMetricSummary | null;
 };
 
+/**
+ * Full-width KPI strip — the five account numbers a user wants at a glance
+ * (balance, today's requests/spend/tokens, cumulative tokens) laid out as a
+ * single divided data row across the top of the dashboard, like a masthead
+ * stat band. Replaces the old equal-weight card that buried these numbers in
+ * the second row.
+ */
 export function MetricsCard({ metricSummary }: MetricsCardProps) {
   const t = useTranslations("dashboard");
 
-  return (
-    <article className="block-card min-w-0 space-y-4">
-      <div>
-        <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("metrics")}</p>
-        <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
-          {t("accountIndicators")}
-        </h2>
-        <p className="mt-2 text-sm text-[var(--portal-muted)]">
-          {t("metricsDescription")}
-        </p>
-      </div>
+  const cells = [
+    { label: t("balance"), value: formatMetricCurrency(metricSummary?.balance ?? null) },
+    { label: t("todayRequests"), value: formatMetricNumber(metricSummary?.today_requests ?? null) },
+    { label: t("todaySpend"), value: formatMetricCurrency(metricSummary?.today_spend ?? null) },
+    { label: t("todayToken"), value: formatMetricNumber(metricSummary?.today_token ?? null) },
+    { label: t("cumulativeToken"), value: formatMetricNumber(metricSummary?.cumulative_token ?? null) },
+  ] as const;
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-1">
-        <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("balance")}</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.balance ?? null)}</p>
-        </div>
-        <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todayRequests")}</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_requests ?? null)}</p>
-        </div>
-        <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todaySpend")}</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricCurrency(metricSummary?.today_spend ?? null)}</p>
-        </div>
-        <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("todayToken")}</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.today_token ?? null)}</p>
-        </div>
-        <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("cumulativeToken")}</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--portal-ink)]">{formatMetricNumber(metricSummary?.cumulative_token ?? null)}</p>
-        </div>
-      </div>
-    </article>
+  return (
+    <div className="clay-panel min-w-0 overflow-hidden">
+      <ol className="grid grid-cols-2 divide-[color:var(--line)] divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x lg:grid-cols-5">
+        {cells.map((cell) => (
+          <li key={cell.label} className="min-w-0 px-5 py-4">
+            <p
+              className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[var(--ink-muted)]"
+              style={{ fontFamily: "var(--font-editorial-mono)" }}
+            >
+              {cell.label}
+            </p>
+            <p className="mt-1.5 truncate text-2xl font-extrabold tracking-tight text-[var(--ink)]">
+              {cell.value}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

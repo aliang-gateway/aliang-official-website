@@ -74,13 +74,12 @@ export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCard
     purchaseMessage?.tone === "error"
       ? "text-red-500 dark:text-red-400"
       : purchaseMessage?.tone === "success"
-        ? "text-emerald-500 dark:text-emerald-400"
+        ? "text-[var(--accent)]"
         : "text-[var(--portal-muted)]";
 
   return (
     <article className="block-card min-w-0 space-y-4">
       <div>
-        <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("purchase")}</p>
         <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("topUpOrExtend")}</h2>
         <p className="mt-2 text-sm text-[var(--portal-muted)]">
           {t("purchaseDescription")}

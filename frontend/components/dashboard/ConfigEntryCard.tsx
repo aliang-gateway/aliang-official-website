@@ -15,7 +15,6 @@ export function ConfigEntryCard({ onOpen, triggerRef }: ConfigEntryCardProps) {
   return (
     <article className="block-card min-w-0 space-y-4">
       <div>
-        <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("configApiKey")}</p>
         <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("clientSetupEntry")}</h2>
         <p className="mt-2 text-sm text-[var(--portal-muted)]">
           {t("configDescription")}

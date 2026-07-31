@@ -1,4 +1,5 @@
 export { DashboardHeader } from "./DashboardHeader";
+export { SectionLabel } from "./SectionLabel";
 export { TokenTrendCard } from "./TokenTrendCard";
 export { ModelShareCard } from "./ModelShareCard";
 export { PackageCard } from "./PackageCard";

@@ -233,7 +233,7 @@ export function ConfigModal({
           <div className="flex min-h-0 flex-col p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--portal-line)] pb-4">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t(templateDefinition.labelKey)}</p>
+                <p className="text-sm font-semibold text-[var(--accent)]">{t(templateDefinition.labelKey)}</p>
                 <h3 className="mt-1 text-xl font-bold text-[var(--portal-ink)]">{t("renderedClientConfig")}</h3>
                 <p className="mt-2 max-w-2xl text-sm text-[var(--portal-muted)]">{t(templateDefinition.helperKey)}</p>
               </div>

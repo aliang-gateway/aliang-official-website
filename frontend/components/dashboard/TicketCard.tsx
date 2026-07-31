@@ -26,13 +26,12 @@ export function TicketCard({ sessionToken }: TicketCardProps) {
     submitMessage?.tone === "error"
       ? "text-red-500 dark:text-red-400"
       : submitMessage?.tone === "success"
-        ? "text-emerald-500 dark:text-emerald-400"
+        ? "text-[var(--accent)]"
         : "text-[var(--portal-muted)]";
 
   return (
     <article className="block-card min-w-0 space-y-4">
       <div>
-        <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("ticketFeedback")}</p>
         <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("supportEntry")}</h2>
         <p className="mt-2 text-sm text-[var(--portal-muted)]">{t("ticketDescription")}</p>
       </div>

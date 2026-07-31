@@ -42,7 +42,6 @@ export function PackageCard({ dashboard }: PackageCardProps) {
     <article className="block-card min-w-0 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-emerald-500 dark:text-emerald-400">{t("package")}</p>
           <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">
             {visiblePackageSummary?.tier_name ?? t("noPackageYet")}
           </h2>
@@ -70,8 +69,8 @@ export function PackageCard({ dashboard }: PackageCardProps) {
                 onClick={() => setSelectedPackageSummaryId(summary.subscription_id)}
                 className={`rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
                   isSelected
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                    : "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                    ? "border-[var(--accent)]/40 bg-[var(--accent-wash)] text-[var(--accent-ink)]"
+                    : "border-[var(--line)] bg-[var(--bone)]/60 text-[var(--ink)]"
                 }`}
                 aria-pressed={isSelected}
               >
