@@ -192,7 +192,7 @@ function TrendDetail({
 }) {
   const preview = useMemo(() => buildPreviewPoints(points, tone === "emerald" ? 14 : 2800), [points, tone]);
   const maxValue = Math.max(...preview.map((point) => point.value), 1);
-  const stroke = tone === "emerald" ? "#10b981" : "#06b6d4";
+  const stroke = tone === "emerald" ? "#147a4f" : "#06b6d4";
 
   const coordinates = preview
     .map((point, index) => {
@@ -227,13 +227,13 @@ function TrendDetail({
           {preview.map((point) => (
             <div
               key={`${point.bucket_start}-${point.value}-label`}
-              className="min-w-0 rounded-2xl bg-white/50 px-2 py-1 text-center dark:bg-slate-950/30"
+              className="min-w-0 rounded-2xl bg-[var(--bone)]/50 px-2 py-1 text-center"
             >
               {formatShortDate(point.bucket_start)}
             </div>
           ))}
         </div>
-        <div className="rounded-full border border-[var(--portal-line)] bg-white/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)] dark:bg-slate-950/30">
+        <div className="rounded-full border border-[var(--portal-line)] bg-[var(--bone)]/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
           {label}
         </div>
       </div>
@@ -548,10 +548,10 @@ function DashboardDetailsPageContent() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full border border-[var(--portal-line)] bg-white/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)] dark:bg-slate-950/30">
+            <div className="rounded-full border border-[var(--portal-line)] bg-[var(--bone)]/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
               {usageLoading ? t("loadingRecords") : usagePagination.total > 0 ? t("totalRecords", { count: formatNumber(usagePagination.total) }) : t("noRecordsYet")}
             </div>
-            <div className="rounded-full border border-[var(--portal-line)] bg-white/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)] dark:bg-slate-950/30">
+            <div className="rounded-full border border-[var(--portal-line)] bg-[var(--bone)]/60 px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
               {t("pageN", { current: formatNumber(usagePagination.page), total: formatNumber(Math.max(usagePagination.total_pages, 1)) })}
             </div>
           </div>
@@ -560,7 +560,7 @@ function DashboardDetailsPageContent() {
         <div className="overflow-x-auto rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)]">
           <table className="w-full min-w-[960px] text-left">
             <thead>
-              <tr className="border-b border-[var(--portal-line)] bg-white/40 dark:bg-slate-950/20">
+              <tr className="border-b border-[var(--portal-line)] bg-[var(--bone)]/40">
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("created")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("requestId")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("endpoint")}</th>
@@ -588,7 +588,7 @@ function DashboardDetailsPageContent() {
               {!usageError && !usageLoading && usageRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8">
-                    <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-white/30 p-5 text-sm dark:bg-slate-950/20">
+                    <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--bone)]/30 p-5 text-sm">
                       <p className="font-semibold text-[var(--portal-ink)]">{t("noUsageRecordsTitle")}</p>
                       <p className="text-[var(--portal-muted)]">
                         {t("noUsageRecordsDescription")}
@@ -601,7 +601,7 @@ function DashboardDetailsPageContent() {
               {usageLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8">
-                    <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-white/30 p-5 text-sm dark:bg-slate-950/20">
+                    <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--bone)]/30 p-5 text-sm">
                       <p className="font-semibold text-[var(--portal-ink)]">{t("loadingUsageRecords")}</p>
                       <p className="text-[var(--portal-muted)]">{t("fetchingUsageDescription")}</p>
                     </div>

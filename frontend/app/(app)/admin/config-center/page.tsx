@@ -1074,7 +1074,7 @@ export default function AdminConfigCenterPage() {
                               <span className="text-sm font-medium text-[var(--portal-ink)]">
                                 {tpl.name}
                                 {tpl.is_default ? (
-                                  <span className="ml-2 inline-flex rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                                  <span className="ml-2 inline-flex rounded-full bg-[var(--accent-wash)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-ink)]">
                                     default
                                   </span>
                                 ) : null}

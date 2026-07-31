@@ -1,7 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined");
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* The 作旧纸张报刊 identity is light-only — it mirrors app/(marketing)'s .editorial,
+   which already ignores the theme toggle. Neutralise the `dark` variant so no
+   `dark:*` utility can ever apply: every page stays on warm paper whatever the
+   ThemeToggle does, and the status-coloured `dark:` overrides scattered through
+   the (app) pages can't leak pastel patches onto the paper. Safe because no
+   `dark:` utility is used for display/visibility logic — only colour. */
+@custom-variant dark (&:where(.theme-disabled, .theme-disabled *));
 
 /* ============================================
    EDITORIAL DESIGN TOKENS (from frontend2)
@@ -48,6 +54,16 @@
   --accent-soft: var(--color-accent-soft);
   --olive: var(--color-olive);
   --mustard: var(--color-mustard);
+
+  /* editorial structural tokens — global so non-.editorial pages (dashboard,
+     admin, account, …) can reuse the exact borders / shadows / focus wash of
+     the masthead. */
+  --line: rgba(21, 20, 15, 0.16);
+  --line-soft: rgba(21, 20, 15, 0.08);
+  --accent-wash: rgba(20, 122, 79, 0.1);
+  --focus-ring: #0b6b45;
+  --shadow: 0 30px 60px -30px rgba(21, 20, 15, 0.26);
+  --shadow-soft: 0 2px 10px rgba(21, 20, 15, 0.08);
 }
 
 /* ============================================
@@ -58,81 +74,82 @@
    ============================================ */
 
 :root {
-  /* Stitch Design Tokens */
-  --stitch-primary: #21c45d;
-  --stitch-primary-light: #34d399;
-  --stitch-primary-dark: #16a34a;
-  
-  --stitch-bg-light: #f6f8f7;
-  --stitch-bg-dark: #122017;
-  --stitch-bg-card-light: #ffffff;
-  --stitch-bg-card-dark: #0f1a14;
-  --stitch-bg-elevated-light: #ffffff;
-  --stitch-bg-elevated-dark: #1a2e22;
-  
-  --stitch-text-primary-light: #0f172a;
-  --stitch-text-primary-dark: #f1f5f9;
-  --stitch-text-secondary-light: #64748b;
-  --stitch-text-secondary-dark: #94a3b8;
-  --stitch-text-muted-light: #94a3b8;
-  --stitch-text-muted-dark: #64748b;
-  
-  --stitch-border-light: rgba(0, 0, 0, 0.08);
-  --stitch-border-dark: rgba(255, 255, 255, 0.08);
-  
-  --stitch-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --stitch-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --stitch-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-  --stitch-shadow-primary: 0 4px 14px rgba(33, 196, 93, 0.25);
-  
-  /* Semantic Aliases (for Stitch components) */
-  --stitch-bg: var(--stitch-bg-light);
-  --stitch-bg-elevated: var(--stitch-bg-elevated-light);
-  --stitch-text: var(--stitch-text-primary-light);
-  --stitch-text-muted: var(--stitch-text-secondary-light);
-  --stitch-border: var(--stitch-border-light);
-  --stitch-card-bg: var(--stitch-bg-card-light);
-  
-  /* Legacy Portal Tokens (preserved for backward compatibility) */
-  --portal-bg: #f8fafc;
-  --portal-bg-subtle: #fafaf9;
-  --portal-ink: #0f172a;
-  --portal-muted: #64748b;
-  --portal-line: rgba(0, 0, 0, 0.1);
-  --portal-clay: rgba(255, 255, 255, 0.9);
-  --portal-clay-strong: rgba(248, 250, 252, 0.95);
-  --portal-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-  --portal-shadow-soft:
-    0 2px 12px rgba(0, 0, 0, 0.08);
-  --portal-gradient: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
-  --portal-gradient-hover: linear-gradient(135deg, #34d399 0%, #10b981 50%, #059669 100%);
-  --portal-accent: #10b981;
-  --portal-accent-light: #34d399;
-  --portal-accent-dark: #047857;
+  /* Stitch Design Tokens — remapped onto the warm-paper editorial palette.
+     The (app) pages (dashboard / admin / account / distributor / checkout)
+     consume these via Tailwind arbitrary values like bg-[var(--stitch-bg)], so
+     repointing them here flips every page to the 作旧纸张报刊 look at once. */
+  --stitch-primary: var(--accent);          /* #147a4f olive-green */
+  --stitch-primary-light: var(--accent-soft);
+  --stitch-primary-dark: var(--accent-ink);
+
+  --stitch-bg-light: var(--paper);
+  --stitch-bg-dark: var(--paper);
+  --stitch-bg-card-light: var(--paper-warm);
+  --stitch-bg-card-dark: var(--paper-warm);
+  --stitch-bg-elevated-light: var(--bone);
+  --stitch-bg-elevated-dark: var(--bone);
+
+  --stitch-text-primary-light: var(--ink);
+  --stitch-text-primary-dark: var(--ink);
+  --stitch-text-secondary-light: var(--ink-muted);
+  --stitch-text-secondary-dark: var(--ink-muted);
+  --stitch-text-muted-light: var(--ink-muted);
+  --stitch-text-muted-dark: var(--ink-muted);
+
+  --stitch-border-light: var(--line);
+  --stitch-border-dark: var(--line);
+
+  --stitch-shadow-sm: 0 1px 2px rgba(21, 20, 15, 0.06);
+  --stitch-shadow-md: 0 6px 18px rgba(21, 20, 15, 0.1);
+  --stitch-shadow-lg: var(--shadow);
+  --stitch-shadow-primary: 0 10px 24px rgba(20, 122, 79, 0.22);
+
+  /* Semantic Aliases — resolve to paper regardless of .dark (light-only,
+     matching the .editorial masthead which also ignores the theme toggle). */
+  --stitch-bg: var(--paper);
+  --stitch-bg-elevated: var(--bone);
+  --stitch-text: var(--ink);
+  --stitch-text-muted: var(--ink-muted);
+  --stitch-border: var(--line);
+  --stitch-card-bg: var(--paper-warm);
+
+  /* Legacy Portal Tokens — remapped to the same warm-paper system */
+  --portal-bg: var(--paper);
+  --portal-bg-subtle: var(--paper-warm);
+  --portal-ink: var(--ink);
+  --portal-muted: var(--ink-muted);
+  --portal-line: var(--line);
+  --portal-clay: var(--paper-warm);
+  --portal-clay-strong: var(--bone);
+  --portal-shadow: var(--shadow);
+  --portal-shadow-soft: var(--shadow-soft);
+  --portal-gradient: #15140f;             /* ink — mirrors editorial .btn.primary */
+  --portal-gradient-hover: var(--accent);  /* #147a4f on hover */
+  --portal-accent: var(--accent);
+  --portal-accent-light: var(--accent-soft);
+  --portal-accent-dark: var(--accent-ink);
 }
 
+/* `.dark` intentionally does NOT switch the palette — the editorial
+   作旧纸张报刊 identity is light-only by design (mirrors app/(marketing),
+   which ignores the theme toggle too), so dashboard/admin stay on warm
+   paper whatever the user's colour-scheme preference is. The tokens are
+   re-declared here purely to override any earlier dark defaults. */
 .dark {
-  --stitch-bg: var(--stitch-bg-dark);
-  --stitch-bg-elevated: var(--stitch-bg-elevated-dark);
-  --stitch-text: var(--stitch-text-primary-dark);
-  --stitch-text-muted: var(--stitch-text-secondary-dark);
-  --stitch-border: var(--stitch-border-dark);
-  --stitch-card-bg: var(--stitch-bg-card-dark);
-  
-  --portal-bg: #000000;
-  --portal-bg-subtle: #0a0a0a;
-  --portal-ink: #ffffff;
-  --portal-muted: #a1a1aa;
-  --portal-line: rgba(255, 255, 255, 0.1);
-  --portal-clay: rgba(20, 20, 20, 0.9);
-  --portal-clay-strong: rgba(30, 30, 30, 0.95);
-  --portal-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
-  --portal-shadow-soft:
-    0 2px 12px rgba(0, 0, 0, 0.3);
+  --stitch-bg: var(--paper);
+  --stitch-bg-elevated: var(--bone);
+  --stitch-text: var(--ink);
+  --stitch-text-muted: var(--ink-muted);
+  --stitch-border: var(--line);
+  --stitch-card-bg: var(--paper-warm);
+
+  --portal-bg: var(--paper);
+  --portal-bg-subtle: var(--paper-warm);
+  --portal-ink: var(--ink);
+  --portal-muted: var(--ink-muted);
+  --portal-line: var(--line);
+  --portal-clay: var(--paper-warm);
+  --portal-clay-strong: var(--bone);
 }
 
 * {
@@ -142,9 +159,28 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--stitch-bg);
-  color: var(--stitch-text);
-  font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  /* warm-paper base with a faint grain cast behind all content. On (marketing)
+     pages the opaque .editorial wrapper paints over this, so marketing keeps its
+     own .editorial::before grain; on (app) pages this grain is what shows. */
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(106, 92, 56, 0.07) 0, transparent 28%),
+    radial-gradient(circle at 88% 72%, rgba(20, 122, 79, 0.06) 0, transparent 32%),
+    radial-gradient(circle at 50% 50%, rgba(21, 20, 15, 0.025) 0, transparent 70%);
+  color: var(--ink);
+  font-family: var(--font-editorial-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+/* (app) pages — dashboard / admin / account / distributor / checkout.
+   Wraps every authenticated route (see app/(app)/layout.tsx). Body copy
+   already inherits Inter via --font-editorial-body; this lifts page + card
+   headings to the Inter Tight masthead face so the portal reads like the
+   editorial front-end without touching the 10k lines of page TSX. */
+.app-shell :is(h1, h2) {
+  font-family: var(--font-editorial);
+  letter-spacing: -0.02em;
 }
 
 .stitch-section.pt-24 article :is(h1, h2, h3, h4, h5, h6) {
@@ -247,25 +283,22 @@ body {
 }
 
 .gradient-text {
-  background: var(--portal-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* editorial accent ink — flat colour instead of a gradient */
+  color: var(--accent-ink);
 }
 
 .clay-panel {
-  border: 1px solid var(--portal-line);
-  border-radius: 1.4rem;
-  background: var(--portal-clay);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--portal-shadow);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper-warm);
+  box-shadow: var(--shadow);
 }
 
 .block-card {
-  border: 1px solid var(--portal-line);
-  border-radius: 1.4rem;
-  background: var(--portal-clay-strong);
-  box-shadow: var(--portal-shadow-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bone);
+  box-shadow: var(--shadow-soft);
   padding: 1.1rem;
 }
 
@@ -274,91 +307,105 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid var(--portal-line);
-  background: var(--portal-clay);
-  color: var(--portal-ink);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
   padding: 0.4rem 0.85rem;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 700;
   text-decoration: none;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
 .nav-pill:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
-  background: var(--portal-accent);
-  color: #ffffff;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .btn-primary {
-  border: 0;
-  border-radius: 0.9rem;
-  background: var(--portal-gradient);
-  color: #ffffff;
-  padding: 0.55rem 0.95rem;
-  font-size: 0.86rem;
-  font-weight: 700;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.55rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.26);
-  transition: transform 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 .btn-ghost {
-  border: 1px solid var(--portal-line);
-  border-radius: 0.9rem;
-  background: var(--portal-clay);
-  color: var(--portal-ink);
-  padding: 0.52rem 0.9rem;
-  font-size: 0.84rem;
-  font-weight: 650;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0.5rem 1.05rem;
+  font-size: 0.82rem;
+  font-weight: 800;
   cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.btn-ghost:hover {
+  transform: translateY(-2px);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .field {
   width: 100%;
-  border: 1px solid var(--portal-line);
-  border-radius: 0.9rem;
-  background: var(--portal-clay);
-  color: var(--portal-ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
   padding: 0.58rem 0.8rem;
   font-size: 0.9rem;
   outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.field::placeholder {
+  color: var(--ink-faint);
 }
 
 .field:focus {
-  border-color: rgba(16, 185, 129, 0.55);
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
 .section-title {
   margin: 0;
-  font-size: 1.75rem;
-  font-weight: 800;
+  font-family: var(--font-editorial);
+  font-size: 1.9rem;
+  font-weight: 900;
   letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
 .section-subtitle {
   margin: 0.35rem 0 0;
-  color: var(--portal-muted);
+  color: var(--ink-muted);
   font-size: 0.95rem;
 }
 
 .notice {
-  border: 1px solid rgba(245, 158, 11, 0.45);
-  border-radius: 0.8rem;
-  padding: 0.7rem 0.8rem;
-  background: rgba(254, 243, 199, 0.72);
-  color: #92400e;
-}
-
-.dark .notice {
-  background: rgba(120, 53, 15, 0.3);
-  color: #fcd34d;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--mustard);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+  background: var(--paper-warm);
+  color: var(--ink-soft);
 }
 
 .horizontal-scroll {
@@ -394,25 +441,27 @@ body {
 
 .block-card-title {
   font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--portal-ink);
+  font-weight: 800;
+  color: var(--ink);
   margin: 0;
 }
 
 .block-card-tag {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--portal-accent);
-  background: rgba(16, 185, 129, 0.1);
+  font-family: var(--font-editorial-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
 }
 
 .block-card-excerpt {
   font-size: 0.9rem;
-  color: var(--portal-muted);
+  color: var(--ink-muted);
   margin: 0 0 1rem 0;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .block-card-meta {
@@ -420,7 +469,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
-  color: var(--portal-muted);
+  color: var(--ink-muted);
 }
 
 .theme-toggle {
@@ -430,16 +479,18 @@ body {
   width: 40px;
   height: 40px;
   border-radius: 999px;
-  border: 1px solid var(--portal-line);
-  background: var(--portal-clay);
-  color: var(--portal-ink);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
 .theme-toggle:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .theme-toggle:disabled {
@@ -539,22 +590,22 @@ body {
 }
 
 .btn-secondary {
-  border: 1px solid var(--portal-line);
-  border-radius: 0.9rem;
-  background: var(--portal-clay);
-  color: var(--portal-ink);
-  padding: 0.55rem 0.95rem;
-  font-size: 0.86rem;
-  font-weight: 600;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0.5rem 1.05rem;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
 .btn-secondary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
-  background: var(--portal-accent);
-  color: #ffffff;
+  transform: translateY(-2px);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .hero-stats {
@@ -929,15 +980,15 @@ body {
 }
 
 .stitch-card {
-  background: var(--stitch-card-bg);
-  border: 1px solid var(--stitch-border);
-  border-radius: 0.5rem;
+  background: var(--paper-warm);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   padding: 1.5rem;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .stitch-card:hover {
-  box-shadow: var(--stitch-shadow-md);
+  box-shadow: var(--shadow);
   transform: translateY(-2px);
 }
 
@@ -949,23 +1000,26 @@ body {
   height: 3rem;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
-  background: var(--stitch-primary);
-  color: #ffffff;
-  font-size: 0.875rem;
-  font-weight: 700;
-  border-radius: 0.25rem;
-  border: none;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  border: 1px solid var(--ink);
   cursor: pointer;
-  box-shadow: var(--stitch-shadow-primary);
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
 .stitch-btn-primary:hover {
-  transform: scale(1.02);
+  transform: translateY(-2px);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 .stitch-btn-primary:active {
-  transform: scale(0.98);
+  transform: translateY(0);
 }
 
 .stitch-btn-secondary {
@@ -976,44 +1030,47 @@ body {
   height: 3rem;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
-  background: var(--stitch-card-bg);
-  color: var(--stitch-text);
-  font-size: 0.875rem;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.82rem;
   font-weight: 700;
-  border-radius: 0.25rem;
-  border: 1px solid var(--stitch-border);
+  border-radius: 999px;
+  border: 1px solid var(--line);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .stitch-btn-secondary:hover {
-  background: var(--stitch-bg);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .stitch-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.25rem 0.75rem;
-  background: rgba(33, 196, 93, 0.1);
-  color: var(--stitch-primary);
-  font-size: 0.625rem;
-  font-weight: 700;
+  padding: 0.25rem 0.7rem;
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  font-family: var(--font-editorial-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   border-radius: 9999px;
 }
 
 .stitch-nav-link {
-  color: var(--stitch-text-muted);
+  color: var(--ink-muted);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .stitch-nav-link:hover {
-  color: var(--stitch-primary);
+  color: var(--accent-ink);
 }
 
 .stitch-text-gradient {
