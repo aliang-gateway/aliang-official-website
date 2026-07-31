@@ -22,6 +22,7 @@ type serviceDirectionResponse struct {
 	TitleEn     string    `json:"title_en"`
 	DescZh      string    `json:"desc_zh"`
 	DescEn      string    `json:"desc_en"`
+	RepoURL     string    `json:"repo_url"`
 	SortOrder   int       `json:"sort_order"`
 	IsPublished bool      `json:"is_published"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -38,6 +39,7 @@ func serviceDirectionToResponse(sd *model.ServiceDirection) serviceDirectionResp
 		TitleEn:     sd.TitleEn,
 		DescZh:      sd.DescZh,
 		DescEn:      sd.DescEn,
+		RepoURL:     sd.RepoURL,
 		SortOrder:   sd.SortOrder,
 		IsPublished: sd.IsPublished,
 		CreatedAt:   sd.CreatedAt,
@@ -47,15 +49,17 @@ func serviceDirectionToResponse(sd *model.ServiceDirection) serviceDirectionResp
 
 // publicServiceDirectionResponse is the public representation, localized to one language.
 type publicServiceDirectionResponse struct {
-	ID     int64  `json:"id"`
-	Status string `json:"status"`
-	Phase  string `json:"phase"`
-	Title  string `json:"title"`
-	Desc   string `json:"desc"`
+	ID      int64  `json:"id"`
+	Status  string `json:"status"`
+	Phase   string `json:"phase"`
+	Title   string `json:"title"`
+	Desc    string `json:"desc"`
+	RepoURL string `json:"repo_url"`
 }
 
 func publicServiceDirectionToResponse(sd *model.ServiceDirection, lang string) publicServiceDirectionResponse {
 	resp := publicServiceDirectionResponse{ID: sd.ID, Status: sd.Status}
+	resp.RepoURL = sd.RepoURL
 	if lang == "en" {
 		resp.Phase = sd.PhaseEn
 		resp.Title = sd.TitleEn
@@ -76,6 +80,7 @@ type serviceDirectionRequest struct {
 	TitleEn     string `json:"title_en"`
 	DescZh      string `json:"desc_zh"`
 	DescEn      string `json:"desc_en"`
+	RepoURL     string `json:"repo_url"`
 	SortOrder   int    `json:"sort_order"`
 	IsPublished bool   `json:"is_published"`
 }
@@ -89,6 +94,7 @@ func (req *serviceDirectionRequest) toModel() *model.ServiceDirection {
 		TitleEn:     req.TitleEn,
 		DescZh:      req.DescZh,
 		DescEn:      req.DescEn,
+		RepoURL:     req.RepoURL,
 		SortOrder:   req.SortOrder,
 		IsPublished: req.IsPublished,
 	}
