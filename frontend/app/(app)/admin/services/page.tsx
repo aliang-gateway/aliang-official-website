@@ -13,6 +13,7 @@ type ServiceDirection = {
   title_en: string;
   desc_zh: string;
   desc_en: string;
+  repo_url: string;
   sort_order: number;
   is_published: boolean;
   created_at: string;
@@ -47,6 +48,7 @@ export default function AdminServicesPage() {
   const [descEn, setDescEn] = useState("");
   const [sortOrder, setSortOrder] = useState(1);
   const [isPublished, setIsPublished] = useState(true);
+  const [repoUrl, setRepoUrl] = useState("");
 
   const [globalSuccess, setGlobalSuccess] = useState("");
 
@@ -60,6 +62,7 @@ export default function AdminServicesPage() {
     setDescEn("");
     setSortOrder(1);
     setIsPublished(true);
+    setRepoUrl("");
     setEditingId(null);
     setFormError(null);
   }, []);
@@ -121,6 +124,7 @@ export default function AdminServicesPage() {
       setDescEn(it.desc_en);
       setSortOrder(it.sort_order);
       setIsPublished(it.is_published);
+      setRepoUrl(it.repo_url ?? "");
       setShowDialog(true);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to load service");
@@ -152,6 +156,7 @@ export default function AdminServicesPage() {
       title_en: titleEn.trim(),
       desc_zh: descZh.trim(),
       desc_en: descEn.trim(),
+      repo_url: repoUrl.trim(),
       sort_order: sortOrder,
       is_published: isPublished,
     });
@@ -480,6 +485,20 @@ export default function AdminServicesPage() {
                         className="w-full resize-y rounded-lg border border-[var(--portal-line)] bg-[var(--portal-clay)] px-4 py-2.5 text-sm text-[var(--portal-ink)] outline-none focus:border-[var(--portal-accent)]"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-[var(--portal-muted)]" htmlFor="svc-repo-url">
+                      代码仓库地址（可选）/ Repo URL (optional)
+                    </label>
+                    <input
+                      id="svc-repo-url"
+                      type="url"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                      placeholder="https://github.com/your/repo"
+                      className="w-full rounded-lg border border-[var(--portal-line)] bg-[var(--portal-clay)] px-4 py-2.5 text-sm text-[var(--portal-ink)] outline-none focus:border-[var(--portal-accent)]"
+                    />
                   </div>
                 </div>
 
