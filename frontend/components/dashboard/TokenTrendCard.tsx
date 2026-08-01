@@ -22,6 +22,26 @@ function buildPreviewPoints(points: TrendPoint[], fallbackStep: number) {
   }));
 }
 
+// Smooth curve through points (Catmull-Rom → cubic Bézier) so the line reads as
+// a real consumption curve instead of a jagged polyline of straight segments.
+function buildSmoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  const d = [`M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d.push(`C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`);
+  }
+  return d.join(" ");
+}
+
 function TrendPreview({
   points,
   tone,
@@ -35,33 +55,34 @@ function TrendPreview({
   // many buckets the range/granularity produces (7d → 7, 90d/day → 90, …).
   const labelStep = Math.max(1, Math.ceil(preview.length / 7));
 
-  const coordinates = preview
-    .map((point, index) => {
-      const x = (index / Math.max(preview.length - 1, 1)) * 100;
-      const y = 100 - (point.value / maxValue) * 100;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  const areaCoordinates = `${coordinates} 100,100 0,100`;
-  const stroke = tone === "emerald" ? "#10b981" : "#06b6d4";
+  const coords = preview.map((point, index) => ({
+    x: (index / Math.max(preview.length - 1, 1)) * 100,
+    y: 100 - (point.value / maxValue) * 100,
+  }));
+  const linePath = buildSmoothPath(coords);
+  const areaPath = coords.length > 0 ? `${linePath} L 100 100 L 0 100 Z` : "";
+  const stroke = "#147a4f";
   return (
     <div className="mt-4 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-3">
-      <svg viewBox="0 0 100 100" className="h-36 w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
+      <svg viewBox="0 0 100 100" className="h-40 w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id={`trend-fill-${tone}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={stroke} stopOpacity="0.28" />
+            <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
             <stop offset="100%" stopColor={stroke} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <path d={`M ${areaCoordinates}`} fill={`url(#trend-fill-${tone})`} />
-        <polyline fill="none" stroke={stroke} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={coordinates} />
-        {preview.map((point, index) => {
-          const pointKey = `${point.bucket_start}-${point.value}`;
-          const x = (index / Math.max(preview.length - 1, 1)) * 100;
-          const y = 100 - (point.value / maxValue) * 100;
-          return <circle key={pointKey} cx={x} cy={y} r="2.5" fill={stroke} />;
-        })}
+        {areaPath ? <path d={areaPath} fill={`url(#trend-fill-${tone})`} /> : null}
+        {linePath ? (
+          <path
+            d={linePath}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="1.6"
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : null}
       </svg>
       <div className="relative mt-3 h-5 w-full text-xs text-[var(--ink-muted)]">
         {preview.map((point, index) => {
@@ -119,13 +140,13 @@ export function TokenTrendCard({
     <article className="block-card min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-cyan-500 dark:text-cyan-400">{t("tokenTrend")}</p>
+          <p className="text-sm font-semibold text-[var(--accent)]">{t("tokenTrend")}</p>
           <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("consumptionCurve")}</h2>
           <p className="mt-2 text-sm text-[var(--portal-muted)]">
             {t("tokenTrendDescription")}
           </p>
         </div>
-        <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
+        <div className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent-wash)] px-3 py-1 text-xs font-semibold text-[var(--accent-ink)]">
           {tokenPoints.length > 0 ? t("points", { count: tokenPoints.length }) : t("preview")}
         </div>
       </div>
@@ -142,8 +163,8 @@ export function TokenTrendCard({
                   type="button"
                   className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
                     isSelected
-                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200"
-                      : "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                      ? "border-[var(--accent)]/40 bg-[var(--accent-wash)] text-[var(--accent-ink)]"
+                      : "border-[var(--line)] bg-[var(--bone)]/60 text-[var(--ink)]"
                   }`}
                   onClick={() => updateSearchParams(option.value, appliedGranularity, "push")}
                   aria-pressed={isSelected}
@@ -167,9 +188,9 @@ export function TokenTrendCard({
                   type="button"
                   className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-all duration-200 ${
                     isSelected
-                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200"
+                      ? "border-[var(--accent)]/40 bg-[var(--accent-wash)] text-[var(--accent-ink)]"
                       : isAllowed
-                        ? "border-[var(--portal-line)] bg-white/60 text-[var(--portal-ink)] dark:bg-slate-950/30"
+                        ? "border-[var(--line)] bg-[var(--bone)]/60 text-[var(--ink)]"
                         : "border-[var(--portal-line)] bg-transparent text-[var(--portal-muted)]"
                   }`}
                    onClick={() => updateSearchParams(selectedRange, option.value, "push")}

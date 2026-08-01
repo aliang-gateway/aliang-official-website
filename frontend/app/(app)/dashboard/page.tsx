@@ -1,23 +1,19 @@
 "use client";
 
 import { Suspense, useRef, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-import { cn } from "@/lib/utils";
-
 import {
-  ConfigEntryCard,
   ConfigModal,
   DashboardHeader,
-  DetailsLinkCard,
-  MetricsCard,
   ModelShareCard,
-  PackageCard,
   PurchaseCard,
-  SectionLabel,
+  StatusCard,
   TicketCard,
   TokenTrendCard,
 } from "@/components/dashboard";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 import { useTrendControls } from "@/lib/hooks/use-trend-controls";
@@ -28,7 +24,8 @@ function DashboardPageContent() {
   const trend = useTrendControls();
   const data = useDashboardData(trend.queryString);
   const config = useConfigModal();
-  const [activeTab, setActiveTab] = useState<"usage" | "config" | "support">("usage");
+  const [showPurchase, setShowPurchase] = useState(false);
+  const [showTicket, setShowTicket] = useState(false);
 
   if (!data.isHydrated || !data.sessionToken || data.loading) {
     return (
@@ -40,83 +37,70 @@ function DashboardPageContent() {
     );
   }
 
-  const tabs: { id: "usage" | "config" | "support"; label: string }[] = [
-    { id: "usage", label: t("tabUsage") },
-    { id: "config", label: t("tabConfig") },
-    { id: "support", label: t("tabSupport") },
-  ];
-
   return (
     <section className="portal-shell space-y-8 py-10">
       <DashboardHeader onRefresh={() => data.reload()} onSignOut={data.signOut} />
 
       {data.error ? <p className="notice">{t("errorPrefix")}{data.error}</p> : null}
 
-      {/* Tab 栏 */}
-      <div role="tablist" aria-label={t("dashboardTabs")} className="flex w-fit flex-wrap gap-1.5 rounded-full border border-[var(--line)] bg-[var(--paper)] p-1.5">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            role="tab"
-            type="button"
-            aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "rounded-full px-5 py-2 text-sm font-bold transition-colors",
-              activeTab === tab.id
-                ? "bg-[var(--ink)] text-[var(--paper)]"
-                : "text-[var(--ink-muted)] hover:text-[var(--ink)]"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ★ 状态卡:余额 / 今日用量 / 套餐额度 / 充值入口 */}
+      <StatusCard
+        metricSummary={data.metricSummary}
+        dashboard={data.dashboard}
+        onPurchase={() => setShowPurchase((value) => !value)}
+      />
+
+      {/* 用量趋势(全宽) */}
+      <TokenTrendCard
+        selectedRange={trend.selectedRange}
+        appliedGranularity={trend.appliedGranularity}
+        trendDateRange={trend.trendDateRange}
+        tokenTrend={data.tokenTrend}
+        updateSearchParams={trend.updateSearchParams}
+      />
+
+      {/* 模型分布 */}
+      <ModelShareCard modelShare={data.modelShare} />
+
+      {/* 入口 tile:配置 / 深度记录 / 工单 */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <button
+          ref={configTriggerRef}
+          type="button"
+          onClick={() => { config.open(); data.clearError(); }}
+          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
+        >
+          <MaterialIcon name="key" size={22} className="text-[var(--accent)]" />
+          <span className="font-bold text-[var(--ink)]">{t("configApiKey")}</span>
+          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
+        </button>
+
+        <Link
+          href="/dashboard/details"
+          className="clay-panel flex items-center gap-3 p-4 transition-colors hover:bg-[var(--paper)]"
+        >
+          <MaterialIcon name="insights" size={22} className="text-[var(--accent)]" />
+          <span className="font-bold text-[var(--ink)]">{t("details")}</span>
+          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => setShowTicket((value) => !value)}
+          aria-expanded={showTicket}
+          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
+        >
+          <MaterialIcon name="support_agent" size={22} className="text-[var(--accent)]" />
+          <span className="font-bold text-[var(--ink)]">{t("ticketFeedback")}</span>
+          <MaterialIcon name={showTicket ? "expand_less" : "expand_more"} size={18} className="ml-auto text-[var(--ink-faint)]" />
+        </button>
       </div>
 
-      {/* 用量:KPI + 趋势 + 套餐/分布 + 充值 */}
-      {activeTab === "usage" ? (
-        <div className="space-y-10">
-          <div className="space-y-3">
-            <SectionLabel kicker={t("sectionOverview")} />
-            <MetricsCard metricSummary={data.metricSummary} />
-            <p className="text-sm text-[var(--ink-muted)]">{t("metricsDescription")}</p>
-          </div>
-
-          <div className="space-y-4">
-            <SectionLabel kicker={t("sectionUsage")} />
-            <TokenTrendCard
-              selectedRange={trend.selectedRange}
-              appliedGranularity={trend.appliedGranularity}
-              trendDateRange={trend.trendDateRange}
-              tokenTrend={data.tokenTrend}
-              updateSearchParams={trend.updateSearchParams}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <SectionLabel kicker={t("sectionPlan")} />
-            <div className="grid gap-6 lg:grid-cols-2">
-              <PackageCard dashboard={data.dashboard} />
-              <ModelShareCard modelShare={data.modelShare} />
-            </div>
-          </div>
-
-          <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
-        </div>
+      {/* 展开面板(由状态卡 CTA / 工单 tile 触发) */}
+      {showPurchase ? (
+        <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
       ) : null}
-
-      {/* 配置:客户端配置入口 */}
-      {activeTab === "config" ? (
-        <ConfigEntryCard onOpen={() => { config.open(); data.clearError(); }} triggerRef={configTriggerRef} />
-      ) : null}
-
-      {/* 支持:工单反馈 + 深度记录 */}
-      {activeTab === "support" ? (
-        <div className="grid gap-6 md:grid-cols-2">
-          <TicketCard sessionToken={data.sessionToken} />
-          <DetailsLinkCard />
-        </div>
-      ) : null}
+      {showTicket ? <TicketCard sessionToken={data.sessionToken} /> : null}
 
       <ConfigModal
         isOpen={config.isOpen}
