@@ -1,7 +1,9 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+
+import { cn } from "@/lib/utils";
 
 import {
   ConfigEntryCard,
@@ -26,6 +28,7 @@ function DashboardPageContent() {
   const trend = useTrendControls();
   const data = useDashboardData(trend.queryString);
   const config = useConfigModal();
+  const [activeTab, setActiveTab] = useState<"usage" | "config" | "support">("usage");
 
   if (!data.isHydrated || !data.sessionToken || data.loading) {
     return (
@@ -37,22 +40,48 @@ function DashboardPageContent() {
     );
   }
 
+  const tabs: { id: "usage" | "config" | "support"; label: string }[] = [
+    { id: "usage", label: t("tabUsage") },
+    { id: "config", label: t("tabConfig") },
+    { id: "support", label: t("tabSupport") },
+  ];
+
   return (
-    <section className="portal-shell space-y-10 py-10">
+    <section className="portal-shell space-y-8 py-10">
       <DashboardHeader onRefresh={() => data.reload()} onSignOut={data.signOut} />
 
       {data.error ? <p className="notice">{t("errorPrefix")}{data.error}</p> : null}
 
-      {/* 账户概览:关键数字横条(余额 / 今日用量 / 累计) */}
-      <div className="space-y-3">
-        <SectionLabel kicker={t("sectionOverview")} />
-        <MetricsCard metricSummary={data.metricSummary} />
-        <p className="text-sm text-[var(--ink-muted)]">{t("metricsDescription")}</p>
+      {/* Tab 栏 */}
+      <div role="tablist" aria-label={t("dashboardTabs")} className="flex w-fit flex-wrap gap-1.5 rounded-full border border-[var(--line)] bg-[var(--paper)] p-1.5">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            type="button"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "rounded-full px-5 py-2 text-sm font-bold transition-colors",
+              activeTab === tab.id
+                ? "bg-[var(--ink)] text-[var(--paper)]"
+                : "text-[var(--ink-muted)] hover:text-[var(--ink)]"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* 用量趋势 + 模型分布(主列) / 下一步操作(侧列:充值/配置) */}
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
-        <div className="min-w-0 space-y-8">
+      {/* 用量:KPI + 趋势 + 套餐/分布 + 充值 */}
+      {activeTab === "usage" ? (
+        <div className="space-y-10">
+          <div className="space-y-3">
+            <SectionLabel kicker={t("sectionOverview")} />
+            <MetricsCard metricSummary={data.metricSummary} />
+            <p className="text-sm text-[var(--ink-muted)]">{t("metricsDescription")}</p>
+          </div>
+
           <div className="space-y-4">
             <SectionLabel kicker={t("sectionUsage")} />
             <TokenTrendCard
@@ -63,36 +92,31 @@ function DashboardPageContent() {
               updateSearchParams={trend.updateSearchParams}
             />
           </div>
-          <div className="space-y-4">
-            <SectionLabel kicker={t("modelShare")} />
-            <ModelShareCard modelShare={data.modelShare} />
+
+          <div className="space-y-3">
+            <SectionLabel kicker={t("sectionPlan")} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <PackageCard dashboard={data.dashboard} />
+              <ModelShareCard modelShare={data.modelShare} />
+            </div>
           </div>
+
+          <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
         </div>
+      ) : null}
 
-        <div className="min-w-0 space-y-4">
-          <SectionLabel kicker={t("sectionNext")} />
-          <div className="space-y-4">
-            <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
-            <ConfigEntryCard onOpen={() => { config.open(); data.clearError(); }} triggerRef={configTriggerRef} />
-          </div>
-        </div>
-      </div>
+      {/* 配置:客户端配置入口 */}
+      {activeTab === "config" ? (
+        <ConfigEntryCard onOpen={() => { config.open(); data.clearError(); }} triggerRef={configTriggerRef} />
+      ) : null}
 
-      {/* 套餐 */}
-      <div className="space-y-3">
-        <SectionLabel kicker={t("sectionPlan")} />
-        <PackageCard dashboard={data.dashboard} />
-      </div>
-
-      {/* 更多(次要) */}
-      <div className="space-y-3">
-        <SectionLabel kicker={t("sectionMore")} />
+      {/* 支持:工单反馈 + 深度记录 */}
+      {activeTab === "support" ? (
         <div className="grid gap-6 md:grid-cols-2">
           <TicketCard sessionToken={data.sessionToken} />
           <DetailsLinkCard />
         </div>
-      </div>
-
+      ) : null}
 
       <ConfigModal
         isOpen={config.isOpen}
