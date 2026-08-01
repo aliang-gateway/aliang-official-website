@@ -31,6 +31,9 @@ function TrendPreview({
 }) {
   const preview = useMemo(() => buildPreviewPoints(points, tone === "emerald" ? 12 : 3200), [points, tone]);
   const maxValue = Math.max(...preview.map((point) => point.value), 1);
+  // Show at most ~7 x-axis ticks so labels never collide, regardless of how
+  // many buckets the range/granularity produces (7d → 7, 90d/day → 90, …).
+  const labelStep = Math.max(1, Math.ceil(preview.length / 7));
 
   const coordinates = preview
     .map((point, index) => {
@@ -60,12 +63,32 @@ function TrendPreview({
           return <circle key={pointKey} cx={x} cy={y} r="2.5" fill={stroke} />;
         })}
       </svg>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[var(--portal-muted)] sm:grid-cols-7">
-        {preview.map((point) => (
-          <div key={`${point.bucket_start}-${point.value}-label`} className="min-w-0 rounded-2xl bg-white/50 px-2 py-1 text-center dark:bg-slate-950/30">
-            {formatShortDate(point.bucket_start)}
-          </div>
-        ))}
+      <div className="relative mt-3 h-5 w-full text-xs text-[var(--ink-muted)]">
+        {preview.map((point, index) => {
+          // Thin to labelStep, but always keep the first and last bucket so the
+          // axis spans the full selected range edge-to-edge.
+          if (index % labelStep !== 0 && index !== preview.length - 1) {
+            return null;
+          }
+          const x = (index / Math.max(preview.length - 1, 1)) * 100;
+          return (
+            <span
+              key={`${point.bucket_start}-${point.value}-label`}
+              className="absolute top-0 whitespace-nowrap"
+              style={{
+                left: `${x}%`,
+                transform:
+                  index === 0
+                    ? "translateX(0)"
+                    : index === preview.length - 1
+                      ? "translateX(-100%)"
+                      : "translateX(-50%)",
+              }}
+            >
+              {formatShortDate(point.bucket_start)}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
