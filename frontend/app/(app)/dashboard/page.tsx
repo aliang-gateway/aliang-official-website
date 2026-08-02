@@ -14,6 +14,7 @@ import {
   TokenTrendCard,
 } from "@/components/dashboard";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { Modal } from "@/components/ui/Modal";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 import { useTrendControls } from "@/lib/hooks/use-trend-controls";
@@ -21,6 +22,7 @@ import { useTrendControls } from "@/lib/hooks/use-trend-controls";
 function DashboardPageContent() {
   const t = useTranslations("dashboard");
   const configTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const ticketTriggerRef = useRef<HTMLButtonElement | null>(null);
   const trend = useTrendControls();
   const data = useDashboardData(trend.queryString);
   const config = useConfigModal();
@@ -62,7 +64,7 @@ function DashboardPageContent() {
       {/* 模型分布 */}
       <ModelShareCard modelShare={data.modelShare} />
 
-      {/* 入口 tile:配置 / 深度记录 / 工单 */}
+      {/* 入口 tile:配置 / 工单(均弹 modal) / 详情(跳转,最右) */}
       <div className="grid gap-4 sm:grid-cols-3">
         <button
           ref={configTriggerRef}
@@ -75,6 +77,17 @@ function DashboardPageContent() {
           <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
         </button>
 
+        <button
+          ref={ticketTriggerRef}
+          type="button"
+          onClick={() => setShowTicket(true)}
+          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
+        >
+          <MaterialIcon name="support_agent" size={22} className="text-[var(--accent)]" />
+          <span className="font-bold text-[var(--ink)]">{t("ticketFeedback")}</span>
+          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
+        </button>
+
         <Link
           href="/dashboard/details"
           className="clay-panel flex items-center gap-3 p-4 transition-colors hover:bg-[var(--paper)]"
@@ -83,24 +96,22 @@ function DashboardPageContent() {
           <span className="font-bold text-[var(--ink)]">{t("details")}</span>
           <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
         </Link>
-
-        <button
-          type="button"
-          onClick={() => setShowTicket((value) => !value)}
-          aria-expanded={showTicket}
-          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
-        >
-          <MaterialIcon name="support_agent" size={22} className="text-[var(--accent)]" />
-          <span className="font-bold text-[var(--ink)]">{t("ticketFeedback")}</span>
-          <MaterialIcon name={showTicket ? "expand_less" : "expand_more"} size={18} className="ml-auto text-[var(--ink-faint)]" />
-        </button>
       </div>
 
-      {/* 展开面板(由状态卡 CTA / 工单 tile 触发) */}
+      {/* 充值面板(状态卡 CTA 触发) */}
       {showPurchase ? (
         <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
       ) : null}
-      {showTicket ? <TicketCard sessionToken={data.sessionToken} /> : null}
+
+      {/* 工单 modal */}
+      <Modal
+        isOpen={showTicket}
+        onClose={() => setShowTicket(false)}
+        closeLabel={t("closeConfigModal")}
+        triggerRef={ticketTriggerRef}
+      >
+        <TicketCard sessionToken={data.sessionToken} bare />
+      </Modal>
 
       <ConfigModal
         isOpen={config.isOpen}

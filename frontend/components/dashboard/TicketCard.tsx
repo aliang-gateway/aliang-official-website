@@ -6,9 +6,11 @@ import { useTicketForm } from "@/lib/hooks/use-ticket-form";
 
 type TicketCardProps = {
   sessionToken: string;
+  /** Render without the outer block-card wrapper (for use inside a modal). */
+  bare?: boolean;
 };
 
-export function TicketCard({ sessionToken }: TicketCardProps) {
+export function TicketCard({ sessionToken, bare = false }: TicketCardProps) {
   const t = useTranslations("dashboard");
   const {
     title,
@@ -30,7 +32,7 @@ export function TicketCard({ sessionToken }: TicketCardProps) {
         : "text-[var(--portal-muted)]";
 
   return (
-    <article className="block-card min-w-0 space-y-4">
+    <article className={`min-w-0 space-y-4 ${bare ? "p-5 sm:p-6" : "block-card"}`}>
       <div>
         <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("supportEntry")}</h2>
         <p className="mt-2 text-sm text-[var(--portal-muted)]">{t("ticketDescription")}</p>
