@@ -135,21 +135,30 @@
    which ignores the theme toggle too), so dashboard/admin stay on warm
    paper whatever the user's colour-scheme preference is. The tokens are
    re-declared here purely to override any earlier dark defaults. */
+/* Dark mode — a "midnight paper" inversion of the warm-paper palette. Driven
+   purely by tokens (the `dark:` variant above stays neutralised, so stray
+   dark:* utilities never leak pastel patches). The marketing .editorial wrapper
+   redeclares these tokens at its own scope, so it keeps its deliberate light
+   newspaper look — only the (app) console pages flip to dark. */
 .dark {
-  --stitch-bg: var(--paper);
-  --stitch-bg-elevated: var(--bone);
-  --stitch-text: var(--ink);
-  --stitch-text-muted: var(--ink-muted);
-  --stitch-border: var(--line);
-  --stitch-card-bg: var(--paper-warm);
-
-  --portal-bg: var(--paper);
-  --portal-bg-subtle: var(--paper-warm);
-  --portal-ink: var(--ink);
-  --portal-muted: var(--ink-muted);
-  --portal-line: var(--line);
-  --portal-clay: var(--paper-warm);
-  --portal-clay-strong: var(--bone);
+  --paper: #15140f;
+  --paper-warm: #1c1810;
+  --paper-dark: #100d07;
+  --bone: #26211a;
+  --ink: #efe7d2;
+  --ink-soft: #ddd4bd;
+  --ink-muted: #a89e85;
+  --ink-faint: #807864;
+  --line: rgba(239, 231, 210, 0.14);
+  --line-soft: rgba(239, 231, 210, 0.08);
+  --accent: #4cb378;
+  --accent-ink: #8fd3a8;
+  --accent-soft: #58a873;
+  --accent-wash: rgba(76, 179, 120, 0.16);
+  --mustard: #e6c46a;
+  --focus-ring: #4cb378;
+  --shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
 * {

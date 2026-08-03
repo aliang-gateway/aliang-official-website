@@ -242,8 +242,8 @@ export function ConfigPanel({
         </div>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="min-w-0 rounded-[1.15rem] border border-[var(--ink)] bg-[var(--ink)] p-4 shadow-inner shadow-black/20">
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-sm leading-6 text-[var(--paper)]">
+          <div className="min-w-0 rounded-[1.15rem] border border-[#0d0b06] bg-[#0d0b06] p-4 shadow-inner shadow-black/30">
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-sm leading-6 text-[#bfe3c4]">
               <code>{renderedConfig}</code>
             </pre>
           </div>
