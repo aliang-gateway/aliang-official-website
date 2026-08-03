@@ -5,6 +5,20 @@ import { useTranslations } from "next-intl";
 
 import { TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
+import { asRecord, asString } from "@/lib/api-response";
+
+type ExistingKey = { id: number; name: string; key: string; status: string };
+
+function maskApiKey(key: string): string {
+  if (!key) return "—";
+  return key.length <= 12 ? `${key.slice(0, 4)}…` : `${key.slice(0, 6)}…${key.slice(-4)}`;
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 type ConfigModalProps = {
   isOpen: boolean;
@@ -45,6 +59,9 @@ export function ConfigModal({
   const hadOpenRef = useRef(false);
   const [creatingKey, setCreatingKey] = useState(false);
   const [createKeyError, setCreateKeyError] = useState<string | null>(null);
+  const [existingKeys, setExistingKeys] = useState<ExistingKey[]>([]);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   const handleCreateKey = async () => {
     setCreateKeyError(null);
@@ -126,6 +143,60 @@ export function ConfigModal({
     };
   }, [isOpen, onClose, triggerRef]);
 
+  // Load the user's existing API keys so they can retrieve / reuse one instead
+  // of having to leave for the account page or create a new key each time.
+  useEffect(() => {
+    if (!isOpen || !sessionToken) {
+      setExistingKeys([]);
+      return;
+    }
+    let cancelled = false;
+    const loadKeys = async () => {
+      setKeysLoading(true);
+      try {
+        const res = await fetch("/api-keys?page=1&per_page=20", {
+          headers: { accept: "application/json", Authorization: `Bearer ${sessionToken}` },
+          cache: "no-store",
+        });
+        const payload = (await res.json()) as unknown;
+        if (cancelled) return;
+        const root = asRecord(payload);
+        const inner = asRecord(root?.data) ?? root;
+        const list =
+          inner?.api_keys ?? inner?.items ?? inner?.list ?? inner?.data ?? root?.data ?? root?.items ?? [];
+        const keys = (Array.isArray(list) ? list : [])
+          .map((item) => asRecord(item))
+          .filter((item): item is Record<string, unknown> => Boolean(item))
+          .map((item) => ({
+            id: asNumber(item.id),
+            name: asString(item.name) || asString(item.label) || `Key #${item.id}`,
+            key: asString(item.key) || asString(item.api_key),
+            status: asString(item.status, "active"),
+          }));
+        setExistingKeys(keys);
+      } catch {
+        // key list is a convenience — fail silently
+      } finally {
+        if (!cancelled) setKeysLoading(false);
+      }
+    };
+    void loadKeys();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, sessionToken]);
+
+  const handleCopyKey = async (keyId: number, keyValue: string) => {
+    if (!keyValue) return;
+    try {
+      await navigator.clipboard.writeText(keyValue);
+      setCopiedKeyId(keyId);
+      window.setTimeout(() => setCopiedKeyId((current) => (current === keyId ? null : current)), 1500);
+    } catch {
+      // clipboard unavailable — ignore
+    }
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -199,6 +270,55 @@ export function ConfigModal({
               {createKeyError ? (
                 <p className="text-xs leading-5 text-red-500">{createKeyError}</p>
               ) : null}
+
+              {/* 已有 API 密钥:列出 / 复制 / 一键填入 */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-[var(--portal-ink)]">{t("existingKeys")}</p>
+                {keysLoading ? (
+                  <p className="text-xs text-[var(--portal-muted)]">{t("loading")}</p>
+                ) : existingKeys.length === 0 ? (
+                  <p className="text-xs text-[var(--portal-muted)]">{t("noExistingKeys")}</p>
+                ) : (
+                  <ul className="grid gap-2">
+                    {existingKeys.map((existingKey) => (
+                      <li
+                        key={existingKey.id}
+                        className="flex items-center gap-2 rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay-strong)] px-3 py-2"
+                      >
+                        <span
+                          className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${existingKey.status === "active" ? "bg-[var(--accent)]" : "bg-red-500"}`}
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-[var(--portal-ink)]">{existingKey.name}</p>
+                          <p className="truncate font-mono text-[11px] text-[var(--portal-muted)]">{maskApiKey(existingKey.key)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyKey(existingKey.id, existingKey.key)}
+                          disabled={!existingKey.key}
+                          className="shrink-0 rounded-lg border border-[var(--portal-line)] px-2 py-1 text-xs text-[var(--portal-ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+                          title={t("copy")}
+                        >
+                          {copiedKeyId === existingKey.id ? t("copiedKey") : t("copy")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => existingKey.key && onUserKeyChange(existingKey.key)}
+                          disabled={!existingKey.key}
+                          className="shrink-0 rounded-lg border border-[var(--portal-line)] px-2 py-1 text-xs text-[var(--portal-ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+                          title={t("useKey")}
+                        >
+                          {t("useKey")}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <a href="/account" className="inline-block text-xs font-semibold text-[var(--accent-ink)] hover:underline">
+                  {t("manageSessionKeys")} →
+                </a>
+              </div>
 
               <div className="rounded-[1rem] border border-amber-400/40 bg-amber-50/80 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                 {t("sensitiveKeyWarning")}
