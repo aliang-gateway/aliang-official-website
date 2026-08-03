@@ -131,7 +131,7 @@ export function parseApiKeysList(payload: unknown): ApiKeyItem[] {
     });
 }
 
-/** Parse GET /groups/available into AvailableGroup[]. */
+/** Parse GET /api/groups/available (BFF) into AvailableGroup[]. */
 export function parseAvailableGroups(payload: unknown): AvailableGroup[] {
   const root = asRecord(payload);
   const inner = asRecord(root?.data) ?? root;

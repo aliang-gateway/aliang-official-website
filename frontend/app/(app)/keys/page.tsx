@@ -51,7 +51,7 @@ export default function KeysPage() {
       const headers = authHeaders(sessionToken);
       const [keysRes, groupsRes] = await Promise.all([
         fetch("/api-keys?page=1&per_page=100", { headers, cache: "no-store" }),
-        fetch("/groups/available", { headers, cache: "no-store" }),
+        fetch("/api/groups/available", { headers, cache: "no-store" }),
       ]);
       const keysPayload = keysRes.ok ? await keysRes.json() : null;
       const groupsPayload = groupsRes.ok ? await groupsRes.json() : null;
