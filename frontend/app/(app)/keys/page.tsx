@@ -245,10 +245,10 @@ export default function KeysPage() {
             </ul>
           )}
 
-          {/* 模型能力(待后端)提示 */}
+          {/* 操作提示 */}
           <p className="text-xs text-[var(--ink-muted)]">
             <MaterialIcon name="info" size={14} className="mr-1 align-[-2px]" />
-            {t("modelsComingSoon")}
+            {t("modelsHint")}
           </p>
         </div>
       ) : null}
@@ -291,83 +291,163 @@ function KeyRow({ apiKey, copiedKeyId, busyKeyId, onCopy, onToggle, onDelete, t 
   const created = apiKey.created_at?.split("T")[0] ?? "—";
   const expires = apiKey.expires_at?.split("T")[0];
 
+  // Per-key supported models — lazy-loaded on expand via the gateway /v1/models.
+  const [showModels, setShowModels] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  const toggleModels = async () => {
+    if (showModels) {
+      setShowModels(false);
+      return;
+    }
+    setShowModels(true);
+    if (models !== null || !apiKey.key) return;
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await fetch("/api/models", {
+        headers: { "x-api-key": apiKey.key },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = (await res.json()) as { data?: unknown };
+      const list = Array.isArray(payload?.data) ? payload.data : [];
+      const names = list
+        .map((item) =>
+          typeof item === "string"
+            ? item
+            : (item as { id?: string; name?: string })?.id ?? (item as { name?: string })?.name,
+        )
+        .filter((name): name is string => Boolean(name));
+      setModels(names);
+    } catch (e) {
+      setModelsError(e instanceof Error ? e.message : "error");
+      setModels([]);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
   return (
-    <li className="clay-panel flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate text-sm font-bold text-[var(--ink)]">{apiKey.name || `Key #${apiKey.id}`}</p>
-          <span
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-              isActive ? "bg-[var(--accent-wash)] text-[var(--accent-ink)]" : "bg-red-500/10 text-red-600"
-            }`}
-          >
-            <span className={`inline-block h-1.5 w-1.5 rounded-full ${isActive ? "bg-[var(--accent)]" : "bg-red-500"}`} />
-            {apiKey.status}
-          </span>
-          {apiKey.group_platform ? (
-            <span className="rounded-md bg-[var(--accent-wash)] px-2 py-0.5 text-[10px] font-bold text-[var(--accent-ink)]">
-              {platformBadgeLabel(apiKey.group_platform)}
+    <li className="clay-panel p-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-bold text-[var(--ink)]">{apiKey.name || `Key #${apiKey.id}`}</p>
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                isActive ? "bg-[var(--accent-wash)] text-[var(--accent-ink)]" : "bg-red-500/10 text-red-600"
+              }`}
+            >
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${isActive ? "bg-[var(--accent)]" : "bg-red-500"}`} />
+              {apiKey.status}
             </span>
-          ) : null}
+            {apiKey.group_platform ? (
+              <span className="rounded-md bg-[var(--accent-wash)] px-2 py-0.5 text-[10px] font-bold text-[var(--accent-ink)]">
+                {platformBadgeLabel(apiKey.group_platform)}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-[var(--ink-muted)]">
+            <span className="flex items-center gap-1 font-mono">
+              <MaterialIcon name="key" size={12} />
+              {maskApiKey(apiKey.key)}
+            </span>
+            <span className="flex items-center gap-1">
+              <MaterialIcon name="group" size={12} />
+              {apiKey.group_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <MaterialIcon name="schedule" size={12} />
+              {t("createdLabel")}: {created}
+            </span>
+            {apiKey.quota > 0 ? (
+              <span className="font-mono">
+                ${apiKey.quota_used.toFixed(2)} / ${apiKey.quota.toFixed(2)}
+              </span>
+            ) : null}
+            {expires ? (
+              <span>
+                {t("expiresLabel")}: {expires}
+              </span>
+            ) : null}
+            <span>ID: {apiKey.id}</span>
+          </div>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-[var(--ink-muted)]">
-          <span className="flex items-center gap-1 font-mono">
-            <MaterialIcon name="key" size={12} />
-            {maskApiKey(apiKey.key)}
-          </span>
-          <span className="flex items-center gap-1">
-            <MaterialIcon name="group" size={12} />
-            {apiKey.group_name}
-          </span>
-          <span className="flex items-center gap-1">
-            <MaterialIcon name="schedule" size={12} />
-            {t("createdLabel")}: {created}
-          </span>
-          {apiKey.quota > 0 ? (
-            <span className="font-mono">
-              ${apiKey.quota_used.toFixed(2)} / ${apiKey.quota.toFixed(2)}
-            </span>
-          ) : null}
-          {expires ? (
-            <span>
-              {t("expiresLabel")}: {expires}
-            </span>
-          ) : null}
-          <span>
-            ID: {apiKey.id}
-          </span>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void toggleModels()}
+            disabled={!isActive || !apiKey.key}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+            title={t("supportedModels")}
+            aria-expanded={showModels}
+          >
+            <MaterialIcon name={showModels ? "expand_less" : "expand_more"} size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCopy(apiKey.id, apiKey.key)}
+            disabled={!apiKey.key}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+            title={t("copy")}
+          >
+            <MaterialIcon name={copiedKeyId === apiKey.id ? "check" : "content_copy"} size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggle(apiKey.id, apiKey.status)}
+            disabled={busyKeyId === apiKey.id}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+            title={isActive ? t("disableKey") : t("enableKey")}
+          >
+            <MaterialIcon name={isActive ? "toggle_on" : "toggle_off"} size={16} className={isActive ? "text-[var(--accent)]" : "text-red-500"} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(apiKey.id, apiKey.name)}
+            disabled={isProtected || busyKeyId === apiKey.id}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-red-600 transition-colors hover:border-red-500/40 hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40"
+            title={isProtected ? t("protectedKey") : t("deleteKey")}
+          >
+            <MaterialIcon name={isProtected ? "lock" : "delete_outline"} size={16} />
+          </button>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onCopy(apiKey.id, apiKey.key)}
-          disabled={!apiKey.key}
-          className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-          title={t("copy")}
-        >
-          <MaterialIcon name={copiedKeyId === apiKey.id ? "check" : "content_copy"} size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggle(apiKey.id, apiKey.status)}
-          disabled={busyKeyId === apiKey.id}
-          className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-          title={isActive ? t("disableKey") : t("enableKey")}
-        >
-          <MaterialIcon name={isActive ? "toggle_on" : "toggle_off"} size={16} className={isActive ? "text-[var(--accent)]" : "text-red-500"} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(apiKey.id, apiKey.name)}
-          disabled={isProtected || busyKeyId === apiKey.id}
-          className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-red-600 transition-colors hover:border-red-500/40 hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40"
-          title={isProtected ? t("protectedKey") : t("deleteKey")}
-        >
-          <MaterialIcon name={isProtected ? "lock" : "delete_outline"} size={16} />
-        </button>
-      </div>
+      {showModels ? (
+        <div className="mt-3 w-full border-t border-[var(--line)] pt-3">
+          <p
+            className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]"
+            style={{ fontFamily: "var(--font-editorial-mono)" }}
+          >
+            {t("supportedModels")}
+          </p>
+          {modelsLoading ? (
+            <p className="text-xs text-[var(--ink-muted)]">{t("loading")}</p>
+          ) : modelsError ? (
+            <p className="text-xs text-red-600">
+              {t("modelsLoadFailed")}({modelsError})
+            </p>
+          ) : models && models.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {models.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-md border border-[var(--line)] bg-[var(--paper)] px-2 py-0.5 font-mono text-[11px] text-[var(--ink)]"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-[var(--ink-muted)]">{t("noModels")}</p>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }
