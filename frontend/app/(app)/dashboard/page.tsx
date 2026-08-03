@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import {
-  ConfigModal,
   DashboardHeader,
   ModelShareCard,
   PurchaseCard,
@@ -15,17 +14,14 @@ import {
 } from "@/components/dashboard";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { Modal } from "@/components/ui/Modal";
-import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 import { useTrendControls } from "@/lib/hooks/use-trend-controls";
 
 function DashboardPageContent() {
   const t = useTranslations("dashboard");
-  const configTriggerRef = useRef<HTMLButtonElement | null>(null);
   const ticketTriggerRef = useRef<HTMLButtonElement | null>(null);
   const trend = useTrendControls();
   const data = useDashboardData(trend.queryString);
-  const config = useConfigModal();
   const [showPurchase, setShowPurchase] = useState(false);
   const [showTicket, setShowTicket] = useState(false);
 
@@ -64,18 +60,16 @@ function DashboardPageContent() {
       {/* 模型分布 */}
       <ModelShareCard modelShare={data.modelShare} />
 
-      {/* 入口 tile:配置 / 工单(均弹 modal) / 详情(跳转,最右) */}
+      {/* 入口 tile:密钥与配置(跳转页) / 工单(modal) / 详情(跳转,最右) */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <button
-          ref={configTriggerRef}
-          type="button"
-          onClick={() => { config.open(); data.clearError(); }}
-          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
+        <Link
+          href="/keys"
+          className="clay-panel flex items-center gap-3 p-4 transition-colors hover:bg-[var(--paper)]"
         >
           <MaterialIcon name="key" size={22} className="text-[var(--accent)]" />
           <span className="font-bold text-[var(--ink)]">{t("configApiKey")}</span>
           <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
-        </button>
+        </Link>
 
         <button
           ref={ticketTriggerRef}
@@ -112,23 +106,6 @@ function DashboardPageContent() {
       >
         <TicketCard sessionToken={data.sessionToken} bare />
       </Modal>
-
-      <ConfigModal
-        isOpen={config.isOpen}
-        onClose={config.close}
-        userKey={config.userKey}
-        onUserKeyChange={config.setUserKey}
-        template={config.template}
-        onTemplateChange={config.setTemplate}
-        format={config.format}
-        onFormatChange={config.setFormat}
-        templateDefinition={config.templateDefinition}
-        renderedConfig={config.renderedConfig}
-        copyState={config.copyState}
-        onCopy={config.handleCopy}
-        triggerRef={configTriggerRef}
-        sessionToken={data.sessionToken}
-      />
     </section>
   );
 }
