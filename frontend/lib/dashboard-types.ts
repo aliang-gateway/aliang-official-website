@@ -5,7 +5,7 @@ export type TrendRange = "7d" | "30d" | "90d";
 export type TrendGranularity = "day" | "week" | "month";
 
 export type ClientTemplateId = "opencode" | "claude" | "codex";
-export type TemplateFormat = "json" | "yaml" | "shell";
+export type TemplateFormat = "json" | "shell" | "toml";
 
 export type TrendPoint = {
   bucket_start: string;

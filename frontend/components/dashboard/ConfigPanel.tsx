@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
+import { GATEWAY_BASE_URL, TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
 import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
 
@@ -251,7 +251,7 @@ export function ConfigPanel({
           <div className="grid gap-3 self-start">
             <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("gatewayBaseUrl")}</p>
-              <p className="mt-2 break-all text-sm font-semibold text-[var(--portal-ink)]">https://api.aliang.one</p>
+              <p className="mt-2 break-all text-sm font-semibold text-[var(--portal-ink)]">{GATEWAY_BASE_URL}</p>
             </div>
 
             <div className="rounded-[1rem] border border-[var(--portal-line)] bg-[var(--portal-clay)] p-4">
