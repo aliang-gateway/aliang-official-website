@@ -10,9 +10,9 @@ import type { ClientTemplateId, TemplateFormat } from "./dashboard-types";
  */
 export const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_GATEWAY_BASE_URL ?? "https://api.aliang.one").replace(/\/+$/, "");
 
-/** opencode 默认模型(OpenAI 兼容端点下的模型 id)。 */
+/** 密钥未提供或 /v1/models 拉取失败时,opencode 配置回退到该模型。 */
 const OPENCODE_DEFAULT_MODEL = "claude-sonnet-4-20250514";
-/** codex 默认模型。 */
+/** 密钥未提供或 /v1/models 拉取失败时,codex 配置回退到该模型。 */
 const CODEX_DEFAULT_MODEL = "gpt-4.1";
 
 export type TemplateDefinition = {
@@ -58,10 +58,14 @@ export function escapeTomlBasicString(value: string) {
     .replaceAll("\t", "\\t");
 }
 
-function buildOpencodeConfig(userKey: string): string {
+function buildOpencodeConfig(userKey: string, models?: string[]): string {
   // opencode 要求 provider 为嵌套对象,顶层模型形如 "<providerId>/<modelId>"。
   // 走 @ai-sdk/openai-compatible 打 /v1/chat/completions。用 JSON.stringify
   // 自动完成转义,避免手拼 JSON 漏掉控制字符。
+  // 模型优先用所选密钥实际可用的(/v1/models),并把它们全部列入 models 映射,
+  // 便于在 opencode 里切换;为空则回退到默认。
+  const list = models && models.length > 0 ? models : [OPENCODE_DEFAULT_MODEL];
+  const defaultModel = list[0];
   const config = {
     $schema: "https://opencode.ai/config.json",
     provider: {
@@ -72,12 +76,10 @@ function buildOpencodeConfig(userKey: string): string {
           baseURL: `${GATEWAY_BASE_URL}/v1`,
           apiKey: userKey,
         },
-        models: {
-          [OPENCODE_DEFAULT_MODEL]: { name: "Claude Sonnet 4" },
-        },
+        models: Object.fromEntries(list.map((modelId) => [modelId, { name: modelId }])),
       },
     },
-    model: `aliang/${OPENCODE_DEFAULT_MODEL}`,
+    model: `aliang/${defaultModel}`,
   };
   return JSON.stringify(config, null, 2);
 }
@@ -92,17 +94,19 @@ function buildClaudeConfig(userKey: string): string {
   ].join("\n");
 }
 
-function buildCodexConfig(userKey: string): string {
+function buildCodexConfig(userKey: string, models?: string[]): string {
   // Codex CLI 只读 ~/.codex/config.toml(不读 JSON/YAML),且密钥只能经 env_key 注入。
   // 网关已暴露 /v1/responses,故 wire_api 取 responses(当前唯一合法值)。
   // base_url 须含 /v1,codex 会在此基础上拼 /responses。
+  // 模型优先用所选密钥实际可用的;为空则回退到默认。
+  const model = models && models.length > 0 ? models[0] : CODEX_DEFAULT_MODEL;
   const exportLine = `export ALIANG_API_KEY='${escapeSingleQuotedShell(userKey)}'`;
   return [
     `# 1) 在 shell 中导出密钥(建议加到 ~/.zshrc 或 ~/.bashrc):`,
     `#      ${exportLine}`,
     `# 2) 再把下方内容写入 ~/.codex/config.toml(已有文件请合并 [model_providers.aliang] 段)。`,
     ``,
-    `model = "${escapeTomlBasicString(CODEX_DEFAULT_MODEL)}"`,
+    `model = "${escapeTomlBasicString(model)}"`,
     `model_provider = "aliang"`,
     ``,
     `[model_providers.aliang]`,
@@ -113,9 +117,9 @@ function buildCodexConfig(userKey: string): string {
   ].join("\n");
 }
 
-export function buildTemplateContent(templateId: ClientTemplateId, userKey: string) {
+export function buildTemplateContent(templateId: ClientTemplateId, userKey: string, models?: string[]) {
   if (templateId === "opencode") {
-    return buildOpencodeConfig(userKey);
+    return buildOpencodeConfig(userKey, models);
   }
 
   if (templateId === "claude") {
@@ -123,7 +127,7 @@ export function buildTemplateContent(templateId: ClientTemplateId, userKey: stri
   }
 
   if (templateId === "codex") {
-    return buildCodexConfig(userKey);
+    return buildCodexConfig(userKey, models);
   }
 
   return "";
