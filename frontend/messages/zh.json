@@ -1124,7 +1124,7 @@
     "templateContentLive": "模板内容是实时的，根据您当前的用户密钥插值生成。更改密钥会立即更新所有模板视图。",
     "addKeyFirst": "请先添加用户密钥，使模板输出包含真实凭证而非空值。",
     "templateOpencodeLabel": "OpenCode",
-    "templateOpencodeHelper": "OpenCode 终端客户端配置，指向您的路由网关。",
+    "templateOpencodeHelper": "OpenCode 客户端配置。保存为项目根目录的 opencode.json（或全局 ~/.config/opencode/config.json）；密钥已内联，无需额外登录。",
     "templateClaudeLabel": "Claude Code",
     "templateClaudeHelper": "适用于 Anthropic 兼容 CLI 设置的快速终端导出。",
     "templateCodexLabel": "Codex",

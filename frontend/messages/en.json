@@ -1124,7 +1124,7 @@
     "templateContentLive": "Template content is live and interpolated from your current user key. Changing the key updates all template views immediately.",
     "addKeyFirst": "Add a user key first so the template output contains real credentials instead of an empty value.",
     "templateOpencodeLabel": "OpenCode",
-    "templateOpencodeHelper": "OpenCode terminal client config pointing at your routed gateway.",
+    "templateOpencodeHelper": "OpenCode client config. Save it as opencode.json in your project root (or ~/.config/opencode/config.json). The key is inlined — no extra login needed.",
     "templateClaudeLabel": "Claude Code",
     "templateClaudeHelper": "Quick terminal export for Anthropic-compatible CLI setup.",
     "templateCodexLabel": "Codex",
