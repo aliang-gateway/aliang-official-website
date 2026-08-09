@@ -27,12 +27,19 @@ const (
 
 const defaultRetryableDelay = 5 * time.Second
 
+// MaxRetries bounds how many times a retryable fulfillment job is retried
+// before it is forced into failed_terminal. Prevents an upstream condition
+// that always reports retryable from looping forever. Override per-instance
+// via Service.SetMaxRetries (mainly for tests).
+const MaxRetries = 12
+
 type Service struct {
 	db         *sql.DB
 	logger     *slog.Logger
 	metrics    *serviceMetrics
 	now        func() time.Time
 	sqlDialect string
+	maxRetries int
 }
 
 type MetricsSnapshot struct {
@@ -131,6 +138,7 @@ func NewServiceWithLoggerAndDialect(database *sql.DB, logger *slog.Logger, sqlDi
 		logger:     logger.With("component", "fulfillment"),
 		metrics:    &serviceMetrics{},
 		sqlDialect: sqlDialect,
+		maxRetries: MaxRetries,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -446,18 +454,21 @@ func (s *Service) applyProxyResult(ctx context.Context, jobID int64, resultErr e
 	finishedAt := now
 
 	var apiErr *proxy.APIError
-	if errors.As(resultErr, &apiErr) {
-		if apiErr.IsRetryable() {
-			status = StatusFailedRetryable
-			eventType = eventPrefix + "_failed_retryable"
-			retryCount++
-			finishedAt = time.Time{}
-			if apiErr.RetryAfter > 0 {
-				availableAt = now.Add(apiErr.RetryAfter)
-			} else {
-				availableAt = now.Add(defaultRetryableDelay)
-			}
+	isRetryable := errors.As(resultErr, &apiErr) && apiErr.IsRetryable()
+	if isRetryable && job.RetryCount+1 <= s.effectiveMaxRetries() {
+		status = StatusFailedRetryable
+		eventType = eventPrefix + "_failed_retryable"
+		retryCount++
+		finishedAt = time.Time{}
+		if apiErr.RetryAfter > 0 {
+			availableAt = now.Add(apiErr.RetryAfter)
+		} else {
+			availableAt = now.Add(defaultRetryableDelay)
 		}
+	} else if isRetryable {
+		// Retryable error but the retry budget is exhausted — stop the loop and
+		// surface that the job needs manual intervention rather than spinning.
+		errorMessage = fmt.Sprintf("%s (retry budget exhausted after %d attempts)", strings.TrimSpace(errorMessage), job.RetryCount)
 	}
 
 	transition := &TransitionInput{
@@ -482,6 +493,95 @@ func (s *Service) currentTime() time.Time {
 		return s.now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+// effectiveMaxRetries returns the configured retry budget, falling back to the
+// package default if the Service was constructed without one.
+func (s *Service) effectiveMaxRetries() int {
+	if s != nil && s.maxRetries > 0 {
+		return s.maxRetries
+	}
+	return MaxRetries
+}
+
+// SetMaxRetries overrides the retry budget (primarily for tests).
+func (s *Service) SetMaxRetries(n int) {
+	if s != nil && n > 0 {
+		s.maxRetries = n
+	}
+}
+
+// ListRetryDueJobs returns up to limit jobs that are failed_retryable, whose
+// available_at backoff has elapsed, and that have not exhausted the retry
+// budget. Ordered by available_at so the oldest retries are served first.
+func (s *Service) ListRetryDueJobs(ctx context.Context, now time.Time, limit int) ([]*Job, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := s.db.QueryContext(ctx, db.Rebind(s.sqlDialect, `
+		SELECT
+			id,
+			user_id,
+			subscription_id,
+			event_type,
+			status,
+			payload_json,
+			error_message,
+			available_at,
+			started_at,
+			finished_at,
+			retry_count,
+			idempotency_key,
+			created_at,
+			updated_at
+		FROM als_fulfillment_jobs
+		WHERE status = ?
+		  AND available_at <= ?
+		  AND retry_count < ?
+		ORDER BY available_at ASC
+		LIMIT ?;
+	`), StatusFailedRetryable, now.UTC(), s.effectiveMaxRetries(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("query retryable due jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]*Job, 0, limit)
+	for rows.Next() {
+		job, err := s.scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan retryable job: %w", err)
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate retryable jobs: %w", err)
+	}
+	return jobs, nil
+}
+
+// ClaimRetryableJob performs an atomic CAS (failed_retryable -> paid_unfulfilled)
+// so that across multiple worker instances only one claims a given job. Returns
+// true when this caller won the claim. Upstream Idempotency-Key handling keeps
+// a race safe even if two instances briefly both process the same job.
+func (s *Service) ClaimRetryableJob(ctx context.Context, jobID int64) (bool, error) {
+	if jobID <= 0 {
+		return false, errors.New("job id must be positive")
+	}
+	now := s.currentTime()
+	res, err := s.db.ExecContext(ctx, db.Rebind(s.sqlDialect, `
+		UPDATE als_fulfillment_jobs
+		SET status = ?, error_message = NULL, available_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?;
+	`), StatusPaidUnfulfilled, now, now, jobID, StatusFailedRetryable)
+	if err != nil {
+		return false, fmt.Errorf("claim retryable job: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claim retryable job rows affected: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (s *Service) logInfo(ctx context.Context, msg string, attrs ...slog.Attr) {
