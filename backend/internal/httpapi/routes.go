@@ -80,6 +80,10 @@ type RoutesOptions struct {
 	// drains failed_retryable jobs whose backoff has elapsed. Cancel it to stop
 	// the worker (typically on SIGTERM in main).
 	BackgroundCtx context.Context
+	// WorkerInterval / WorkerBatchSize override the fulfillment worker's poll
+	// cadence (zero → package defaults of 10s / 25). Populated from env in main.
+	WorkerInterval  time.Duration
+	WorkerBatchSize int
 }
 
 type UserUsageCache interface {
@@ -793,7 +797,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 
 	// Background fulfillment retry worker: drains failed_retryable jobs whose
 	// backoff has elapsed. No-op unless a cancellable context was supplied.
-	r.startFulfillmentWorker(opts.BackgroundCtx)
+	r.startFulfillmentWorker(opts.BackgroundCtx, opts.WorkerInterval, opts.WorkerBatchSize)
 
 	// 扫码登录（本地能力，非 upstream passthrough）
 	mux.HandleFunc("POST /auth/scan/init", r.handleScanInit)
@@ -6990,7 +6994,7 @@ func (r *routes) retryPaymentFulfillmentJob(ctx context.Context, job *fulfillmen
 // existing retry path (retryPaymentFulfillmentJob) so worker-driven retries,
 // poll-driven auto-retries and admin replays share one execution path and one
 // MaxRetries budget.
-func (r *routes) startFulfillmentWorker(ctx context.Context) {
+func (r *routes) startFulfillmentWorker(ctx context.Context, interval time.Duration, batchSize int) {
 	if ctx == nil || r.fulfillmentSvc == nil || r.proxyClient == nil {
 		return
 	}
@@ -6998,7 +7002,14 @@ func (r *routes) startFulfillmentWorker(ctx context.Context) {
 		_, err := r.retryPaymentFulfillmentJob(ctx, job, "worker_retry")
 		return err
 	}
-	worker, err := fulfillment.New(r.fulfillmentSvc, process)
+	var opts []fulfillment.Option
+	if interval > 0 {
+		opts = append(opts, fulfillment.WithInterval(interval))
+	}
+	if batchSize > 0 {
+		opts = append(opts, fulfillment.WithBatchSize(batchSize))
+	}
+	worker, err := fulfillment.New(r.fulfillmentSvc, process, opts...)
 	if err != nil {
 		slog.Error("failed to construct fulfillment worker", "error", err)
 		return

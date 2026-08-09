@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,17 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(healthResponse{Status: "ok"})
+}
+
+// loadIntEnv reads a positive int from the environment, falling back to
+// `fallback` when unset, blank, non-numeric, or non-positive.
+func loadIntEnv(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 // @title AI API Portal Backend API
@@ -180,6 +192,8 @@ func main() {
 		SQLDialect:                cfg.Database.Driver,
 		Sub2APITokenEncryptionKey: cfg.Sub2APITokenEncryptionKey,
 		BackgroundCtx:             ctx,
+		WorkerInterval:            time.Duration(loadIntEnv("FULFILLMENT_WORKER_INTERVAL_MS", 10000)) * time.Millisecond,
+		WorkerBatchSize:           loadIntEnv("FULFILLMENT_WORKER_BATCH_SIZE", 25),
 	})
 
 	handler := requestLogger(mux)
