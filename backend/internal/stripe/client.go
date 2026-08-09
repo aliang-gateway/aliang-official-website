@@ -29,13 +29,13 @@ type Config struct {
 }
 
 type Client struct {
-	secretKey       string
-	webhookSecret   string
-	currency        string
-	successURL      string
-	cancelURL       string
-	httpClient      *http.Client
-	now             func() time.Time
+	secretKey        string
+	webhookSecret    string
+	currency         string
+	successURL       string
+	cancelURL        string
+	httpClient       *http.Client
+	now              func() time.Time
 	webhookTolerance time.Duration
 }
 
@@ -69,6 +69,7 @@ type CheckoutSessionCompleted struct {
 	Metadata          map[string]string `json:"metadata"`
 	AmountTotal       int64             `json:"amount_total"`
 	Currency          string            `json:"currency"`
+	PaymentIntent     string            `json:"payment_intent"`
 }
 
 func NewClient(cfg Config) (*Client, error) {

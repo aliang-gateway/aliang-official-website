@@ -5,11 +5,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "ai-api-portal/backend/docs"
@@ -160,6 +163,11 @@ func main() {
 		slog.Info("stripe client initialized")
 	}
 
+	// Root context cancelled on SIGINT/SIGTERM. It drives the background
+	// fulfillment worker and the HTTP server's graceful shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.Handle("/swagger/", httpSwagger.Handler())
@@ -171,16 +179,32 @@ func main() {
 		AdminBootstrapSecret:      cfg.Auth.AdminBootstrapSecret,
 		SQLDialect:                cfg.Database.Driver,
 		Sub2APITokenEncryptionKey: cfg.Sub2APITokenEncryptionKey,
+		BackgroundCtx:             ctx,
 	})
 
 	handler := requestLogger(mux)
+	srv := &http.Server{
+		Addr:              ":" + cfg.Server.Port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
-	addr := ":" + cfg.Server.Port
-	slog.Info("backend server listening", "addr", addr)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	go func() {
+		<-ctx.Done()
+		stop()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("graceful shutdown failed", "error", err)
+		}
+	}()
+
+	slog.Info("backend server listening", "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("backend server shut down cleanly")
 }
 
 func initLogger(level string) {

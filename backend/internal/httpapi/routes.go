@@ -76,6 +76,10 @@ type RoutesOptions struct {
 	AdminBootstrapSecret      string
 	SQLDialect                string
 	Sub2APITokenEncryptionKey string
+	// BackgroundCtx, when non-nil, starts the fulfillment retry worker that
+	// drains failed_retryable jobs whose backoff has elapsed. Cancel it to stop
+	// the worker (typically on SIGTERM in main).
+	BackgroundCtx context.Context
 }
 
 type UserUsageCache interface {
@@ -786,6 +790,10 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		scanLogin:            scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
+
+	// Background fulfillment retry worker: drains failed_retryable jobs whose
+	// backoff has elapsed. No-op unless a cancellable context was supplied.
+	r.startFulfillmentWorker(opts.BackgroundCtx)
 
 	// 扫码登录（本地能力，非 upstream passthrough）
 	mux.HandleFunc("POST /auth/scan/init", r.handleScanInit)
@@ -4736,6 +4744,22 @@ func (r *routes) handleStripeWebhook(w http.ResponseWriter, req *http.Request) {
 
 	switch event.Type {
 	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
+	case "charge.refunded":
+		if err := r.recordRefundEvent(req.Context(), event); err != nil {
+			slog.Error("failed to record stripe refund", "stripe_event_id", event.ID, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to record refund event")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
+		return
+	case "charge.dispute.created", "charge.dispute.closed":
+		if err := r.recordDisputeEvent(req.Context(), event); err != nil {
+			slog.Error("failed to record stripe dispute", "stripe_event_id", event.ID, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to record dispute event")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
+		return
 	default:
 		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
 		return
@@ -4749,6 +4773,20 @@ func (r *routes) handleStripeWebhook(w http.ResponseWriter, req *http.Request) {
 	if strings.TrimSpace(session.PaymentStatus) != "paid" {
 		writeJSON(w, http.StatusOK, map[string]bool{"received": true})
 		return
+	}
+
+	// Persist the PaymentIntent so later adverse events (charge.refunded,
+	// chargebacks) can be attributed to a user/tier even though Stripe does not
+	// propagate Checkout Session metadata onto the Charge. Best-effort: a miss
+	// just leaves the column null and attribution falls back to event metadata.
+	if pi := strings.TrimSpace(session.PaymentIntent); pi != "" {
+		if _, err := r.db.ExecContext(req.Context(), db.Rebind(r.sqlDialect, `
+			UPDATE als_payment_records
+			SET payment_intent = ?, updated_at = ?
+			WHERE provider = 'stripe' AND checkout_session_id = ? AND payment_intent IS NULL;
+		`), pi, time.Now().UTC(), session.ID); err != nil {
+			slog.Warn("persist payment_intent on payment record failed", "checkout_session_id", session.ID, "error", err)
+		}
 	}
 
 	userID, err := parsePositiveInt64(session.Metadata["user_id"])
@@ -6946,6 +6984,174 @@ func (r *routes) retryPaymentFulfillmentJob(ctx context.Context, job *fulfillmen
 	}
 
 	return r.executePaymentSuccessFulfillment(ctx, replayedJob, payload, strings.TrimSpace(*replayedJob.IdempotencyKey))
+}
+
+// startFulfillmentWorker launches the background retry worker. It reuses the
+// existing retry path (retryPaymentFulfillmentJob) so worker-driven retries,
+// poll-driven auto-retries and admin replays share one execution path and one
+// MaxRetries budget.
+func (r *routes) startFulfillmentWorker(ctx context.Context) {
+	if ctx == nil || r.fulfillmentSvc == nil || r.proxyClient == nil {
+		return
+	}
+	process := func(ctx context.Context, job *fulfillment.Job) error {
+		_, err := r.retryPaymentFulfillmentJob(ctx, job, "worker_retry")
+		return err
+	}
+	worker, err := fulfillment.New(r.fulfillmentSvc, process)
+	if err != nil {
+		slog.Error("failed to construct fulfillment worker", "error", err)
+		return
+	}
+	go worker.Start(ctx)
+}
+
+// recordRefundEvent records an idempotent terminal fulfillment job for a Stripe
+// refund and warns. It performs NO upstream side effects; automated entitlement
+// revocation is a follow-up. Returns an error on persistence failure so the
+// webhook returns non-2xx and Stripe retries the delivery. Attribution favours
+// the stored payment_intent (Stripe does not propagate session metadata to the
+// Charge), falling back to the Charge's own metadata.
+func (r *routes) recordRefundEvent(ctx context.Context, event *portalstripe.Event) error {
+	var charge struct {
+		ID             string            `json:"id"`
+		AmountRefunded int64             `json:"amount_refunded"`
+		Currency       string            `json:"currency"`
+		Metadata       map[string]string `json:"metadata"`
+		PaymentIntent  string            `json:"payment_intent"`
+	}
+	_ = json.Unmarshal(event.Data.Object, &charge)
+
+	userID, tierCode := r.resolveAdverseAttribution(ctx, charge.PaymentIntent, charge.Metadata)
+
+	slog.Warn("stripe refund received",
+		"stripe_event_id", event.ID,
+		"charge_id", charge.ID,
+		"amount_refunded", charge.AmountRefunded,
+		"currency", charge.Currency,
+		"payment_intent", charge.PaymentIntent,
+		"user_id", userID,
+		"tier_code", tierCode,
+		"attribution_known", userID > 0)
+
+	payload := map[string]any{
+		"stripe_event_type": event.Type,
+		"stripe_event_id":   event.ID,
+		"stripe_charge_id":  charge.ID,
+		"amount_refunded":   charge.AmountRefunded,
+		"currency":          charge.Currency,
+		"payment_intent":    charge.PaymentIntent,
+		"user_id":           userID,
+		"tier_code":         tierCode,
+	}
+	return r.recordTerminalStripeEvent(ctx, event, "refund_recorded", payload, userID)
+}
+
+// recordDisputeEvent records a chargeback (dispute) the same way. Dispute
+// objects carry a charge id but not a payment_intent, so attribution falls back
+// to the dispute metadata (often empty); the charge id is recorded for manual
+// reconciliation via the Stripe dashboard.
+func (r *routes) recordDisputeEvent(ctx context.Context, event *portalstripe.Event) error {
+	var dispute struct {
+		ID       string            `json:"id"`
+		Amount   int64             `json:"amount"`
+		Currency string            `json:"currency"`
+		Charge   string            `json:"charge"`
+		Reason   string            `json:"reason"`
+		Status   string            `json:"status"`
+		Metadata map[string]string `json:"metadata"`
+	}
+	_ = json.Unmarshal(event.Data.Object, &dispute)
+
+	userID, tierCode := r.resolveAdverseAttribution(ctx, "", dispute.Metadata)
+
+	slog.Warn("stripe dispute received",
+		"stripe_event_id", event.ID,
+		"dispute_id", dispute.ID,
+		"charge_id", dispute.Charge,
+		"amount", dispute.Amount,
+		"currency", dispute.Currency,
+		"reason", dispute.Reason,
+		"status", dispute.Status,
+		"user_id", userID,
+		"tier_code", tierCode,
+		"attribution_known", userID > 0)
+
+	payload := map[string]any{
+		"stripe_event_type": event.Type,
+		"stripe_event_id":   event.ID,
+		"dispute_id":        dispute.ID,
+		"charge_id":         dispute.Charge,
+		"amount":            dispute.Amount,
+		"currency":          dispute.Currency,
+		"reason":            dispute.Reason,
+		"status":            dispute.Status,
+		"user_id":           userID,
+		"tier_code":         tierCode,
+	}
+	return r.recordTerminalStripeEvent(ctx, event, "dispute_recorded", payload, userID)
+}
+
+// recordTerminalStripeEvent persists an idempotent terminal fulfillment job for
+// a Stripe event we observe without side effects (refunds, disputes). Terminal
+// means the retry worker never picks it up. Errors propagate so the webhook can
+// return non-2xx and let Stripe retry the delivery.
+func (r *routes) recordTerminalStripeEvent(ctx context.Context, event *portalstripe.Event, eventType string, payload map[string]any, userID int64) error {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal %s payload: %w", eventType, err)
+	}
+
+	idempotencyKey := "stripe_" + strings.TrimSuffix(eventType, "_recorded") + ":" + strings.TrimSpace(event.ID)
+	input := &fulfillment.CreateJobInput{
+		EventType:      eventType,
+		PayloadJSON:    string(payloadBytes),
+		IdempotencyKey: idempotencyKey,
+	}
+	if userID > 0 {
+		uid := userID
+		input.UserID = &uid
+	}
+
+	job, err := r.fulfillmentSvc.CreateOrLoadJobByIdempotency(ctx, input)
+	if err != nil {
+		return fmt.Errorf("record %s job: %w", eventType, err)
+	}
+	if job.Status != fulfillment.StatusFailedTerminal {
+		if _, err := r.fulfillmentSvc.TransitionJob(ctx, job.ID, &fulfillment.TransitionInput{
+			Status:    fulfillment.StatusFailedTerminal,
+			EventType: eventType,
+		}); err != nil {
+			return fmt.Errorf("mark %s job terminal: %w", eventType, err)
+		}
+	}
+	return nil
+}
+
+// resolveAdverseAttribution recovers (user_id, tier_code) for a refund/dispute.
+// Prefers a payment_records lookup by payment_intent (reliable); falls back to
+// the event object's metadata (best-effort, usually empty on Charges/Disputes).
+func (r *routes) resolveAdverseAttribution(ctx context.Context, paymentIntent string, metadata map[string]string) (int64, string) {
+	if pi := strings.TrimSpace(paymentIntent); pi != "" {
+		var (
+			userID   int64
+			tierCode string
+		)
+		err := r.db.QueryRowContext(ctx, db.Rebind(r.sqlDialect, `
+			SELECT user_id, tier_code
+			FROM als_payment_records
+			WHERE payment_intent = ?
+			ORDER BY id DESC
+			LIMIT 1;
+		`), pi).Scan(&userID, &tierCode)
+		if err == nil && userID > 0 {
+			return userID, strings.TrimSpace(tierCode)
+		}
+	}
+	if v, err := parsePositiveInt64(metadata["user_id"]); err == nil {
+		return v, strings.TrimSpace(metadata["tier_code"])
+	}
+	return 0, ""
 }
 
 func (r *routes) listAdminPaymentRecords(ctx context.Context, limit int) ([]adminPaymentRecordResponse, error) {
