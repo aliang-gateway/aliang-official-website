@@ -821,12 +821,21 @@ func (s *Service) RedeemCard(ctx context.Context, userID int64, cardCode string)
 		return nil, fmt.Errorf("update wallet: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	claimResult, err := tx.ExecContext(ctx, `
 		UPDATE als_recharge_cards
 		SET redeemed_by_user_id = ?, redeemed_at = ?
-		WHERE id = ?;
-	`, userID, time.Now().UTC(), cardID); err != nil {
+		WHERE id = ? AND redeemed_by_user_id IS NULL;
+	`, userID, time.Now().UTC(), cardID)
+	if err != nil {
 		return nil, fmt.Errorf("mark card redeemed: %w", err)
+	}
+	// CAS guard against concurrent redemption of the same code: exactly one
+	// concurrent redeemer wins. A loser (RowsAffected == 0) returns
+	// ErrCardAlreadyRedeemed and the deferred tx.Rollback undoes the wallet
+	// credit + transaction row it tentatively wrote, so the balance is not
+	// double-counted.
+	if n, _ := claimResult.RowsAffected(); n == 0 {
+		return nil, ErrCardAlreadyRedeemed
 	}
 
 	if _, err := tx.ExecContext(ctx, `

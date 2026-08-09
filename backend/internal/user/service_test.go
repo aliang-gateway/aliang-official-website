@@ -308,8 +308,8 @@ func TestMintSessionForUserCreatesValidSession(t *testing.T) {
 	}
 
 	var (
-		count       int
-		storedHash  string
+		count      int
+		storedHash string
 	)
 	err = database.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE((SELECT token_hash FROM als_sessions WHERE user_id = ? LIMIT 1), '')
@@ -385,5 +385,49 @@ func TestServiceRebindPostgres(t *testing.T) {
 	sqlite := NewService(nil)
 	if got := sqlite.rebind("VALUES (?, ?)"); got != "VALUES (?, ?)" {
 		t.Fatalf("sqlite rebind altered query: %s", got)
+	}
+}
+
+// TestRedeemCard_SecondRedeemRejectedAndBalanceIntact locks the CAS fix for the
+// double-spend race: the mark-redeemed UPDATE is `WHERE id=? AND
+// redeemed_by_user_id IS NULL`, so a second attempt (serial OR concurrent) is a
+// no-op and returns ErrCardAlreadyRedeemed, and the wallet is never credited twice.
+func TestRedeemCard_SecondRedeemRejectedAndBalanceIntact(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	database := setupTestDB(t)
+	svc := NewService(database)
+	userID := createUserWithPassword(t, ctx, database, "redeem@example.com", "Redeem", "user", "hash")
+
+	const code = "REDEEM-CARD-1"
+	const amount = int64(5_000_000) // 5 CNY in micros
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_recharge_cards(card_code, amount_micros, currency)
+		VALUES (?, ?, 'CNY');
+	`, code, amount); err != nil {
+		t.Fatalf("seed card: %v", err)
+	}
+
+	if _, err := svc.RedeemCard(ctx, userID, code); err != nil {
+		t.Fatalf("first redeem failed: %v", err)
+	}
+
+	var balance int64
+	if err := database.QueryRowContext(ctx, `SELECT balance_micros FROM als_user_wallets WHERE user_id = ?`, userID).Scan(&balance); err != nil {
+		t.Fatalf("read wallet: %v", err)
+	}
+	if balance != amount {
+		t.Fatalf("expected balance %d after one redeem, got %d", amount, balance)
+	}
+
+	if _, err := svc.RedeemCard(ctx, userID, code); err != ErrCardAlreadyRedeemed {
+		t.Fatalf("expected ErrCardAlreadyRedeemed on second redeem, got %v", err)
+	}
+
+	if err := database.QueryRowContext(ctx, `SELECT balance_micros FROM als_user_wallets WHERE user_id = ?`, userID).Scan(&balance); err != nil {
+		t.Fatalf("re-read wallet: %v", err)
+	}
+	if balance != amount {
+		t.Fatalf("expected balance unchanged at %d after rejected redeem, got %d", amount, balance)
 	}
 }
