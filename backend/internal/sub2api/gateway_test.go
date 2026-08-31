@@ -204,12 +204,17 @@ func TestSelectDefaultKeyGroups(t *testing.T) {
 		{ID: 4, Platform: "Anthropic", Status: "active", SubscriptionType: ""},          // 平台大小写去重 → 跳过
 		{ID: 7, Platform: "openai", Status: "active", SubscriptionType: "subscription"}, // 订阅组 → 跳过
 		{ID: 8, Platform: "openai", Status: "active", SubscriptionType: ""},             // openai 第一个标准组
+		{ID: 12, Platform: "openai", Status: "active", SubscriptionType: ""},            // 同平台第二个标准组 → 跳过（first-wins）
 		{ID: 9, Platform: "gemini", Status: "inactive", SubscriptionType: ""},           // 非active → 跳过
 		{ID: 0, Platform: "gemini", Status: "active", SubscriptionType: ""},             // 非法ID → 跳过
+		{ID: 5, Platform: "mistral", Status: "ACTIVE", SubscriptionType: ""},            // 大写状态容忍 → 选中
+		{ID: 6, Platform: "cohere", Status: "  active  ", SubscriptionType: ""},         // 状态首尾空白容忍 → 选中
+		{ID: 13, Platform: "qwen", Status: "active", SubscriptionType: "Subscription"},  // 大小写不敏感订阅判断 → 跳过
+		{ID: -1, Platform: "neg", Status: "active", SubscriptionType: ""},               // 负数ID → 跳过
 		{ID: 11, Platform: "", Status: "active", SubscriptionType: ""},                  // 空平台独立桶
 	}
 	got := selectDefaultKeyGroups(groups)
-	want := []int64{3, 8, 11}
+	want := []int64{3, 8, 5, 6, 11}
 	if len(got) != len(want) {
 		t.Fatalf("selectDefaultKeyGroups = %v, want %v", got, want)
 	}
