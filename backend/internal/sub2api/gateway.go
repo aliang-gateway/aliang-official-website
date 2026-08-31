@@ -169,6 +169,47 @@ func (g *Gateway) EnsureUserKeyInGroupIdempotent(ctx context.Context, userID int
 	return false, createErr
 }
 
+// EnsureDefaultResult summarizes one EnsureDefaultUserKeys run.
+type EnsureDefaultResult struct {
+	Ensured       int      // groups that now have an auto-key (pre-existing or newly created)
+	CreatedGroups []int64  // groups where a key was created in this run
+	FailedGroups  []string // groups that failed, formatted "<groupID>: <reason>"
+}
+
+// EnsureDefaultUserKeys idempotently provisions auto-keys for the user: for
+// each platform among the user's non-subscription available groups, exactly
+// one group gets an "auto-key". Create-only: existing keys are never touched.
+func (g *Gateway) EnsureDefaultUserKeys(ctx context.Context, userID int64) (*EnsureDefaultResult, error) {
+	if !g.IsConfigured() {
+		return nil, errors.New("sub2api gateway is not configured")
+	}
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get bearer token for user %d: %w", userID, err)
+	}
+	resp, err := g.proxy.ListAvailableGroups(ctx, bearerToken)
+	if err != nil {
+		return nil, fmt.Errorf("list available groups: %w", err)
+	}
+
+	result := &EnsureDefaultResult{CreatedGroups: []int64{}, FailedGroups: []string{}}
+	for _, groupID := range selectDefaultKeyGroups(resp.Data) {
+		created, ensureErr := g.EnsureUserKeyInGroupIdempotent(ctx, userID, groupID, autoEnsureIdempotencyKey(userID, groupID))
+		if ensureErr != nil {
+			result.FailedGroups = append(result.FailedGroups, fmt.Sprintf("%d: %v", groupID, ensureErr))
+			continue
+		}
+		result.Ensured++
+		if created {
+			result.CreatedGroups = append(result.CreatedGroups, groupID)
+		}
+	}
+	return result, nil
+}
+
 // selectDefaultKeyGroups picks at most one non-subscription active group per
 // platform from the user's available groups, preserving input order. Groups
 // with empty platform form their own bucket. Empty status is treated as
