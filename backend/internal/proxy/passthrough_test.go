@@ -984,3 +984,51 @@ type timeoutNetError struct{}
 func (timeoutNetError) Error() string   { return "timeout" }
 func (timeoutNetError) Timeout() bool   { return true }
 func (timeoutNetError) Temporary() bool { return true }
+
+func TestListAvailableGroups(t *testing.T) {
+	var gotAuth, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"data":[` +
+			`{"id":3,"name":"Claude Basic","platform":"anthropic","status":"active","subscription_type":"","is_exclusive":false,"rate_multiplier":1.0},` +
+			`{"id":7,"name":"GPT Sub","platform":"openai","status":"active","subscription_type":"subscription","is_exclusive":false,"rate_multiplier":1.5},` +
+			`{"id":9,"name":"Exclusive","platform":"gemini","status":"active","subscription_type":"","is_exclusive":true,"rate_multiplier":2.0}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(srv.URL)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	resp, err := client.ListAvailableGroups(context.Background(), "bearer-1")
+	if err != nil {
+		t.Fatalf("ListAvailableGroups: %v", err)
+	}
+	if gotAuth != "Bearer bearer-1" {
+		t.Errorf("Authorization header = %q", gotAuth)
+	}
+	if gotPath != "/api/v1/groups/available" {
+		t.Errorf("upstream path = %q", gotPath)
+	}
+	if len(resp.Data) != 3 {
+		t.Fatalf("len(Data) = %d, want 3", len(resp.Data))
+	}
+	g := resp.Data[0]
+	if g.ID != 3 || g.Platform != "anthropic" || g.Status != "active" || g.SubscriptionType != "" || g.IsExclusive {
+		t.Errorf("group[0] parse mismatch: %+v", g)
+	}
+	if resp.Data[1].SubscriptionType != "subscription" || resp.Data[2].IsExclusive != true {
+		t.Errorf("group[1]/group[2] parse mismatch: %+v %+v", resp.Data[1], resp.Data[2])
+	}
+}
+
+func TestListAvailableGroups_EmptyBearer(t *testing.T) {
+	client, err := NewClient("http://127.0.0.1:1")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := client.ListAvailableGroups(context.Background(), "  "); err == nil {
+		t.Error("expected error for empty bearer token")
+	}
+}

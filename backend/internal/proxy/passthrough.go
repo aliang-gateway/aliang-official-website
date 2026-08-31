@@ -154,6 +154,18 @@ type AdminGroup struct {
 	SubscriptionType string `json:"subscription_type,omitempty"`
 }
 
+// AvailableGroup is a group visible to an end user on the upstream gateway
+// (GET /api/v1/groups/available).
+type AvailableGroup struct {
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	Platform         string  `json:"platform"`
+	Status           string  `json:"status"`
+	SubscriptionType string  `json:"subscription_type"`
+	IsExclusive      bool    `json:"is_exclusive"`
+	RateMultiplier   float64 `json:"rate_multiplier"`
+}
+
 type ResponseEnvelope[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -976,6 +988,45 @@ func (c *Client) ListAdminGroups(ctx context.Context, platform string) (*Respons
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// ListAvailableGroups fetches the groups available to the given user from the
+// upstream gateway using the user's bearer token.
+func (c *Client) ListAvailableGroups(ctx context.Context, bearerToken string) (*ResponseEnvelope[[]AvailableGroup], error) {
+	if strings.TrimSpace(bearerToken) == "" {
+		return nil, errors.New("bearer token is required")
+	}
+	upstreamURL, err := BuildUpstreamURL(c.baseURL, "/api/v1/groups/available", "")
+	if err != nil {
+		return nil, err
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, RequestTimeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodGet, upstreamURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build available groups request: %w", err)
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(bearerToken))
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read available groups response body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, parseAPIError(resp, body, http.MethodGet, "/api/v1/groups/available")
+	}
+	var decoded ResponseEnvelope[[]AvailableGroup]
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, fmt.Errorf("decode available groups response: %w", err)
+	}
+	return &decoded, nil
 }
 
 func BuildUpstreamURL(baseURL *url.URL, upstreamPath, rawQuery string) (*url.URL, error) {
