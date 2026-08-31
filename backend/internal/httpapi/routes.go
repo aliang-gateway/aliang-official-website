@@ -1749,19 +1749,26 @@ func (r *routes) handleFilteredGroupsAvailablePassthrough(w http.ResponseWriter,
 	}
 
 	// 注意：不再因无订阅而短路空列表 —— 标准组对所有人可见（spec 3.5）。
-	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/groups/available", func(payload any) (any, error) {
-		return filterGroupListPayloadByPolicy(payload, authorizedGroupIDs)
-	})
+	// 走 loadUpstreamJSONPayload 而非 filteredProxyJSONResponse：后者会把上游
+	// 非 2xx 原样透传给客户端，绕过下面的空列表回退；这里要求上游任何失败
+	// （网络错误或 HTTP 500 等）都统一回退为空列表。
+	payload, err := r.loadUpstreamJSONPayload(req, "/api/v1/groups/available")
 	if err != nil {
-		// 上游不可用：普通用户回退空列表，不暴露 502（订阅用户也不会误见未授权组）。
+		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
+			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
+			return
+		}
+		// 上游不可用：普通用户回退空列表，不暴露 502/上游状态码（订阅用户也不会误见未授权组）。
 		slog.Warn("groups available fetch failed; falling back to empty list", "user_id", user.ID, "error", err)
 		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{}})
 		return
 	}
-	if !handled {
+	filteredPayload, filterErr := filterGroupListPayloadByPolicy(payload, authorizedGroupIDs)
+	if filterErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to filter groups payload")
 		return
 	}
-	writeForwardedJSON(w, statusCode, headers, filteredPayload)
+	writeJSON(w, http.StatusOK, filteredPayload)
 }
 
 func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req *http.Request) {
@@ -8511,10 +8518,9 @@ func groupPolicyVisible(item map[string]any, authorizedGroupIDs map[int64]struct
 	if _, allowed := authorizedGroupIDs[groupID]; allowed {
 		return true
 	}
+	// 与 sub2api.selectDefaultKeyGroups 保持同一判定口径：仅认 subscription_type
+	// （上游 AvailableGroup 模型亦只有该字段），避免两处策略分歧。
 	subscriptionType := strings.TrimSpace(stringFromAny(item["subscription_type"]))
-	if subscriptionType == "" {
-		subscriptionType = strings.TrimSpace(stringFromAny(item["type"]))
-	}
 	return !strings.EqualFold(subscriptionType, "subscription")
 }
 

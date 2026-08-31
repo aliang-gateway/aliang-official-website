@@ -4005,3 +4005,96 @@ func TestFilterGroupListPayloadByPolicy_NoAuthorized(t *testing.T) {
 		t.Fatalf("fresh user should see only standard groups, got %v", items)
 	}
 }
+
+func TestGroupsAvailableUpstreamFailureFallsBackToEmptyList(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "starter", "Starter")
+	insertTierGroupBinding(t, ctx, database, tierID, 11)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/groups/available" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"upstream exploded"}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, userSessionToken := createUserViaAPI(t, mux, "groups-fallback-user@example.com", "Groups Fallback User", "user", "")
+	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	userReq := httptest.NewRequest(http.MethodGet, "/groups/available", nil)
+	setBearerAuth(userReq, userSessionToken)
+	userRec := httptest.NewRecorder()
+	mux.ServeHTTP(userRec, userReq)
+	if userRec.Code != http.StatusOK {
+		t.Fatalf("expected fallback status %d, got %d body=%s", http.StatusOK, userRec.Code, userRec.Body.String())
+	}
+	if got := strings.TrimSpace(userRec.Body.String()); got != `{"data":[]}` {
+		t.Fatalf("expected empty data fallback body, got %s", got)
+	}
+}
+
+func TestGroupsAvailableFreshUserSeesStandardGroups(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/groups/available" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	// 全新用户：无 tier 绑定、无订阅 —— 仅上游标准组应对其可见。
+	userID, userSessionToken := createUserViaAPI(t, mux, "fresh-user@example.com", "Fresh User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-fresh-user-token", "upstream-fresh-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	userReq := httptest.NewRequest(http.MethodGet, "/groups/available", nil)
+	setBearerAuth(userReq, userSessionToken)
+	userRec := httptest.NewRecorder()
+	mux.ServeHTTP(userRec, userReq)
+	if userRec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, userRec.Code, userRec.Body.String())
+	}
+
+	var payload struct {
+		Data []struct {
+			ID   int64  `json:"id"`
+			Code string `json:"code"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(userRec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode groups response: %v", err)
+	}
+	if len(payload.Data) != 1 || payload.Data[0].Code != "standard-group" {
+		t.Fatalf("fresh user should only see the standard group, got: %+v", payload.Data)
+	}
+}
