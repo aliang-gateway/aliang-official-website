@@ -1747,16 +1747,15 @@ func (r *routes) handleFilteredGroupsAvailablePassthrough(w http.ResponseWriter,
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupIDs) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{}})
-		return
-	}
 
+	// 注意：不再因无订阅而短路空列表 —— 标准组对所有人可见（spec 3.5）。
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/groups/available", func(payload any) (any, error) {
-		return filterGroupListPayloadByID(payload, authorizedGroupIDs)
+		return filterGroupListPayloadByPolicy(payload, authorizedGroupIDs)
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "failed to fetch groups")
+		// 上游不可用：普通用户回退空列表，不暴露 502（订阅用户也不会误见未授权组）。
+		slog.Warn("groups available fetch failed; falling back to empty list", "user_id", user.ID, "error", err)
+		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{}})
 		return
 	}
 	if !handled {
@@ -8500,6 +8499,49 @@ func filterGroupListPayloadByID(payload any, authorizedGroupIDs map[int64]struct
 	}
 	if groups, ok := payload.([]any); ok {
 		return filterGroupItemsByID(groups, authorizedGroupIDs), nil
+	}
+	return payload, nil
+}
+
+// groupPolicyVisible reports whether an upstream available-group item should be
+// visible to the user: non-subscription groups are open to everyone (billed
+// from balance); subscription groups require local authorization.
+func groupPolicyVisible(item map[string]any, authorizedGroupIDs map[int64]struct{}) bool {
+	groupID, _ := asInt64(item["id"])
+	if _, allowed := authorizedGroupIDs[groupID]; allowed {
+		return true
+	}
+	subscriptionType := strings.TrimSpace(stringFromAny(item["subscription_type"]))
+	if subscriptionType == "" {
+		subscriptionType = strings.TrimSpace(stringFromAny(item["type"]))
+	}
+	return !strings.EqualFold(subscriptionType, "subscription")
+}
+
+func filterGroupItemsByPolicy(items []any, authorizedGroupIDs map[int64]struct{}) []any {
+	filtered := make([]any, 0, len(items))
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if groupPolicyVisible(item, authorizedGroupIDs) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func filterGroupListPayloadByPolicy(payload any, authorizedGroupIDs map[int64]struct{}) (any, error) {
+	if root, ok := payload.(map[string]any); ok {
+		cloned := cloneMap(root)
+		if groups, ok := root["data"].([]any); ok {
+			cloned["data"] = filterGroupItemsByPolicy(groups, authorizedGroupIDs)
+			return cloned, nil
+		}
+	}
+	if groups, ok := payload.([]any); ok {
+		return filterGroupItemsByPolicy(groups, authorizedGroupIDs), nil
 	}
 	return payload, nil
 }

@@ -3960,3 +3960,48 @@ func TestPublicPackagesReturnsOnlyVisible(t *testing.T) {
 		t.Fatalf("is_visible=false tier should not be returned")
 	}
 }
+
+func TestFilterGroupListPayloadByPolicy(t *testing.T) {
+	payload := map[string]any{
+		"data": []any{
+			map[string]any{"id": json.Number("3"), "name": "Std", "subscription_type": ""},
+			map[string]any{"id": json.Number("7"), "name": "Sub", "subscription_type": "subscription"},
+			map[string]any{"id": json.Number("9"), "name": "Sub-Authorized", "subscription_type": "subscription"},
+		},
+	}
+	authorized := map[int64]struct{}{9: {}}
+
+	got, err := filterGroupListPayloadByPolicy(payload, authorized)
+	if err != nil {
+		t.Fatalf("filterGroupListPayloadByPolicy: %v", err)
+	}
+	root := got.(map[string]any)
+	items := root["data"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 visible groups (standard + authorized subscription), got %d: %v", len(items), items)
+	}
+	for _, raw := range items {
+		item := raw.(map[string]any)
+		id, _ := strconv.ParseInt(item["id"].(json.Number).String(), 10, 64)
+		if id == 7 {
+			t.Errorf("unauthorized subscription group 7 must be filtered out")
+		}
+	}
+}
+
+func TestFilterGroupListPayloadByPolicy_NoAuthorized(t *testing.T) {
+	payload := map[string]any{
+		"data": []any{
+			map[string]any{"id": json.Number("3"), "subscription_type": ""},
+			map[string]any{"id": json.Number("7"), "subscription_type": "subscription"},
+		},
+	}
+	got, err := filterGroupListPayloadByPolicy(payload, map[int64]struct{}{})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	items := got.(map[string]any)["data"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("fresh user should see only standard groups, got %v", items)
+	}
+}
