@@ -1691,7 +1691,9 @@ func (r *routes) handleEnsureAutoAPIKeys(w http.ResponseWriter, req *http.Reques
 		writeError(w, http.StatusBadGateway, "sub2api gateway is not configured")
 		return
 	}
-	result, err := r.sub2api.EnsureDefaultUserKeys(req.Context(), user.ID)
+	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+	defer cancel()
+	result, err := r.sub2api.EnsureDefaultUserKeys(ctx, user.ID)
 	if err != nil {
 		slog.Warn("ensure-auto api keys failed", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusBadGateway, "failed to ensure api keys")
