@@ -2532,6 +2532,9 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 				writeError(w, http.StatusInternalServerError, "failed to finalize login response")
 				return
 			}
+			if upstreamPath == "/api/v1/auth/register" {
+				r.kickEnsureDefaultUserKeys(localUserID)
+			}
 			resp.Body = io.NopCloser(bytes.NewReader(responseBody))
 			resp.ContentLength = int64(len(responseBody))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(responseBody)))
@@ -2547,6 +2550,34 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 		slog.Error("proxy auth response copy failed", "path", upstreamPath, "error", err)
 		return
 	}
+}
+
+// kickEnsureDefaultUserKeys best-effort provisions auto keys right after a
+// fresh registration. It runs detached from the request, never blocks the
+// registration response, and only logs failures.
+func (r *routes) kickEnsureDefaultUserKeys(userID int64) {
+	if !r.sub2api.IsConfigured() || userID <= 0 {
+		return
+	}
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Warn("ensure default api keys panicked", "user_id", userID, "panic", rec)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		result, err := r.sub2api.EnsureDefaultUserKeys(ctx, userID)
+		if err != nil {
+			slog.Warn("ensure default api keys after register failed", "user_id", userID, "error", err)
+			return
+		}
+		slog.Info("ensure default api keys after register",
+			"user_id", userID,
+			"ensured", result.Ensured,
+			"created", result.CreatedGroups,
+			"failed", result.FailedGroups)
+	}()
 }
 
 func (r *routes) captureSub2APITokens(ctx context.Context, req *http.Request, requestEmail, requestRefreshToken string, responseBody []byte) (int64, bool, error) {
