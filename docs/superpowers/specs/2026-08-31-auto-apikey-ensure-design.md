@@ -105,6 +105,7 @@ EnsureDefaultUserKeys(ctx, userID) (EnsureResult, error)
 | `backend/internal/proxy/passthrough.go` | 新增用户侧 `ListAvailableGroups`（复用现有请求模式） |
 | `backend/internal/sub2api/gateway.go` | 新增 `EnsureDefaultUserKeys`；`EnsureUserKeyInGroup` 支持显式幂等键（旧调用点不变） |
 | `backend/internal/httpapi/routes.go` | 注册分支异步钩子；`POST /api-keys/ensure-auto` 端点；分组 BFF 过滤调整 |
+| `frontend/app/api-keys/ensure-auto/route.ts` | 新增 Next BFF 转发路由（静态段优先于 `[id]`，否则兜底触发不可达） |
 | `frontend/app/(app)/keys/page.tsx` | 创建 key 表单；加载时兜底 ensure 调用 |
 | 对应 `*_test.go` / 前端测试 | 见第 5 节 |
 

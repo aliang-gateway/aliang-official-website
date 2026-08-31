@@ -34,7 +34,7 @@ git -C /Users/mac/MyProgram/AiProgram/aliang-official-website worktree add .clau
 ## Task 1: proxy 客户端 —— `AvailableGroup` 结构 + `ListAvailableGroups`
 
 **Files:**
-- Modify: `backend/internal/proxy/passthrough.go`（在 `AdminGroup` 结构定义附近，约 116-121 行之后；`ListAvailableGroups` 放在 `ListAdminGroups`（约 968 行）之后）
+- Modify: `backend/internal/proxy/passthrough.go`（在 `AdminGroup` 结构定义（约 148 行）之后加结构体；`ListAvailableGroups` 放在 `ListAdminGroups`（约 968 行）之后）
 - Test: `backend/internal/proxy/passthrough_test.go`
 
 - [ ] **Step 1.1: 写失败测试**
@@ -357,14 +357,17 @@ git commit -m "feat(sub2api): selectDefaultKeyGroups 平台去重选默认组策
 - Modify: `backend/internal/sub2api/gateway.go`
 - Test: `backend/internal/sub2api/gateway_test.go`
 
-测试基座说明：Gateway 依赖具体类型 `*proxy.Client` + `*sub2apiauth.Service`。用 httptest 上游 + `proxy.NewClient(srv.URL)` + 真实 `sub2apiauth.Service`（内存 sqlite）。**先读 `backend/internal/sub2apiauth/service_test.go` 的 `setupTestDB`（约 275 行）与 `testDialect`，把同款建库方式复制进 gateway_test.go**（sqlite 内存库；若环境 `DB_DRIVER=postgres` 该 helper 会 skip，同样照搬即可）。
+测试基座说明：Gateway 依赖具体类型 `*proxy.Client` + `*sub2apiauth.Service`。用 httptest 上游 + `proxy.NewClient(srv.URL)` + 真实 `sub2apiauth.Service`（内存 sqlite）。**先读 `backend/internal/sub2apiauth/service_test.go`，把 `setupTestDB`（约 275 行）、`testDialect`、`createUser`（约 274 行，向 `als_users` 插行 —— 必须复制，因为 `als_sub2api_auth_tokens.user_id` 有外键且 `db.Open` 开启 `PRAGMA foreign_keys=ON`，不建用户行 `UpsertToken` 会报 FK 错）三个 helper 复制进 gateway_test.go 并改名**（sqlite 内存库；若环境 `DB_DRIVER=postgres` 该 helper 会 skip，同样照搬）。
+
+⚠️ 另注意：`sub2apiauth.UpsertTokenInput.AccessExpiresAt` 字段类型是 `*time.Time`（见 `backend/internal/sub2apiauth/service.go`），测试里必须传指针。
 
 - [ ] **Step 4.1: 写失败测试**
 
-`gateway_test.go` 末尾追加（`newEnsureTestGateway` 是本任务新加的 helper，放测试文件底部；`strPtr` 若文件已有同名 helper 则复用）：
+`gateway_test.go` 末尾追加（`newEnsureTestGateway` 是本任务新加的 helper，放测试文件底部；`strPtr`/`timePtr` 若文件已有同名 helper 则复用）：
 
 ```go
 func strPtr(s string) *string { return &s }
+func timePtr(v time.Time) *time.Time { return &v }
 
 // newEnsureTestGateway builds a Gateway backed by an httptest upstream and a
 // real sub2apiauth service with user 1 having a stored token. The recorder
@@ -372,8 +375,9 @@ func strPtr(s string) *string { return &s }
 type ensureUpstreamRecorder struct {
 	mu        sync.Mutex
 	requests  []string // "METHOD PATH IDEMKEY" per request
-	listBody  string
-	createErr string // when non-empty, respond with this status code text on create
+	listBody  string   // body for GET /api/v1/groups/available
+	keysBody  string   // body for GET /api/v1/api-keys (raw JSON array form)
+	createErr string   // when non-empty, respond with this status code text on create
 }
 
 func newEnsureTestGateway(t *testing.T, rec *ensureUpstreamRecorder) *Gateway {
@@ -387,7 +391,12 @@ func newEnsureTestGateway(t *testing.T, rec *ensureUpstreamRecorder) *Gateway {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/groups/available":
 			_, _ = w.Write([]byte(rec.listBody))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/api-keys"):
-			_, _ = w.Write([]byte(`{"data":{"data":[],"total":0,"page":1,"per_page":100}}`))
+			// 裸数组形态：ListResponseEnvelope 的自定义反序列化明确支持 `[` 开头。
+			keysBody := rec.keysBody
+			if keysBody == "" {
+				keysBody = "[]"
+			}
+			_, _ = w.Write([]byte(keysBody))
 		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/api-keys" || r.URL.Path == "/api/v1/keys"):
 			if rec.createErr != "" {
 				http.Error(w, rec.createErr, http.StatusConflict)
@@ -404,12 +413,14 @@ func newEnsureTestGateway(t *testing.T, rec *ensureUpstreamRecorder) *Gateway {
 	if err != nil {
 		t.Fatalf("proxy.NewClient: %v", err)
 	}
-	authSvc := sub2apiauth.NewService(setupEnsureTestDB(t))
+	database := setupEnsureTestDB(t)
+	createEnsureTestUser(t, context.Background(), database, "u1@test.local", "User One", "user")
+	authSvc := sub2apiauth.NewService(database)
 	err = authSvc.UpsertToken(context.Background(), sub2apiauth.UpsertTokenInput{
 		UserID:          1,
 		AccessToken:     "access-1",
 		RefreshToken:    strPtr("refresh-1"),
-		AccessExpiresAt: time.Now().Add(time.Hour),
+		AccessExpiresAt: timePtr(time.Now().Add(time.Hour)),
 	})
 	if err != nil {
 		t.Fatalf("UpsertToken: %v", err)
@@ -451,19 +462,17 @@ func TestEnsureDefaultUserKeys_CreatesOneKeyPerPlatform(t *testing.T) {
 }
 
 func TestEnsureDefaultUserKeys_IdempotentSecondRun(t *testing.T) {
-	rec := &ensureUpstreamRecorder{
-		listBody: `{"data":[{"id":3,"name":"Claude Basic","platform":"anthropic","status":"active","subscription_type":""}]}`,
-	}
+	groupsBody := `{"data":[{"id":3,"name":"Claude Basic","platform":"anthropic","status":"active","subscription_type":""}]}`
+	rec := &ensureUpstreamRecorder{listBody: groupsBody}
 	g := newEnsureTestGateway(t, rec)
 
 	if _, err := g.EnsureDefaultUserKeys(context.Background(), 1); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
-	first := len(rec.requests)
 
-	// 第二轮：上游 api-keys 列表返回已有 auto-key → 不应再发起 create。
+	// 第二轮：组列表不变，但上游 api-keys 列表已含该组 auto-key → 不应再发起 create。
 	rec.requests = nil
-	rec.listBody = `{"data":[]}` // ensure 仍可见组列表（语义：组存在，key 已存在）
+	rec.keysBody = `[{"id":10,"name":"auto-key","group_id":3,"status":"active"}]`
 	result, err := g.EnsureDefaultUserKeys(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("second run: %v", err)
@@ -473,7 +482,7 @@ func TestEnsureDefaultUserKeys_IdempotentSecondRun(t *testing.T) {
 	}
 	for _, req := range rec.requests {
 		if strings.HasPrefix(req, "POST") {
-			t.Errorf("second run must not create, got %q (requests before=%d)", req, first)
+			t.Errorf("second run must not create, got %q", req)
 		}
 	}
 }
@@ -510,12 +519,14 @@ func TestEnsureDefaultUserKeys_UpstreamDown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("proxy.NewClient: %v", err)
 	}
-	authSvc := sub2apiauth.NewService(setupEnsureTestDB(t))
+	database := setupEnsureTestDB(t)
+	createEnsureTestUser(t, context.Background(), database, "u2@test.local", "User Two", "user")
+	authSvc := sub2apiauth.NewService(database)
 	if err := authSvc.UpsertToken(context.Background(), sub2apiauth.UpsertTokenInput{
 		UserID:          1,
 		AccessToken:     "access-1",
 		RefreshToken:    strPtr("refresh-1"),
-		AccessExpiresAt: time.Now().Add(time.Hour),
+		AccessExpiresAt: timePtr(time.Now().Add(time.Hour)),
 	}); err != nil {
 		t.Fatalf("UpsertToken: %v", err)
 	}
@@ -526,21 +537,22 @@ func TestEnsureDefaultUserKeys_UpstreamDown(t *testing.T) {
 }
 ```
 
-同时在测试文件加 DB helper（照搬 `backend/internal/sub2apiauth/service_test.go` 的 `setupTestDB`/`testDialect` 实现，重命名避免冲突）：
+同时在测试文件加 helpers（照搬 `backend/internal/sub2apiauth/service_test.go` 的实现，重命名避免冲突）：
 
 ```go
-// setupEnsureTestDB mirrors sub2apiauth's setupTestDB: in-memory sqlite by
-// default, or the DB_DRIVER/DB_DSN postgres path (skipped without DSN).
-// 实现时以 sub2apiauth/service_test.go 当前版本为准复制其建库与迁移步骤。
-func setupEnsureTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	// TODO(executor): 从 backend/internal/sub2apiauth/service_test.go 复制
-	// setupTestDB + testDialect 的建库/迁移逻辑，仅改名。禁止凭空编写迁移语句。
-	panic("implement by copying sub2apiauth setupTestDB body")
-}
+// setupEnsureTestDB / createEnsureTestUser / ensureTestDialect 一律从
+// backend/internal/sub2apiauth/service_test.go 的 setupTestDB / createUser /
+// testDialect 逐行复制后改名 —— 建库与迁移语句禁止凭空编写。
+//
+// createEnsureTestUser 签名（与原 createUser 相同）：
+//
+//	func createEnsureTestUser(t *testing.T, ctx context.Context, database *sql.DB, email, name, role string) int64
+//
+// 必须：先 createEnsureTestUser 再 UpsertToken —— als_sub2api_auth_tokens.user_id
+// 外键引用 als_users(id)，且 db.Open 开启 PRAGMA foreign_keys=ON。
 ```
 
-> ⚠️ 给执行者：这是本计划唯一一处「以现有代码为准」的复制点 —— 打开 `backend/internal/sub2apiauth/service_test.go:275` 的 `setupTestDB` 与 `testDialect`，逐行复制其建库 + schema 迁移调用，仅重命名为 `setupEnsureTestDB`/`ensureTestDialect`。
+> ⚠️ 给执行者：这是本计划唯一一处「以现有代码为准」的复制点 —— 打开 `backend/internal/sub2apiauth/service_test.go`，逐行复制 `setupTestDB`（约 275 行）、`createUser`（约 274 行）、`testDialect`，仅重命名。测试文件需的 import（若缺）：`database/sql`、`context`、`net/http/httptest`、`strings`、`sync`、`time`、`os`、`fmt`。
 
 - [ ] **Step 4.2: 运行确认失败**
 
@@ -774,8 +786,6 @@ func TestFilterGroupListPayloadByPolicy(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("expected 2 visible groups (standard + authorized subscription), got %d: %v", len(items), items)
 	}
-	if got[0] != nil {
-	} // no-op guard for linters
 	for _, raw := range items {
 		item := raw.(map[string]any)
 		id, _ := strconv.ParseInt(item["id"].(json.Number).String(), 10, 64)
@@ -922,8 +932,51 @@ git commit -m "feat(httpapi): groups/available 对普通用户放开非订阅制
 ## Task 8: 前端 —— /keys 页创建表单 + 加载兜底 ensure
 
 **Files:**
+- Create: `frontend/app/api-keys/ensure-auto/route.ts`（⚠️ 必需：Next BFF 只按固定路径转发，`/api-keys/ensure-auto` 否则会落进 `[id]` 动态路由且无 POST handler → 405，兜底触发变死功能）
 - Modify: `frontend/app/(app)/keys/page.tsx`
 - Modify: `frontend/messages/zh.json`、`frontend/messages/en.json`（`dashboard` 命名空间内、`tabApiKeys`（约 1099 行）附近）
+
+- [ ] **Step 8.0: 新增 BFF 转发路由（先于其他步骤，静态段 `ensure-auto` 优先于 `[id]` 匹配）**
+
+创建 `frontend/app/api-keys/ensure-auto/route.ts`（与 `frontend/app/api/api-keys/route.ts` 同款转发模式）：
+
+```ts
+import { NextResponse } from "next/server";
+
+import { getApiBaseUrl } from "@/lib/server/api-base-url";
+
+export async function POST(request: Request) {
+  let apiBaseUrl: string;
+  try {
+    apiBaseUrl = getApiBaseUrl();
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "server misconfiguration" },
+      { status: 500 },
+    );
+  }
+
+  const upstream = await fetch(`${apiBaseUrl}/api-keys/ensure-auto`, {
+    method: "POST",
+    headers: {
+      "content-type": request.headers.get("content-type") ?? "application/json",
+      accept: request.headers.get("accept") ?? "application/json",
+      Authorization: request.headers.get("Authorization") ?? "",
+    },
+    cache: "no-store",
+  });
+
+  try {
+    const payload = await upstream.json();
+    return NextResponse.json(payload, { status: upstream.status });
+  } catch {
+    return NextResponse.json(
+      { error: "invalid json response from upstream" },
+      { status: 502 },
+    );
+  }
+}
+```
 
 - [ ] **Step 8.1: 增加 i18n 文案**
 
@@ -1072,8 +1125,8 @@ cd $WT/frontend && npm run lint && npm test && npm run build
 - [ ] **Step 8.4: Commit**
 
 ```bash
-cd $WT && git add frontend/app/\(app\)/keys/page.tsx frontend/messages/zh.json frontend/messages/en.json
-git commit -m "feat(keys): 创建 API key 表单 + 页面加载幂等兜底 ensure"
+cd $WT && git add frontend/app/api-keys/ensure-auto/route.ts "frontend/app/(app)/keys/page.tsx" frontend/messages/zh.json frontend/messages/en.json
+git commit -m "feat(keys): 创建 API key 表单 + 页面加载幂等兜底 ensure（含 BFF 转发路由）"
 ```
 
 ---
