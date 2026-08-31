@@ -1133,6 +1133,8 @@
     "stripeCancelled": "Stripe 结账在支付完成前已取消。未应用任何套餐变更。",
     "prepaidSuccess": "预付充值请求已提交。您的余额卡片已刷新，任何上游处理延迟会在此处显示，而不是被视为即时支付完成。",
     "closeConfigModal": "关闭配置弹窗",
+    "closeTicketModal": "关闭工单弹窗",
+    "closePurchaseModal": "关闭充值弹窗",
     "subscriptionN": "订阅 {index}",
     "detailsTitle": "控制台详情",
     "requestRecords": "请求记录",

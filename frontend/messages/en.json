@@ -1133,6 +1133,8 @@
     "stripeCancelled": "Stripe checkout was cancelled before payment completed. No package changes were applied.",
     "prepaidSuccess": "Prepaid redeem request submitted. Your balance card was refreshed, and any upstream processing delay is surfaced here instead of being treated as instant payment completion.",
     "closeConfigModal": "Close config setup modal",
+    "closeTicketModal": "Close ticket modal",
+    "closePurchaseModal": "Close top-up modal",
     "subscriptionN": "Subscription {index}",
     "detailsTitle": "Dashboard details",
     "requestRecords": "Request records",

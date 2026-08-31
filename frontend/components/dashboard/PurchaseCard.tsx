@@ -19,13 +19,15 @@ type PurchaseCardProps = {
   sessionToken: string;
   dashboard: DashboardHomeResponse | null;
   onReload: () => Promise<void>;
+  /** Render without the outer block-card wrapper (for use inside a modal). */
+  bare?: boolean;
 };
 
 function formatMoneyMicros(value: number) {
   return `¥${((value || 0) / 1000000).toFixed(2)}`;
 }
 
-export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCardProps) {
+export function PurchaseCard({ sessionToken, dashboard, onReload, bare = false }: PurchaseCardProps) {
   const t = useTranslations("dashboard");
   const {
     selectedTierCode,
@@ -78,7 +80,7 @@ export function PurchaseCard({ sessionToken, dashboard, onReload }: PurchaseCard
         : "text-[var(--portal-muted)]";
 
   return (
-    <article className="block-card min-w-0 space-y-4">
+    <article className={`min-w-0 space-y-4 ${bare ? "p-5 sm:p-6" : "block-card"}`}>
       <div>
         <h2 className="mt-2 text-2xl font-bold text-[var(--portal-ink)]">{t("topUpOrExtend")}</h2>
         <p className="mt-2 text-sm text-[var(--portal-muted)]">

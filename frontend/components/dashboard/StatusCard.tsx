@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import type { RefObject } from "react";
 
 import {
   formatMetricCurrency,
@@ -14,6 +15,8 @@ type StatusCardProps = {
   metricSummary: DashboardMetricSummary | null;
   dashboard: DashboardHomeResponse | null;
   onPurchase: () => void;
+  /** Ref on the top-up CTA, used by the page's top-up modal to restore focus on close. */
+  purchaseButtonRef?: RefObject<HTMLButtonElement | null>;
 };
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
@@ -32,7 +35,7 @@ const MONO = { fontFamily: "var(--font-editorial-mono)" } as const;
  * strip + package card into a single status surface — balance & today's burn on
  * the left, current plan + quota bar + the top-up CTA on the right.
  */
-export function StatusCard({ metricSummary, dashboard, onPurchase }: StatusCardProps) {
+export function StatusCard({ metricSummary, dashboard, onPurchase, purchaseButtonRef }: StatusCardProps) {
   const t = useTranslations("dashboard");
 
   const summaries = dashboard?.package_summaries ?? [];
@@ -129,7 +132,7 @@ export function StatusCard({ metricSummary, dashboard, onPurchase }: StatusCardP
             </p>
           )}
 
-          <button type="button" onClick={onPurchase} className="btn-primary w-full">
+          <button ref={purchaseButtonRef} type="button" onClick={onPurchase} className="btn-primary w-full">
             {t("topUpOrExtend")}
           </button>
         </div>

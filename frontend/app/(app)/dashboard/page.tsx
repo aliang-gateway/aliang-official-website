@@ -20,6 +20,7 @@ import { useTrendControls } from "@/lib/hooks/use-trend-controls";
 function DashboardPageContent() {
   const t = useTranslations("dashboard");
   const ticketTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const purchaseTriggerRef = useRef<HTMLButtonElement | null>(null);
   const trend = useTrendControls();
   const data = useDashboardData(trend.queryString);
   const [showPurchase, setShowPurchase] = useState(false);
@@ -45,7 +46,8 @@ function DashboardPageContent() {
       <StatusCard
         metricSummary={data.metricSummary}
         dashboard={data.dashboard}
-        onPurchase={() => setShowPurchase((value) => !value)}
+        onPurchase={() => setShowPurchase(true)}
+        purchaseButtonRef={purchaseTriggerRef}
       />
 
       {/* 用量趋势(全宽) */}
@@ -92,16 +94,22 @@ function DashboardPageContent() {
         </Link>
       </div>
 
-      {/* 充值面板(状态卡 CTA 触发) */}
-      {showPurchase ? (
-        <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} />
-      ) : null}
+      {/* 充值 modal(状态卡 CTA 触发) */}
+      <Modal
+        isOpen={showPurchase}
+        onClose={() => setShowPurchase(false)}
+        closeLabel={t("closePurchaseModal")}
+        triggerRef={purchaseTriggerRef}
+        panelClassName="max-w-2xl"
+      >
+        <PurchaseCard sessionToken={data.sessionToken} dashboard={data.dashboard} onReload={data.loadDashboard} bare />
+      </Modal>
 
       {/* 工单 modal */}
       <Modal
         isOpen={showTicket}
         onClose={() => setShowTicket(false)}
-        closeLabel={t("closeConfigModal")}
+        closeLabel={t("closeTicketModal")}
         triggerRef={ticketTriggerRef}
       >
         <TicketCard sessionToken={data.sessionToken} bare />
