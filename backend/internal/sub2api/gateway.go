@@ -128,35 +128,45 @@ func (g *Gateway) CreateUserAPIKeyForUser(ctx context.Context, userID int64, req
 // EnsureUserKeyInGroup ensures the user has an auto-key in the specified group,
 // tolerating 409 (already exists).
 func (g *Gateway) EnsureUserKeyInGroup(ctx context.Context, userID int64, groupID int64, parentIdempotencyKey string) error {
+	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
+	_, err := g.EnsureUserKeyInGroupIdempotent(ctx, userID, groupID, childKey)
+	return err
+}
+
+// EnsureUserKeyInGroupIdempotent ensures an auto-key exists in the group using an
+// explicit idempotency key, and reports whether a new key was created.
+// Safety: it only ever creates — never updates or revokes existing keys; any
+// pre-existing "auto-key" in the group (including a disabled one) short-circuits;
+// 409 Conflict from concurrent creation is treated as success.
+func (g *Gateway) EnsureUserKeyInGroupIdempotent(ctx context.Context, userID int64, groupID int64, idempotencyKey string) (bool, error) {
 	if g == nil || g.proxy == nil || g.auth == nil {
-		return nil
+		return false, nil
 	}
 	bearerToken, err := g.auth.GetBearerTokenByUserID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("get bearer token for user %d: %w", userID, err)
+		return false, fmt.Errorf("get bearer token for user %d: %w", userID, err)
 	}
 	keys, err := g.proxy.ListUserAPIKeys(ctx, bearerToken, groupID, "auto-key")
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, key := range keys.Data {
 		if key.GroupID == groupID && strings.TrimSpace(key.Name) == "auto-key" {
-			return nil
+			return false, nil
 		}
 	}
-	childKey := parentIdempotencyKey + ":ensure-key:" + strconv.FormatInt(groupID, 10)
 	_, createErr := g.proxy.CreateUserAPIKey(ctx, bearerToken, proxy.CreateUserAPIKeyRequest{
 		Name:    "auto-key",
 		GroupID: groupID,
-	}, childKey)
+	}, idempotencyKey)
 	if createErr == nil {
-		return nil
+		return true, nil
 	}
 	var apiErr *proxy.APIError
 	if errors.As(createErr, &apiErr) && apiErr.IsConflict() {
-		return nil // key already exists
+		return false, nil // key already exists (concurrent creation)
 	}
-	return createErr
+	return false, createErr
 }
 
 // ReplaceAuthHeader resolves a local session token in the Authorization header
