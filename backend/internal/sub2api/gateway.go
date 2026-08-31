@@ -169,6 +169,41 @@ func (g *Gateway) EnsureUserKeyInGroupIdempotent(ctx context.Context, userID int
 	return false, createErr
 }
 
+// selectDefaultKeyGroups picks at most one non-subscription active group per
+// platform from the user's available groups, preserving input order. Groups
+// with empty platform form their own bucket. Empty status is treated as
+// active (upstream available-groups are already availability-filtered).
+// This is the policy for which groups get an auto-key provisioned right
+// after registration.
+func selectDefaultKeyGroups(groups []proxy.AvailableGroup) []int64 {
+	seenPlatforms := make(map[string]struct{})
+	result := make([]int64, 0)
+	for _, group := range groups {
+		if group.ID <= 0 {
+			continue
+		}
+		if status := strings.TrimSpace(group.Status); status != "" && !strings.EqualFold(status, "active") {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(group.SubscriptionType), "subscription") {
+			continue
+		}
+		platform := strings.ToLower(strings.TrimSpace(group.Platform))
+		if _, seen := seenPlatforms[platform]; seen {
+			continue
+		}
+		seenPlatforms[platform] = struct{}{}
+		result = append(result, group.ID)
+	}
+	return result
+}
+
+// autoEnsureIdempotencyKey maps (user, group) to one stable idempotency key so
+// repeated/concurrent ensure runs dedupe upstream.
+func autoEnsureIdempotencyKey(userID, groupID int64) string {
+	return fmt.Sprintf("auto-ensure:u%d:g%d", userID, groupID)
+}
+
 // ReplaceAuthHeader resolves a local session token in the Authorization header
 // to the user's upstream bearer token. Admin users without an upstream token
 // are left unchanged.

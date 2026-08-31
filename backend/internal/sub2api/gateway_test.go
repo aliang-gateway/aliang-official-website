@@ -197,3 +197,31 @@ func TestExtractBearerToken(t *testing.T) {
 		})
 	}
 }
+
+func TestSelectDefaultKeyGroups(t *testing.T) {
+	groups := []proxy.AvailableGroup{
+		{ID: 3, Platform: "anthropic", Status: "active", SubscriptionType: ""},
+		{ID: 4, Platform: "Anthropic", Status: "active", SubscriptionType: ""},          // 平台大小写去重 → 跳过
+		{ID: 7, Platform: "openai", Status: "active", SubscriptionType: "subscription"}, // 订阅组 → 跳过
+		{ID: 8, Platform: "openai", Status: "active", SubscriptionType: ""},             // openai 第一个标准组
+		{ID: 9, Platform: "gemini", Status: "inactive", SubscriptionType: ""},           // 非active → 跳过
+		{ID: 0, Platform: "gemini", Status: "active", SubscriptionType: ""},             // 非法ID → 跳过
+		{ID: 11, Platform: "", Status: "active", SubscriptionType: ""},                  // 空平台独立桶
+	}
+	got := selectDefaultKeyGroups(groups)
+	want := []int64{3, 8, 11}
+	if len(got) != len(want) {
+		t.Fatalf("selectDefaultKeyGroups = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("selectDefaultKeyGroups = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestSelectDefaultKeyGroups_Empty(t *testing.T) {
+	if got := selectDefaultKeyGroups(nil); len(got) != 0 {
+		t.Errorf("expected empty result, got %v", got)
+	}
+}
