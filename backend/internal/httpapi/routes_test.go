@@ -2771,7 +2771,7 @@ func TestUserVisibleGroupsAreFilteredByPackageBindings(t *testing.T) {
 			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":11,"name":"Starter Group","code":"starter-group","platform":"openai","status":"active"},{"id":22,"name":"Pro Group","code":"pro-group","platform":"openai","status":"active"}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":11,"name":"Starter Group","code":"starter-group","platform":"openai","status":"active","subscription_type":"subscription"},{"id":22,"name":"Pro Group","code":"pro-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
 	}))
 	t.Cleanup(upstream.Close)
 
