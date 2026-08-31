@@ -179,6 +179,8 @@ type EnsureDefaultResult struct {
 // EnsureDefaultUserKeys idempotently provisions auto-keys for the user: for
 // each platform among the user's non-subscription available groups, exactly
 // one group gets an "auto-key". Create-only: existing keys are never touched.
+// Partial failure returns the result with FailedGroups populated; if every
+// group fails, an error is returned instead.
 func (g *Gateway) EnsureDefaultUserKeys(ctx context.Context, userID int64) (*EnsureDefaultResult, error) {
 	if !g.IsConfigured() {
 		return nil, errors.New("sub2api gateway is not configured")
@@ -206,6 +208,9 @@ func (g *Gateway) EnsureDefaultUserKeys(ctx context.Context, userID int64) (*Ens
 		if created {
 			result.CreatedGroups = append(result.CreatedGroups, groupID)
 		}
+	}
+	if result.Ensured == 0 && len(result.FailedGroups) > 0 {
+		return nil, fmt.Errorf("ensure default keys failed for all groups: %s", strings.Join(result.FailedGroups, "; "))
 	}
 	return result, nil
 }

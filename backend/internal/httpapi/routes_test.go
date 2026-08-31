@@ -4098,3 +4098,176 @@ func TestGroupsAvailableFreshUserSeesStandardGroups(t *testing.T) {
 		t.Fatalf("fresh user should only see the standard group, got: %+v", payload.Data)
 	}
 }
+
+// TestEnsureAutoAPIKeysEndpoint covers POST /api-keys/ensure-auto end-to-end:
+// healthy upstream provisions one key, missing auth is rejected, and an
+// upstream failure on groups/available maps to 502.
+func TestEnsureAutoAPIKeysEndpoint(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		authed      bool
+		groups500   bool
+		wantStatus  int
+		wantEnsured int
+		wantCreated []int64
+	}{
+		{
+			name:        "authenticated healthy upstream",
+			authed:      true,
+			wantStatus:  http.StatusOK,
+			wantEnsured: 1,
+			wantCreated: []int64{3},
+		},
+		{
+			name:       "unauthenticated rejected",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "upstream 500 on groups available",
+			authed:     true,
+			groups500:  true,
+			wantStatus: http.StatusBadGateway,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			database := setupTestDB(t)
+
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case req.Method == http.MethodGet && req.URL.Path == "/api/v1/groups/available":
+					if tc.groups500 {
+						w.WriteHeader(http.StatusInternalServerError)
+						_, _ = w.Write([]byte(`{"message":"upstream exploded"}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{"data":[{"id":3,"name":"Claude Basic","platform":"anthropic","status":"active","subscription_type":""}]}`))
+				case req.Method == http.MethodGet && strings.HasPrefix(req.URL.Path, "/api/v1/api-keys"):
+					_, _ = w.Write([]byte(`[]`))
+				case req.Method == http.MethodPost && req.URL.Path == "/api/v1/api-keys":
+					_, _ = w.Write([]byte(`{"data":{"id":10,"key":"sk-x","name":"auto-key","group_id":3,"status":"active"}}`))
+				default:
+					http.Error(w, "unexpected path "+req.URL.Path, http.StatusNotFound)
+				}
+			}))
+			t.Cleanup(upstream.Close)
+
+			proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+			if err != nil {
+				t.Fatalf("create proxy client: %v", err)
+			}
+
+			mux := http.NewServeMux()
+			RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+			userID, userSessionToken := createUserViaAPI(t, mux, "ensure-auto-user@example.com", "Ensure Auto User", "user", "")
+			if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-ensure-token", "upstream-ensure-token-refresh"); err != nil {
+				t.Fatalf("seed user sub2api auth token: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/api-keys/ensure-auto", nil)
+			if tc.authed {
+				setBearerAuth(req, userSessionToken)
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("expected status %d, got %d body=%s", tc.wantStatus, rec.Code, rec.Body.String())
+			}
+			if tc.wantStatus != http.StatusOK {
+				return
+			}
+
+			var payload struct {
+				Ensured       int      `json:"ensured"`
+				CreatedGroups []int64  `json:"created"`
+				FailedGroups  []string `json:"failed"`
+			}
+			if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode ensure-auto response: %v", err)
+			}
+			if payload.Ensured != tc.wantEnsured {
+				t.Fatalf("expected ensured %d, got %d (payload=%+v)", tc.wantEnsured, payload.Ensured, payload)
+			}
+			if len(payload.CreatedGroups) != len(tc.wantCreated) {
+				t.Fatalf("expected created %v, got %v", tc.wantCreated, payload.CreatedGroups)
+			}
+			for i, want := range tc.wantCreated {
+				if payload.CreatedGroups[i] != want {
+					t.Fatalf("expected created %v, got %v", tc.wantCreated, payload.CreatedGroups)
+				}
+			}
+			if len(payload.FailedGroups) != 0 {
+				t.Fatalf("expected no failed groups, got %v", payload.FailedGroups)
+			}
+		})
+	}
+}
+
+// TestRegisterHookDoesNotBreakRegistration proves the async ensure hook fired
+// after a successful registration without breaking the registration response:
+// the upstream groups/available call must happen even though it fails with 500.
+func TestRegisterHookDoesNotBreakRegistration(t *testing.T) {
+	t.Parallel()
+
+	database := setupTestDB(t)
+
+	var hookMu sync.Mutex
+	groupsAvailableHits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/api/v1/auth/register":
+			// token JSON shape mirrors the auth passthrough tests
+			_, _ = w.Write([]byte(`{"access_token":"hook-reg-access","refresh_token":"hook-reg-refresh","user":{"id":8100,"email":"hook-reg@example.com"}}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/api/v1/groups/available":
+			hookMu.Lock()
+			groupsAvailableHits++
+			hookMu.Unlock()
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"hook should swallow this failure"}`))
+		default:
+			http.Error(w, "unexpected path "+req.URL.Path, http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{"email":"hook-reg@example.com","password":"secret"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code < 200 || rec.Code >= 300 {
+		t.Fatalf("register must stay 2xx despite hook failure, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// 轮询（50ms 间隔，上限 3s）等待异步钩子打到 groups/available。
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		hookMu.Lock()
+		hits := groupsAvailableHits
+		hookMu.Unlock()
+		if hits > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("async ensure hook never called groups/available within 3s (hits=%d)", hits)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

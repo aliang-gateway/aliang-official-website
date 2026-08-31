@@ -249,11 +249,12 @@ func timePtr(v time.Time) *time.Time { return &v }
 // real sub2apiauth service with user 1 having a stored token. The recorder
 // captures upstream requests for assertions.
 type ensureUpstreamRecorder struct {
-	mu        sync.Mutex
-	requests  []string // "METHOD PATH IDEMKEY" per request
-	listBody  string   // body for GET /api/v1/groups/available
-	keysBody  string   // body for GET /api/v1/api-keys (raw JSON array form)
-	createErr string   // when non-empty, respond with this status code text on create
+	mu              sync.Mutex
+	requests        []string // "METHOD PATH IDEMKEY" per request
+	listBody        string   // body for GET /api/v1/groups/available
+	keysBody        string   // body for GET /api/v1/api-keys (raw JSON array form)
+	createErr       string   // when non-empty, respond 409 with this text on create
+	createServerErr bool     // when true, respond 500 ("boom") on create — distinct from the 409 path
 }
 
 func newEnsureTestGateway(t *testing.T, rec *ensureUpstreamRecorder) *Gateway {
@@ -274,6 +275,10 @@ func newEnsureTestGateway(t *testing.T, rec *ensureUpstreamRecorder) *Gateway {
 			}
 			_, _ = w.Write([]byte(keysBody))
 		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/api-keys" || r.URL.Path == "/api/v1/keys"):
+			if rec.createServerErr {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
 			if rec.createErr != "" {
 				http.Error(w, rec.createErr, http.StatusConflict)
 				return
@@ -376,6 +381,30 @@ func TestEnsureDefaultUserKeys_ConflictTreatedAsEnsured(t *testing.T) {
 	}
 	if result.Ensured != 2 || len(result.CreatedGroups) != 0 {
 		t.Fatalf("result = %+v, want 409 counted as ensured-but-not-created", result)
+	}
+}
+
+// 上游 create 全组 500（非 409）→ Ensured=0 且 FailedGroups 非空 → 必须返回
+// 错误而非“空成果的结果”。
+func TestEnsureDefaultUserKeys_AllGroupsFailedReturnsError(t *testing.T) {
+	rec := &ensureUpstreamRecorder{
+		listBody:        ensureAvailableGroupsBody,
+		createServerErr: true,
+	}
+	g := newEnsureTestGateway(t, rec)
+
+	result, err := g.EnsureDefaultUserKeys(context.Background(), 1)
+	if err == nil {
+		t.Fatalf("expected error when every group failed, got result %+v", result)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result on all-groups-failed, got %+v", result)
+	}
+	if !strings.Contains(err.Error(), "failed for all groups") {
+		t.Errorf("error should mention all-groups failure, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "3:") || !strings.Contains(err.Error(), "8:") {
+		t.Errorf("error should list both failed groups, got %v", err)
 	}
 }
 

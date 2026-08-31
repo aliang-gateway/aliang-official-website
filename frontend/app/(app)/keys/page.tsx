@@ -57,8 +57,11 @@ export default function KeysPage() {
       const headers = authHeaders(sessionToken);
       // Best-effort: idempotently provision auto keys before listing, so a
       // fresh user sees keys on first visit. Failure must not block listing.
-      // 10s client cap so a degraded backend can't hold the page's loading state.
-      await fetch("/api-keys/ensure-auto", { method: "POST", headers, cache: "no-store", signal: AbortSignal.timeout(10_000) }).catch(() => null);
+      // 10s client cap so a degraded backend can't hold the page's loading
+      // state — but AbortSignal.timeout is unavailable on older Safari (<16),
+      // where calling it throws synchronously and escapes the .catch; guard it.
+      const ensureSignal = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(10_000) : undefined;
+      await fetch("/api-keys/ensure-auto", { method: "POST", headers, cache: "no-store", signal: ensureSignal }).catch(() => null);
       const [keysRes, groupsRes] = await Promise.all([
         fetch("/api-keys?page=1&per_page=100", { headers, cache: "no-store" }),
         fetch("/api/groups/available", { headers, cache: "no-store" }),
