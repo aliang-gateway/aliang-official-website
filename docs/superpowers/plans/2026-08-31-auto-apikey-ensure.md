@@ -303,8 +303,10 @@ cd $WT/backend && go test ./internal/sub2api/ -run TestSelectDefaultKeyGroups -v
 ```go
 // selectDefaultKeyGroups picks at most one non-subscription active group per
 // platform from the user's available groups, preserving input order. Groups
-// with empty platform form their own bucket. This is the policy for which
-// groups get an auto-key provisioned right after registration.
+// with empty platform form their own bucket. Empty status is treated as
+// active (upstream available-groups are already availability-filtered).
+// This is the policy for which groups get an auto-key provisioned right
+// after registration.
 func selectDefaultKeyGroups(groups []proxy.AvailableGroup) []int64 {
 	seenPlatforms := make(map[string]struct{})
 	result := make([]int64, 0)
@@ -540,9 +542,10 @@ func TestEnsureDefaultUserKeys_UpstreamDown(t *testing.T) {
 同时在测试文件加 helpers（照搬 `backend/internal/sub2apiauth/service_test.go` 的实现，重命名避免冲突）：
 
 ```go
-// setupEnsureTestDB / createEnsureTestUser / ensureTestDialect 一律从
-// backend/internal/sub2apiauth/service_test.go 的 setupTestDB / createUser /
-// testDialect 逐行复制后改名 —— 建库与迁移语句禁止凭空编写。
+// setupEnsureTestDB / createEnsureTestUser / ensureTestDialect（含其依赖的
+// testSchemaName）一律从 backend/internal/sub2apiauth/service_test.go 的
+// setupTestDB / createUser / testDialect / testSchemaName 逐行复制后改名
+// —— 建库与迁移语句禁止凭空编写。
 //
 // createEnsureTestUser 签名（与原 createUser 相同）：
 //
@@ -918,7 +921,7 @@ func (r *routes) handleFilteredGroupsAvailablePassthrough(w http.ResponseWriter,
 ```bash
 cd $WT/backend && go test ./internal/httpapi/
 ```
-预期：PASS（既有透传/鉴权测试不受影响；Step 7.1 测试里的 `if got[0] != nil {}` no-op 行若编译器报错可删除）
+预期：PASS（既有透传/鉴权测试不受影响）
 
 - [ ] **Step 7.5: Commit**
 
