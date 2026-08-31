@@ -6,8 +6,8 @@
 ## 1. 背景与问题
 
 - 新注册用户在 keys 页面看不到任何 API key，也没有创建入口。
-- 现有幂等建 key 逻辑 `EnsureUserKeyInGroup`（`backend/internal/sub2api/gateway.go:130`）只挂在套餐发放链路（`executePackagePurchaseFulfillment`，routes.go:7444/7466），注册后永远不会触发。
-- 前端 `/keys` 页面只有列表/筛选/启停/删除/复制，无创建表单；且 BFF `GET /groups/available`（routes.go:1694）对普通用户按「活跃订阅 tier 绑定的分组」过滤，新用户结果为空——即使有表单也选不了分组。
+- 现有幂等建 key 逻辑 `EnsureUserKeyInGroup`（`backend/internal/sub2api/gateway.go:130`）只挂在套餐发放链路（`executePackagePurchaseFulfillment` 内调用，routes.go:7552），注册后永远不会触发。
+- 前端 `/keys` 页面只有列表/筛选/启停/删除/复制，无创建表单；且 BFF `GET /groups/available`（`handleFilteredGroupsAvailablePassthrough`，routes.go:1695）对普通用户按「活跃订阅 tier 绑定的分组」过滤，新用户结果为空——即使有表单也选不了分组。
 
 ### 业务逻辑结论（已核实代码与上游文档）
 
@@ -58,8 +58,8 @@ EnsureDefaultUserKeys(ctx, userID) (EnsureResult, error)
 |---|---|
 | 覆盖/修改已有 key | ensure 只创建、零更新：从不调用 PUT/DELETE；用户自建 key 与已有 key 一概不碰 |
 | 重复调用产生重复 key | 每组先 `ListUserAPIKeys(groupID, "auto-key")` 查重；该组存在任何同名 key（含停用状态）即返回，不创建 |
-| 并发触发（注册钩子 / 页面兜底 / fulfillment worker） | ① 确定性幂等键，上游天然去重；② 409 Conflict 视为成功 |
-| auto-key 误删循环 | `auto-key` 受保护不可删（现状保留：`apikey.IsProtectedAPIKeyName`，后端 routes.go:1887/1934/3707，前端 `api-keys.ts:35`、`account/page.tsx:559`） |
+| 并发触发（注册钩子 / 页面兜底 / fulfillment worker） | ① 确定性幂等键 `auto-ensure:u<userID>:g<groupID>`（注意：上游对 `Idempotency-Key` 的去重行为未在文档中承诺，**不作为主要保证**）；② 主要保证 = 创建前 `ListUserAPIKeys` 查重 + ③ 409 Conflict 视为成功 |
+| auto-key 误删循环 | `auto-key` 受保护不可删（现状保留：`apikey.IsProtectedAPIKeyName` 位于 `backend/internal/apikey/service.go:54`，routes.go 处处引用，前端 `api-keys.ts:35`、`account/page.tsx:559`） |
 | 上游故障 / 无上游 token | ensure 失败只记日志，不影响注册响应与 keys 列表返回 |
 
 ### 3.3 触发点（两处，均幂等可重入）
@@ -89,11 +89,11 @@ EnsureDefaultUserKeys(ctx, userID) (EnsureResult, error)
 - `EnsureDefaultUserKeys`：单组失败（网络/5xx）记入结果 `failed` 并继续其余组；全部失败时返回错误，由调用方决定是否记日志。
 - 注册钩子：goroutine panic 用 recover 包裹；任何错误只 `slog.Warn`。
 - ensure 端点：上游不可用时返回 502 + 错误信息，前端静默忽略（兜底语义）。
-- BFF 分组过滤：上游 groups/available 失败时，普通用户回退为空列表（现状行为），admin 走原透传。
+- BFF 分组过滤（改后语义）：上游 groups/available 失败时，**普通用户一律回退为空列表（不再保留现状对有订阅用户返回 502 的路径）**，admin 走原透传。
 
 ## 5. 测试计划
 
-- `gateway` 单测（httptest mock 上游）：查重跳过 / 新建成功 / 409 容忍 / 订阅组被过滤 / 平台去重 / 部分失败聚合 / 确定性幂等键格式。
+- `gateway` 单测（httptest mock 上游）：查重跳过 / 新建成功 / 409 容忍 / 订阅组被过滤 / 平台去重 / 部分失败聚合 / 确定性幂等键格式。**防重的验证以「创建前查重 + 409 容忍」为准，不依赖上游幂等键去重行为。**
 - `routes` 单测：ensure 端点鉴权与响应结构；注册分支 ensure 失败不影响注册 2xx 响应。
 - 分组过滤单测：新用户可见标准组、不可见未购订阅组；已购用户可见其订阅组。
 - 前端：表单校验（名字必填、分组必选）与提交错误展示（沿用现有 `extractApiError` 模式）。
