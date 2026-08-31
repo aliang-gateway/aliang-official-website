@@ -57,7 +57,8 @@ export default function KeysPage() {
       const headers = authHeaders(sessionToken);
       // Best-effort: idempotently provision auto keys before listing, so a
       // fresh user sees keys on first visit. Failure must not block listing.
-      await fetch("/api-keys/ensure-auto", { method: "POST", headers, cache: "no-store" }).catch(() => null);
+      // 10s client cap so a degraded backend can't hold the page's loading state.
+      await fetch("/api-keys/ensure-auto", { method: "POST", headers, cache: "no-store", signal: AbortSignal.timeout(10_000) }).catch(() => null);
       const [keysRes, groupsRes] = await Promise.all([
         fetch("/api-keys?page=1&per_page=100", { headers, cache: "no-store" }),
         fetch("/api/groups/available", { headers, cache: "no-store" }),
@@ -208,7 +209,7 @@ export default function KeysPage() {
       {activeTab === "keys" ? (
         <div className="space-y-5">
           {/* 创建 key */}
-          <form onSubmit={handleCreateKey} className="clay-panel flex flex-wrap items-end gap-3 p-4">
+          <form onSubmit={handleCreateKey} aria-label={t("createKeyTitle")} className="clay-panel flex flex-wrap items-end gap-3 p-4">
             <div className="flex flex-col gap-1">
               <label htmlFor="new-key-name" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
                 {t("createKeyNameLabel")}
@@ -243,13 +244,13 @@ export default function KeysPage() {
             </div>
             <button
               type="submit"
-              disabled={creatingKey || !newKeyName.trim() || !newKeyGroupId}
+              disabled={creatingKey || !sessionToken || !newKeyName.trim() || !newKeyGroupId}
               className="rounded-full bg-[var(--ink)] px-5 py-2 text-sm font-bold text-[var(--paper)] transition-opacity disabled:opacity-50"
             >
               {creatingKey ? t("createKeyCreating") : t("createKeySubmit")}
             </button>
-            {createSuccess ? <span className="text-xs font-bold text-emerald-500">{createSuccess}</span> : null}
-            {createError ? <span className="text-xs font-bold text-red-500">{createError}</span> : null}
+            {createSuccess ? <span role="status" className="text-xs font-bold text-emerald-500">{createSuccess}</span> : null}
+            {createError ? <span role="status" className="text-xs font-bold text-red-500">{createError}</span> : null}
           </form>
 
           {/* 筛选 */}
