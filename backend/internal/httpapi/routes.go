@@ -824,6 +824,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		// Sub2API passthrough: API keys
 		mux.Handle("GET /api-keys", authenticated(http.HandlerFunc(r.handleAPIKeysListPassthrough)))
 		mux.Handle("POST /api-keys", authenticated(http.HandlerFunc(r.handleAPIKeysCreatePassthrough)))
+		mux.Handle("POST /api-keys/ensure-auto", authenticated(http.HandlerFunc(r.handleEnsureAutoAPIKeys)))
 		mux.Handle("GET /api-keys/{id}", authenticated(http.HandlerFunc(r.handleAPIKeyDetailPassthrough)))
 		mux.Handle("PUT /api-keys/{id}", authenticated(http.HandlerFunc(r.handleAPIKeyUpdatePassthrough)))
 		mux.Handle("DELETE /api-keys/{id}", authenticated(http.HandlerFunc(r.handleAPIKeyDeletePassthrough)))
@@ -1670,6 +1671,37 @@ func (r *routes) handleDashboardAccountPassthrough(w http.ResponseWriter, req *h
 
 func (r *routes) handleAPIKeysListPassthrough(w http.ResponseWriter, req *http.Request) {
 	r.handleFilteredAPIKeysListPassthrough(w, req)
+}
+
+type ensureAutoAPIKeysResponse struct {
+	Ensured       int      `json:"ensured"`
+	CreatedGroups []int64  `json:"created"`
+	FailedGroups  []string `json:"failed,omitempty"`
+}
+
+// handleEnsureAutoAPIKeys idempotently provisions the user's auto keys. It is a
+// best-effort bottom-up trigger: clients call it on keys-page load.
+func (r *routes) handleEnsureAutoAPIKeys(w http.ResponseWriter, req *http.Request) {
+	user, ok := auth.UserFromContext(req.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if !r.sub2api.IsConfigured() {
+		writeError(w, http.StatusBadGateway, "sub2api gateway is not configured")
+		return
+	}
+	result, err := r.sub2api.EnsureDefaultUserKeys(req.Context(), user.ID)
+	if err != nil {
+		slog.Warn("ensure-auto api keys failed", "user_id", user.ID, "error", err)
+		writeError(w, http.StatusBadGateway, "failed to ensure api keys")
+		return
+	}
+	writeJSON(w, http.StatusOK, ensureAutoAPIKeysResponse{
+		Ensured:       result.Ensured,
+		CreatedGroups: result.CreatedGroups,
+		FailedGroups:  result.FailedGroups,
+	})
 }
 
 func (r *routes) handleAPIKeysCreatePassthrough(w http.ResponseWriter, req *http.Request) {
