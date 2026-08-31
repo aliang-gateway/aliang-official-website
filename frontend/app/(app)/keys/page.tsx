@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { extractApiError } from "@/lib/api-response";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
   authHeaders,
@@ -38,6 +39,11 @@ export default function KeysPage() {
   const [groupFilter, setGroupFilter] = useState<number | "all">("all");
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [busyKeyId, setBusyKeyId] = useState<number | null>(null);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyGroupId, setNewKeyGroupId] = useState<number | null>(null);
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -49,6 +55,9 @@ export default function KeysPage() {
     setError(null);
     try {
       const headers = authHeaders(sessionToken);
+      // Best-effort: idempotently provision auto keys before listing, so a
+      // fresh user sees keys on first visit. Failure must not block listing.
+      await fetch("/api-keys/ensure-auto", { method: "POST", headers, cache: "no-store" }).catch(() => null);
       const [keysRes, groupsRes] = await Promise.all([
         fetch("/api-keys?page=1&per_page=100", { headers, cache: "no-store" }),
         fetch("/api/groups/available", { headers, cache: "no-store" }),
@@ -124,6 +133,34 @@ export default function KeysPage() {
     }
   };
 
+  const handleCreateKey = async (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    setCreateError(null);
+    setCreateSuccess(null);
+    if (!sessionToken || !newKeyName.trim() || !newKeyGroupId) return;
+    setCreatingKey(true);
+    try {
+      const res = await fetch("/api-keys", {
+        method: "POST",
+        headers: authHeaders(sessionToken),
+        body: JSON.stringify({ name: newKeyName.trim(), group_id: newKeyGroupId }),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractApiError(payload, t("createKeyError")));
+      }
+      setCreateSuccess(t("createKeySuccess"));
+      setNewKeyName("");
+      setNewKeyGroupId(null);
+      await loadAll();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : t("createKeyError"));
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "keys", label: t("tabApiKeys") },
     { id: "config", label: t("tabConfig") },
@@ -170,6 +207,51 @@ export default function KeysPage() {
       {/* API 密钥 tab */}
       {activeTab === "keys" ? (
         <div className="space-y-5">
+          {/* 创建 key */}
+          <form onSubmit={handleCreateKey} className="clay-panel flex flex-wrap items-end gap-3 p-4">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="new-key-name" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                {t("createKeyNameLabel")}
+              </label>
+              <input
+                id="new-key-name"
+                value={newKeyName}
+                onChange={(event) => setNewKeyName(event.target.value)}
+                placeholder={t("createKeyNamePlaceholder")}
+                maxLength={100}
+                className="field w-56"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="new-key-group" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                {t("createKeyGroupLabel")}
+              </label>
+              <select
+                id="new-key-group"
+                value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
+                onChange={(event) => setNewKeyGroupId(event.target.value ? Number(event.target.value) : null)}
+                className="field w-56"
+              >
+                <option value="">—</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={String(group.id)}>
+                    {group.name}
+                    {group.platform ? ` · ${platformBadgeLabel(group.platform)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="submit"
+              disabled={creatingKey || !newKeyName.trim() || !newKeyGroupId}
+              className="rounded-full bg-[var(--ink)] px-5 py-2 text-sm font-bold text-[var(--paper)] transition-opacity disabled:opacity-50"
+            >
+              {creatingKey ? t("createKeyCreating") : t("createKeySubmit")}
+            </button>
+            {createSuccess ? <span className="text-xs font-bold text-emerald-500">{createSuccess}</span> : null}
+            {createError ? <span className="text-xs font-bold text-red-500">{createError}</span> : null}
+          </form>
+
           {/* 筛选 */}
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
