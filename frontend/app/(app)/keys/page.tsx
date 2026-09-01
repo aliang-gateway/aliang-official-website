@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
@@ -25,9 +26,11 @@ type Tab = "keys" | "config";
 
 export default function KeysPage() {
   const t = useTranslations("dashboard");
+  const router = useRouter();
   const config = useConfigModal();
   const [activeTab, setActiveTab] = useState<Tab>("keys");
   const [sessionToken, setSessionToken] = useState("");
+  const [isReady, setIsReady] = useState(false);
 
   // API keys tab state
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
@@ -49,6 +52,7 @@ export default function KeysPage() {
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
+    setIsReady(true);
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -68,6 +72,13 @@ export default function KeysPage() {
         fetch("/api-keys?page=1&per_page=100", { headers, cache: "no-store" }),
         fetch("/api/groups/available", { headers, cache: "no-store" }),
       ]);
+      if (keysRes.status === 401 || keysRes.status === 403) {
+        // 会话已过期/无效：清除本地凭证并回登录页（与 dashboard 的 401 处理一致）。
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+        setSessionToken("");
+        router.replace(`/login?next=${encodeURIComponent("/keys")}`);
+        return;
+      }
       const keysPayload = keysRes.ok ? await keysRes.json() : null;
       const groupsPayload = groupsRes.ok ? await groupsRes.json() : null;
       setKeys(parseApiKeysList(keysPayload));
@@ -77,11 +88,17 @@ export default function KeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, t]);
+  }, [router, sessionToken, t]);
 
   useEffect(() => {
+    if (!isReady) return;
+    if (!sessionToken) {
+      // 本地无凭证：直接送登录页，登录后回跳（避免误伤首帧尚未读到 token 的情况）。
+      router.replace(`/login?next=${encodeURIComponent("/keys")}`);
+      return;
+    }
     void loadAll();
-  }, [loadAll]);
+  }, [isReady, loadAll, router, sessionToken]);
 
   const filteredKeys = useMemo(() => {
     return keys.filter((key) => {

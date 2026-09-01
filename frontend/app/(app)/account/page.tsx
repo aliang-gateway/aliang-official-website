@@ -471,6 +471,13 @@ export default function AccountPage() {
         headers: authHeaders(sessionToken),
         cache: "no-store",
       });
+      if (res.status === 401 || res.status === 403) {
+        // 会话已过期/无效：清除本地凭证并回登录页（与 dashboard 的 401 处理一致）。
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+        setSessionToken("");
+        router.replace(`/login?next=${encodeURIComponent("/account")}`);
+        return;
+      }
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
         setApiKeyError(extractApiError(payload, "Failed to load API keys"));
@@ -489,7 +496,7 @@ export default function AccountPage() {
     } finally {
       setApiKeyLoading(false);
     }
-  }, [groupPlatformById, selectedGroupId, sessionToken, showServerPagination]);
+  }, [groupPlatformById, router, selectedGroupId, sessionToken, showServerPagination]);
 
   useEffect(() => {
     setSelectedGroupId(null);
