@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { Modal } from "@/components/ui/Modal";
 import { extractApiError } from "@/lib/api-response";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
@@ -47,8 +48,10 @@ export default function KeysPage() {
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
   const [mutateError, setMutateError] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copiedCreatedKey, setCopiedCreatedKey] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createKeyCopied, setCreateKeyCopied] = useState(false);
+  const createKeyTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -179,7 +182,7 @@ export default function KeysPage() {
       setCreateSuccess(plaintext ? null : t("createKeySuccess"));
       setNewKeyName("");
       setNewKeyGroupId(null);
-      await loadAll();
+      // 不在此处刷新列表:明文只在弹窗里展示一次,等用户读完并关闭弹窗后再 loadAll。
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : t("createKeyError"));
     } finally {
@@ -187,16 +190,33 @@ export default function KeysPage() {
     }
   };
 
+  const handleCloseCreateModal = useCallback(() => {
+    // 创建请求仍在进行时禁止关闭:若此刻放行,请求完成后明文会落在已关闭的
+    // 弹窗里,用户再也看不到(列表里只有打码值),密钥等于白创建一次。
+    if (creatingKey) return;
+    const hadCreatedKey = createdKey !== null;
+    setShowCreateModal(false);
+    setCreatedKey(null);
+    setCreateKeyCopied(false);
+    setCopyFailed(false);
+    setCreateError(null);
+    setCreateSuccess(null);
+    setNewKeyName("");
+    setNewKeyGroupId(null);
+    // 用户处理完明文后再刷新列表,新建的密钥才会出现。
+    if (hadCreatedKey) void loadAll();
+  }, [createdKey, creatingKey, loadAll]);
+
   const handleCopyCreatedKey = async () => {
     if (!createdKey) return;
     try {
       await navigator.clipboard.writeText(createdKey);
-      setCopiedCreatedKey(true);
+      setCreateKeyCopied(true);
       setCopyFailed(false);
-      window.setTimeout(() => setCopiedCreatedKey(false), 1500);
+      window.setTimeout(() => setCreateKeyCopied(false), 1500);
     } catch {
       // clipboard unavailable — tell the user instead of failing silently
-      setCopiedCreatedKey(false);
+      setCreateKeyCopied(false);
       setCopyFailed(true);
     }
   };
@@ -247,67 +267,16 @@ export default function KeysPage() {
       {/* API 密钥 tab */}
       {activeTab === "keys" ? (
         <div className="space-y-5">
-          {createdKey ? (
-            <div className="clay-panel space-y-3 border-2 border-[var(--accent)]/40 p-4">
-              <p className="text-sm font-bold text-[var(--ink)]">{t("createKeyRevealTitle")}</p>
-              <p className="text-xs text-[var(--ink-muted)]">{t("createKeyRevealHint")}</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 break-all rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 font-mono text-xs text-[var(--ink)]">{createdKey}</code>
-                <button type="button" onClick={() => void handleCopyCreatedKey()} className="rounded-full bg-[var(--ink)] px-4 py-2 text-xs font-bold text-[var(--paper)]">
-                  {copiedCreatedKey ? t("copied") : t("copy")}
-                </button>
-                <button type="button" onClick={() => { setCreatedKey(null); setCopiedCreatedKey(false); setCopyFailed(false); }} className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink)]">
-                  {t("closePanel")}
-                </button>
-              </div>
-              {copyFailed ? <p className="text-xs font-bold text-red-500">{t("copyFailedHint")}</p> : null}
-            </div>
-          ) : null}
-
-          {/* 创建 key */}
-          <form onSubmit={handleCreateKey} aria-label={t("createKeyTitle")} className="clay-panel flex flex-wrap items-end gap-3 p-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="new-key-name" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
-                {t("createKeyNameLabel")}
-              </label>
-              <input
-                id="new-key-name"
-                value={newKeyName}
-                onChange={(event) => setNewKeyName(event.target.value)}
-                placeholder={t("createKeyNamePlaceholder")}
-                maxLength={100}
-                className="field w-56"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="new-key-group" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
-                {t("createKeyGroupLabel")}
-              </label>
-              <select
-                id="new-key-group"
-                value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
-                onChange={(event) => setNewKeyGroupId(event.target.value ? Number(event.target.value) : null)}
-                className="field w-56"
-              >
-                <option value="">—</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={String(group.id)}>
-                    {group.name}
-                    {group.platform ? ` · ${platformBadgeLabel(group.platform)}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={creatingKey || !sessionToken || !newKeyName.trim() || !newKeyGroupId}
-              className="rounded-full bg-[var(--ink)] px-5 py-2 text-sm font-bold text-[var(--paper)] transition-opacity disabled:opacity-50"
-            >
-              {creatingKey ? t("createKeyCreating") : t("createKeySubmit")}
-            </button>
-            {createSuccess ? <span role="status" className="text-xs font-bold text-emerald-500">{createSuccess}</span> : null}
-            {createError ? <span role="status" className="text-xs font-bold text-red-500">{createError}</span> : null}
-          </form>
+          {/* 创建 key:点击打开弹窗,分组+名字在弹窗内填写,明文仅在弹窗内一次性展示 */}
+          <button
+            ref={createKeyTriggerRef}
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            disabled={!sessionToken}
+            className="rounded-full bg-[var(--ink)] px-5 py-2 text-sm font-bold text-[var(--paper)] transition-opacity disabled:opacity-50"
+          >
+            {t("createKey")}
+          </button>
 
           {/* 筛选 */}
           <div className="flex flex-wrap items-center gap-4">
@@ -385,6 +354,89 @@ export default function KeysPage() {
           )}
         </div>
       ) : null}
+
+      {/* 创建密钥弹窗:成功后切换为明文一次性展示视图,关闭时统一复位并刷新列表 */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={handleCloseCreateModal}
+        closeLabel={t("closePanel")}
+        triggerRef={createKeyTriggerRef}
+        panelClassName="max-w-md"
+      >
+        {createdKey ? (
+          <div className="space-y-3 p-6 pr-12">
+            <p className="text-lg font-extrabold text-[var(--ink)]">{t("createKeyRevealTitle")}</p>
+            <p className="text-xs leading-5 text-[var(--ink-muted)]">{t("createKeyRevealHint")}</p>
+            <code className="block break-all rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 font-mono text-xs text-[var(--ink)]">
+              {createdKey}
+            </code>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCopyCreatedKey()}
+                className="rounded-full bg-[var(--ink)] px-4 py-2 text-xs font-bold text-[var(--paper)]"
+              >
+                {createKeyCopied ? t("copied") : t("copy")}
+              </button>
+              <button
+                type="button"
+                onClick={handleCloseCreateModal}
+                className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink)]"
+              >
+                {t("createKeyDone")}
+              </button>
+            </div>
+            {copyFailed ? <p className="text-xs font-bold text-red-500">{t("copyFailedHint")}</p> : null}
+          </div>
+        ) : (
+          <form onSubmit={handleCreateKey} aria-label={t("createKeyTitle")} className="space-y-4 p-6 pr-12">
+            <p className="text-lg font-extrabold text-[var(--ink)]">{t("createKeyTitle")}</p>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="new-key-name" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                {t("createKeyNameLabel")}
+              </label>
+              <input
+                id="new-key-name"
+                value={newKeyName}
+                onChange={(event) => setNewKeyName(event.target.value)}
+                placeholder={t("createKeyNamePlaceholder")}
+                maxLength={100}
+                className="field w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="new-key-group" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                {t("createKeyGroupLabel")}
+              </label>
+              <select
+                id="new-key-group"
+                value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
+                onChange={(event) => setNewKeyGroupId(event.target.value ? Number(event.target.value) : null)}
+                className="field w-full"
+              >
+                <option value="">—</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={String(group.id)}>
+                    {group.name}
+                    {group.platform ? ` · ${platformBadgeLabel(group.platform)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={creatingKey || !sessionToken || !newKeyName.trim() || !newKeyGroupId}
+                className="rounded-full bg-[var(--ink)] px-5 py-2 text-sm font-bold text-[var(--paper)] transition-opacity disabled:opacity-50"
+              >
+                {creatingKey ? t("createKeyCreating") : t("createKeySubmit")}
+              </button>
+              {createSuccess ? <span role="status" className="text-xs font-bold text-emerald-500">{createSuccess}</span> : null}
+              {createError ? <span role="status" className="text-xs font-bold text-red-500">{createError}</span> : null}
+            </div>
+          </form>
+        )}
+      </Modal>
 
       {/* 配置 tab */}
       {activeTab === "config" ? (

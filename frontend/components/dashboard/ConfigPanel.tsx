@@ -40,32 +40,12 @@ export function ConfigPanel({
   sessionToken,
 }: ConfigPanelProps) {
   const t = useTranslations("dashboard");
-  const [creatingKey, setCreatingKey] = useState(false);
-  const [createKeyError, setCreateKeyError] = useState<string | null>(null);
+  // 选择已有密钥只是提示性的:列表接口返回的是打码值,明文无法取回,
+  // 用户仍需把创建时保存的完整密钥粘贴到下方输入框。真正的创建入口
+  // 统一在 /keys 页的弹窗里。
+  const [selectedKeyId, setSelectedKeyId] = useState<number | null>(null);
   const [existingKeys, setExistingKeys] = useState<ApiKeyItem[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
-
-  const handleCreateKey = async () => {
-    setCreateKeyError(null);
-    setCreatingKey(true);
-    try {
-      const res = await fetch("/api-keys", {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${sessionToken}` },
-        body: JSON.stringify({ name: t("defaultKeyName") }),
-      });
-      const payload = (await res.json()) as { data?: { key?: string }; key?: string; error?: string };
-      if (!res.ok) {
-        throw new Error(payload?.error ?? t("createKeyFailed"));
-      }
-      const createdKey = payload?.data?.key ?? payload?.key ?? "";
-      if (createdKey) onUserKeyChange(createdKey);
-    } catch (e) {
-      setCreateKeyError(e instanceof Error ? e.message : t("createKeyFailed"));
-    } finally {
-      setCreatingKey(false);
-    }
-  };
 
   // Load existing keys on mount so users can retrieve / reuse one.
   useEffect(() => {
@@ -101,6 +81,28 @@ export function ConfigPanel({
       <div className="border-b border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 lg:border-b-0 lg:border-r">
         <div className="space-y-4">
           <div className="space-y-2">
+            <label htmlFor="config-key-select" className="text-sm font-semibold text-[var(--portal-ink)]">
+              {t("selectKey")}
+            </label>
+            <select
+              id="config-key-select"
+              className="field"
+              value={selectedKeyId === null ? "" : String(selectedKeyId)}
+              onChange={(event) => setSelectedKeyId(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">{t("selectKeyPlaceholder")}</option>
+              {existingKeys.map((existingKey) => (
+                <option key={existingKey.id} value={String(existingKey.id)}>
+                  {`${existingKey.name || `Key #${existingKey.id}`} · ${existingKey.key}`}
+                </option>
+              ))}
+            </select>
+            {selectedKeyId !== null ? (
+              <p className="text-xs leading-5 text-[var(--portal-muted)]">{t("selectKeyHint")}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
             <label htmlFor="dashboard-user-key" className="text-sm font-semibold text-[var(--portal-ink)]">
               {t("underlyingUserKey")}
             </label>
@@ -115,14 +117,17 @@ export function ConfigPanel({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button type="button" className="btn-primary" onClick={() => void handleCreateKey()} disabled={creatingKey || !sessionToken}>
-              {creatingKey ? t("creatingKey") : t("createKey")}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => onUserKeyChange("")}>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                onUserKeyChange("");
+                setSelectedKeyId(null);
+              }}
+            >
               {t("clearKey")}
             </button>
           </div>
-          {createKeyError ? <p className="text-xs leading-5 text-red-500">{createKeyError}</p> : null}
 
           {/* 已有 API 密钥:仅展示(列表接口返回的是打码值,明文不可取回) */}
           <div className="space-y-2">
