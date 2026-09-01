@@ -2857,7 +2857,9 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch req.URL.Path {
 		case "/api/v1/groups/available":
-			_, _ = w.Write([]byte(`{"data":[{"id":11,"name":"Starter Group","code":"starter-group","platform":"openai","status":"active"},{"id":22,"name":"Pro Group","code":"pro-group","platform":"openai","status":"active"}]}`))
+			// 均标注为 subscription：11 经套餐绑定授权可见，22 未授权应被拦截
+			// （无 subscription_type 会被视为对所有人开放的标准组）。
+			_, _ = w.Write([]byte(`{"data":[{"id":11,"name":"Starter Group","code":"starter-group","platform":"openai","status":"active","subscription_type":"subscription"},{"id":22,"name":"Pro Group","code":"pro-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
 		case "/api/v1/api-keys":
 			_, _ = w.Write([]byte(`{"data":{"data":[{"id":101,"name":"starter-key","key":"sk-starter","group_id":11,"group":{"id":11,"name":"Starter Group"},"status":"active","quota":0,"quota_used":0,"expires_at":"","created_at":"2026-01-01T00:00:00Z"},{"id":202,"name":"pro-key","key":"sk-pro","group_id":22,"group":{"id":22,"name":"Pro Group"},"status":"active","quota":0,"quota_used":0,"expires_at":"","created_at":"2026-01-01T00:00:00Z"}],"total":2,"page":1,"per_page":20}}`))
 		case "/api/v1/api-keys/101":
@@ -2993,6 +2995,280 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 	}
 	if upstreamCalls[9].Method != http.MethodDelete || upstreamCalls[9].Path != "/api/v1/api-keys/101" || upstreamCalls[9].Auth != "Bearer upstream-user-token" {
 		t.Fatalf("unexpected delete upstream call: %+v", upstreamCalls[9])
+	}
+}
+
+// TestAPIKeysListFreshUserSeesStandardGroupKeys 验证全新用户（无任何订阅/套餐绑定）
+// 的 key 列表不再短路为空：标准组（31）的 key 可见，未授权订阅组（32）的 key 被过滤。
+func TestAPIKeysListFreshUserSeesStandardGroupKeys(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+		case "/api/v1/api-keys":
+			// 上游裸数组形态：直接返回 key 列表而非分页包装。
+			_, _ = w.Write([]byte(`[{"id":10,"name":"k1","group_id":31,"status":"active"},{"id":11,"name":"k2","group_id":32,"status":"active"}]`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	// 全新用户：无 tier 绑定、无订阅。
+	userID, userSessionToken := createUserViaAPI(t, mux, "fresh-keys-user@example.com", "Fresh Keys User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "fresh-keys-user-token", "fresh-keys-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api-keys?page=1", nil)
+	setBearerAuth(listReq, userSessionToken)
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d body=%s", http.StatusOK, listRec.Code, listRec.Body.String())
+	}
+
+	var keys []struct {
+		ID      int64  `json:"id"`
+		GroupID *int64 `json:"group_id"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&keys); err != nil {
+		t.Fatalf("decode api keys response: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ID != 10 || keys[0].GroupID == nil || *keys[0].GroupID != 31 {
+		t.Fatalf("fresh user should only see the standard-group key, got: %+v", keys)
+	}
+}
+
+// TestAPIKeysListUnboundKeyVisible 验证未绑定分组（group_id 为 null）的 key 属于
+// 用户自有：列表应保留它，而未授权订阅组的 key 仍被过滤。
+func TestAPIKeysListUnboundKeyVisible(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+		case "/api/v1/api-keys":
+			_, _ = w.Write([]byte(`{"data":{"data":[{"id":20,"name":"unbound-key","key":"sk-unbound","group_id":null,"status":"active"},{"id":21,"name":"sub-key","key":"sk-sub","group_id":32,"status":"active"}],"total":2,"page":1,"per_page":20}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, userSessionToken := createUserViaAPI(t, mux, "unbound-keys-user@example.com", "Unbound Keys User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "unbound-keys-user-token", "unbound-keys-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api-keys?page=1", nil)
+	setBearerAuth(listReq, userSessionToken)
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d body=%s", http.StatusOK, listRec.Code, listRec.Body.String())
+	}
+
+	var listPayload struct {
+		Data struct {
+			Data []struct {
+				ID      int64  `json:"id"`
+				GroupID *int64 `json:"group_id"`
+			} `json:"data"`
+			Total int `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode api keys response: %v", err)
+	}
+	if len(listPayload.Data.Data) != 1 || listPayload.Data.Data[0].ID != 20 || listPayload.Data.Data[0].GroupID != nil {
+		t.Fatalf("unbound key should stay visible, subscription-group key filtered, got: %+v", listPayload.Data.Data)
+	}
+	if listPayload.Data.Total != 1 {
+		t.Fatalf("expected filtered total 1, got %d", listPayload.Data.Total)
+	}
+}
+
+// TestAPIKeyDetailToggleFreshUserStandardGroup 验证全新用户可以查看/切换自己在
+// 标准组里的 key（PUT 透传到上游）。
+func TestAPIKeyDetailToggleFreshUserStandardGroup(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var putCalled bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+		case "/api/v1/api-keys/10":
+			if req.Method == http.MethodPut {
+				putCalled = true
+				_, _ = w.Write([]byte(`{"data":{"id":10,"name":"k1","group_id":31,"status":"inactive"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":{"id":10,"name":"k1","group_id":31,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, userSessionToken := createUserViaAPI(t, mux, "toggle-keys-user@example.com", "Toggle Keys User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "toggle-keys-user-token", "toggle-keys-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	toggleReq := httptest.NewRequest(http.MethodPut, "/api-keys/10", strings.NewReader(`{"status":"inactive"}`))
+	toggleReq.Header.Set("Content-Type", "application/json")
+	setBearerAuth(toggleReq, userSessionToken)
+	toggleRec := httptest.NewRecorder()
+	mux.ServeHTTP(toggleRec, toggleReq)
+	if toggleRec.Code != http.StatusOK {
+		t.Fatalf("expected toggle status %d, got %d body=%s", http.StatusOK, toggleRec.Code, toggleRec.Body.String())
+	}
+	if !putCalled {
+		t.Fatalf("expected PUT to reach upstream for standard-group key")
+	}
+	var togglePayload struct {
+		Data struct {
+			ID     int64  `json:"id"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(toggleRec.Body).Decode(&togglePayload); err != nil {
+		t.Fatalf("decode toggle response: %v", err)
+	}
+	if togglePayload.Data.ID != 10 || togglePayload.Data.Status != "inactive" {
+		t.Fatalf("unexpected toggled key payload: %+v", togglePayload.Data)
+	}
+}
+
+// TestAPIKeyDetailForbiddenForSubscriptionGroup 验证全新用户对未授权订阅组里的
+// key 的管理操作（PUT）被 403 拦截。
+func TestAPIKeyDetailForbiddenForSubscriptionGroup(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+		case "/api/v1/api-keys/11":
+			_, _ = w.Write([]byte(`{"data":{"id":11,"name":"k2","group_id":32,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, userSessionToken := createUserViaAPI(t, mux, "sub-keys-user@example.com", "Sub Keys User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "sub-keys-user-token", "sub-keys-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	toggleReq := httptest.NewRequest(http.MethodPut, "/api-keys/11", strings.NewReader(`{"status":"inactive"}`))
+	toggleReq.Header.Set("Content-Type", "application/json")
+	setBearerAuth(toggleReq, userSessionToken)
+	toggleRec := httptest.NewRecorder()
+	mux.ServeHTTP(toggleRec, toggleReq)
+	if toggleRec.Code != http.StatusForbidden {
+		t.Fatalf("expected toggle status %d, got %d body=%s", http.StatusForbidden, toggleRec.Code, toggleRec.Body.String())
+	}
+}
+
+// TestAPIKeyDeleteUnboundKeyAllowed 验证全新用户可以删除自己未绑定分组的 key
+// （DELETE 先取详情做授权 + 自动 key 保护，再透传删除）。
+func TestAPIKeyDeleteUnboundKeyAllowed(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	var deleteCalled bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/groups/available":
+			_, _ = w.Write([]byte(`{"data":[{"id":31,"name":"Standard Group","code":"standard-group","platform":"openai","status":"active"},{"id":32,"name":"Sub Only Group","code":"sub-only-group","platform":"openai","status":"active","subscription_type":"subscription"}]}`))
+		case "/api/v1/api-keys/12":
+			if req.Method == http.MethodDelete {
+				deleteCalled = true
+				_, _ = w.Write([]byte(`{"data":{"message":"API key deleted successfully"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":{"id":12,"name":"my-key","key":"sk-mine","group_id":null,"status":"active"}}`))
+		default:
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClientWithHTTPClient(upstream.URL, &http.Client{Timeout: proxy.RequestTimeout})
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
+	userID, userSessionToken := createUserViaAPI(t, mux, "delete-keys-user@example.com", "Delete Keys User", "user", "")
+	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "delete-keys-user-token", "delete-keys-user-refresh-token"); err != nil {
+		t.Fatalf("seed user sub2api auth token: %v", err)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api-keys/12", nil)
+	setBearerAuth(deleteReq, userSessionToken)
+	deleteRec := httptest.NewRecorder()
+	mux.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected delete status %d, got %d body=%s", http.StatusOK, deleteRec.Code, deleteRec.Body.String())
+	}
+	if !deleteCalled {
+		t.Fatalf("expected DELETE to reach upstream for unbound key")
 	}
 }
 

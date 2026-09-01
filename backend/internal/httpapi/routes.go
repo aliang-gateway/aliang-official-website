@@ -1792,27 +1792,21 @@ func (r *routes) handleFilteredAPIKeysListPassthrough(w http.ResponseWriter, req
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupIDs) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"data": []map[string]any{}, "total": 0, "page": 1, "per_page": 20}})
-		return
-	}
 
-	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
+	// 策略口径与 groups/available 一致：标准组 ∪ 本地授权组 的 key 都可见、可管理。
+	// 不再因无订阅而短路空列表 —— 全新用户也要能看到自己在标准组里的 key。
+	visibleGroupIDs, err := r.loadPolicyVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
 		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
 			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
 			return
 		}
-		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
-		return
-	}
-	if len(authorizedGroupIDs) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"data": []map[string]any{}, "total": 0, "page": 1, "per_page": 20}})
+		writeError(w, http.StatusBadGateway, "failed to load visible group ids")
 		return
 	}
 
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, "/api/v1/api-keys", func(payload any) (any, error) {
-		return filterAPIKeyListPayload(payload, authorizedGroupIDs)
+		return filterAPIKeyListPayload(payload, visibleGroupIDs)
 	})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "failed to fetch api keys")
@@ -1880,21 +1874,16 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 		writeError(w, http.StatusInternalServerError, "failed to load authorized groups")
 		return
 	}
-	if len(authorizedGroupIDs) == 0 {
-		writeError(w, http.StatusForbidden, "group access forbidden")
-		return
-	}
-	authorizedGroupIDs, err = r.loadAuthorizedVisibleGroupIDs(req, authorizedGroupIDs)
+
+	// 与列表同口径：标准组 ∪ 本地授权组。不做空集 403 短路 —— 由单个 key 的
+	// 分组归属判定（isAPIKeyPayloadAuthorized）决定是否放行。
+	visibleGroupIDs, err := r.loadPolicyVisibleGroupIDs(req, authorizedGroupIDs)
 	if err != nil {
 		if errors.Is(err, sub2apiauth.ErrTokenNotFound) {
 			writeError(w, http.StatusUnauthorized, "upstream session unavailable")
 			return
 		}
-		writeError(w, http.StatusBadGateway, "failed to load authorized group ids")
-		return
-	}
-	if len(authorizedGroupIDs) == 0 {
-		writeError(w, http.StatusForbidden, "group access forbidden")
+		writeError(w, http.StatusBadGateway, "failed to load visible group ids")
 		return
 	}
 
@@ -1909,7 +1898,7 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 			writeError(w, http.StatusBadGateway, "failed to fetch api key")
 			return
 		}
-		allowed, err := isAPIKeyPayloadAuthorized(payload, authorizedGroupIDs)
+		allowed, err := isAPIKeyPayloadAuthorized(payload, visibleGroupIDs)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "failed to fetch api key")
 			return
@@ -1932,7 +1921,7 @@ func (r *routes) handleFilteredAPIKeyDetailPassthrough(w http.ResponseWriter, re
 	}
 
 	filteredPayload, statusCode, headers, handled, err := r.filteredProxyJSONResponse(w, req, upstreamPath, func(payload any) (any, error) {
-		allowed, filterErr := isAPIKeyPayloadAuthorized(payload, authorizedGroupIDs)
+		allowed, filterErr := isAPIKeyPayloadAuthorized(payload, visibleGroupIDs)
 		if filterErr != nil {
 			return nil, filterErr
 		}
@@ -8402,6 +8391,30 @@ func (r *routes) loadAuthorizedVisibleGroupIDs(req *http.Request, authorizedGrou
 	return extractAuthorizedGroupIDs(payload, authorizedGroupIDs), nil
 }
 
+// loadPolicyVisibleGroupIDs computes the set of group IDs whose API keys the
+// user may see and manage: locally authorized groups (subscription-tier
+// bindings) plus every non-subscription group upstream reports as available
+// (standard groups are open to everyone, billed from balance). This mirrors
+// the groups/available visibility policy so the key list never hides keys
+// the user just created in a visible group.
+func (r *routes) loadPolicyVisibleGroupIDs(req *http.Request, authorizedGroupIDs map[int64]struct{}) (map[int64]struct{}, error) {
+	payload, err := r.loadUpstreamJSONPayload(req, "/api/v1/groups/available")
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64]struct{})
+	for _, item := range extractGroupItems(payload) {
+		groupID, ok := asInt64(item["id"])
+		if !ok || groupID <= 0 {
+			continue
+		}
+		if groupPolicyVisible(item, authorizedGroupIDs) {
+			result[groupID] = struct{}{}
+		}
+	}
+	return result, nil
+}
+
 func (r *routes) loadUpstreamJSONPayload(req *http.Request, upstreamPath string) (any, error) {
 	forwarded := req.Clone(req.Context())
 	forwarded.Header = cloneHeaders(req.Header)
@@ -8595,7 +8608,8 @@ func isAPIKeyPayloadAuthorized(payload any, authorizedGroupIDs map[int64]struct{
 	}
 	groupID, ok := extractGroupID(item)
 	if !ok {
-		return false, nil
+		// 未绑定分组的 key 属于用户自有（上游列表本就按调用者归属返回），允许查看与管理。
+		return true, nil
 	}
 	_, allowed := authorizedGroupIDs[groupID]
 	return allowed, nil
@@ -8663,6 +8677,8 @@ func filterAPIKeyItems(items []any, authorizedGroupIDs map[int64]struct{}) []any
 		}
 		groupID, ok := extractGroupID(item)
 		if !ok {
+			// 未绑定分组的 key 属于用户自有，保留在列表里。
+			filtered = append(filtered, item)
 			continue
 		}
 		if _, allowed := authorizedGroupIDs[groupID]; allowed {
