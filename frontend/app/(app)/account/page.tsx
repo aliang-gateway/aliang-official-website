@@ -108,6 +108,13 @@ function isProtectedApiKeyName(name: string) {
   return name.trim() === PROTECTED_API_KEY_NAME;
 }
 
+function maskApiKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "***";
+  if (trimmed.length <= 10) return `${trimmed.slice(0, 3)}***`;
+  return `${trimmed.slice(0, 8)}***${trimmed.slice(-4)}`;
+}
+
 function normalizeGroupPlatform(platform: string) {
   return platform.trim().toLowerCase();
 }
@@ -252,10 +259,14 @@ function parseUsageStats(payload: unknown): UsageStats | null {
 
 function ApiKeyRow({
   apiKey,
+  copiedKeyId,
+  onCopy,
   onToggle,
   onDelete,
 }: {
   apiKey: ApiKeyItem;
+  copiedKeyId: number | null;
+  onCopy: (keyId: number, keyValue: string) => void;
   onToggle: (keyId: number, status: string) => void;
   onDelete: (keyId: number) => void;
 }) {
@@ -286,7 +297,7 @@ function ApiKeyRow({
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--portal-muted)]">
           <span className="flex items-center gap-1 font-mono">
             <MaterialIcon name="key" size={12} />
-            {apiKey.key}
+            {maskApiKey(apiKey.key)}
           </span>
           <span className="flex items-center gap-1">
             <MaterialIcon name="group" size={12} />
@@ -303,6 +314,19 @@ function ApiKeyRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => void onCopy(apiKey.id, apiKey.key)}
+          className="rounded-lg border border-[var(--portal-line)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--portal-accent)]/40 hover:text-[var(--portal-accent)] disabled:opacity-40"
+          title="Copy API key"
+          disabled={!apiKey.key}
+        >
+          <MaterialIcon
+            name={copiedKeyId === apiKey.id ? "check" : "content_copy"}
+            size={16}
+            className={copiedKeyId === apiKey.id ? "text-emerald-500" : ""}
+          />
+        </button>
         <button
           type="button"
           onClick={() => void onToggle(apiKey.id, apiKey.status)}
@@ -349,6 +373,7 @@ export default function AccountPage() {
   const [keyPagination, setKeyPagination] = useState<PaginationInfo>({ page: 1, per_page: 20, total: 0, total_pages: 1, has_next: false, has_prev: false });
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   const groupPlatformById = useMemo(
     () => new Map(availableGroups.map((group) => [group.id, group.platform] as const)),
@@ -513,6 +538,17 @@ export default function AccountPage() {
       void loadApiKeys(1);
     }
   }, [formatFilter, isReady, loadApiKeys, selectedGroupId, sessionToken]);
+
+  const handleCopyApiKey = async (keyId: number, keyValue: string) => {
+    if (!keyValue) return;
+    try {
+      await navigator.clipboard.writeText(keyValue);
+      setCopiedKeyId(keyId);
+      window.setTimeout(() => setCopiedKeyId((current) => (current === keyId ? null : current)), 1500);
+    } catch (err) {
+      setApiKeyError(err instanceof Error ? err.message : "Failed to copy API key");
+    }
+  };
 
   const handleToggleApiKey = async (keyId: number, currentStatus: string) => {
     setApiKeyError(null);
@@ -794,6 +830,8 @@ export default function AccountPage() {
                         <ApiKeyRow
                           key={key.id}
                           apiKey={key}
+                          copiedKeyId={copiedKeyId}
+                          onCopy={handleCopyApiKey}
                           onToggle={handleToggleApiKey}
                           onDelete={handleDeleteApiKey}
                         />
@@ -808,6 +846,8 @@ export default function AccountPage() {
                   <ApiKeyRow
                     key={key.id}
                     apiKey={key}
+                    copiedKeyId={copiedKeyId}
+                    onCopy={handleCopyApiKey}
                     onToggle={handleToggleApiKey}
                     onDelete={handleDeleteApiKey}
                   />

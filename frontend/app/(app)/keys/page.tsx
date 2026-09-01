@@ -12,6 +12,7 @@ import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
   authHeaders,
   isProtectedApiKeyName,
+  maskApiKey,
   matchesFormatFilter,
   parseApiKeysList,
   parseAvailableGroups,
@@ -41,6 +42,7 @@ export default function KeysPage() {
   const [typeFilter, setTypeFilter] = useState<ApiKeyFormatFilter>("all");
   const [groupFilter, setGroupFilter] = useState<number | "all">("all");
   const [busyKeyId, setBusyKeyId] = useState<number | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyGroupId, setNewKeyGroupId] = useState<number | null>(null);
   const [creatingKey, setCreatingKey] = useState(false);
@@ -110,6 +112,17 @@ export default function KeysPage() {
       return true;
     });
   }, [keys, typeFilter, groupFilter]);
+
+  const handleCopy = async (keyId: number, keyValue: string) => {
+    if (!keyValue) return;
+    try {
+      await navigator.clipboard.writeText(keyValue);
+      setCopiedKeyId(keyId);
+      window.setTimeout(() => setCopiedKeyId((current) => (current === keyId ? null : current)), 1500);
+    } catch (err) {
+      setMutateError(err instanceof Error ? err.message : t("copyFailedHint"));
+    }
+  };
 
   const handleToggle = async (keyId: number, status: string) => {
     if (!sessionToken) return;
@@ -351,6 +364,8 @@ export default function KeysPage() {
                   key={apiKey.id}
                   apiKey={apiKey}
                   busyKeyId={busyKeyId}
+                  copiedKeyId={copiedKeyId}
+                  onCopy={handleCopy}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
                   t={t}
@@ -469,12 +484,14 @@ export default function KeysPage() {
 type KeyRowProps = {
   apiKey: ApiKeyItem;
   busyKeyId: number | null;
+  copiedKeyId: number | null;
+  onCopy: (keyId: number, keyValue: string) => void;
   onToggle: (keyId: number, status: string) => void;
   onDelete: (keyId: number, name: string) => void;
   t: (key: string) => string;
 };
 
-function KeyRow({ apiKey, busyKeyId, onToggle, onDelete, t }: KeyRowProps) {
+function KeyRow({ apiKey, busyKeyId, copiedKeyId, onCopy, onToggle, onDelete, t }: KeyRowProps) {
   const isProtected = isProtectedApiKeyName(apiKey.name);
   const isActive = apiKey.status === "active";
   const created = apiKey.created_at?.split("T")[0] ?? "—";
@@ -503,7 +520,7 @@ function KeyRow({ apiKey, busyKeyId, onToggle, onDelete, t }: KeyRowProps) {
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-[var(--ink-muted)]">
             <span className="flex items-center gap-1 font-mono">
               <MaterialIcon name="key" size={12} />
-              {apiKey.key}
+              {maskApiKey(apiKey.key)}
             </span>
             <span className="flex items-center gap-1">
               <MaterialIcon name="group" size={12} />
@@ -528,6 +545,15 @@ function KeyRow({ apiKey, busyKeyId, onToggle, onDelete, t }: KeyRowProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onCopy(apiKey.id, apiKey.key)}
+            disabled={!apiKey.key}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
+            title={t("copy")}
+          >
+            <MaterialIcon name={copiedKeyId === apiKey.id ? "check" : "content_copy"} size={16} className={copiedKeyId === apiKey.id ? "text-[var(--accent)]" : ""} />
+          </button>
           <button
             type="button"
             onClick={() => onToggle(apiKey.id, apiKey.status)}

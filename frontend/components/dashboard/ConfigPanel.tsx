@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { GATEWAY_BASE_URL, TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
-import { parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
+import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
 
 type ConfigPanelProps = {
   userKey: string;
@@ -88,18 +88,21 @@ export function ConfigPanel({
               id="config-key-select"
               className="field"
               value={selectedKeyId === null ? "" : String(selectedKeyId)}
-              onChange={(event) => setSelectedKeyId(event.target.value ? Number(event.target.value) : null)}
+              onChange={(event) => {
+                const id = event.target.value ? Number(event.target.value) : null;
+                setSelectedKeyId(id);
+                // 列表接口返回的是全量密钥：选中即把真实 key 填入配置。
+                const picked = existingKeys.find((k) => k.id === id);
+                onUserKeyChange(picked?.key ?? "");
+              }}
             >
               <option value="">{t("selectKeyPlaceholder")}</option>
               {existingKeys.map((existingKey) => (
                 <option key={existingKey.id} value={String(existingKey.id)}>
-                  {`${existingKey.name || `Key #${existingKey.id}`} · ${existingKey.key}`}
+                  {`${existingKey.name || `Key #${existingKey.id}`} · ${maskApiKey(existingKey.key)}`}
                 </option>
               ))}
             </select>
-            {selectedKeyId !== null ? (
-              <p className="text-xs leading-5 text-[var(--portal-muted)]">{t("selectKeyHint")}</p>
-            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -149,7 +152,7 @@ export function ConfigPanel({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-[var(--portal-ink)]">{existingKey.name}</p>
-                      <p className="truncate font-mono text-[11px] text-[var(--portal-muted)]">{existingKey.key}</p>
+                      <p className="truncate font-mono text-[11px] text-[var(--portal-muted)]">{maskApiKey(existingKey.key)}</p>
                     </div>
                   </li>
                 ))}
