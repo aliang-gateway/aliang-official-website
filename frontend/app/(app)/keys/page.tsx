@@ -10,7 +10,6 @@ import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
   authHeaders,
   isProtectedApiKeyName,
-  maskApiKey,
   matchesFormatFilter,
   parseApiKeysList,
   parseAvailableGroups,
@@ -37,13 +36,15 @@ export default function KeysPage() {
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<ApiKeyFormatFilter>("all");
   const [groupFilter, setGroupFilter] = useState<number | "all">("all");
-  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [busyKeyId, setBusyKeyId] = useState<number | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyGroupId, setNewKeyGroupId] = useState<number | null>(null);
   const [creatingKey, setCreatingKey] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [mutateError, setMutateError] = useState<string | null>(null);
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [copiedCreatedKey, setCopiedCreatedKey] = useState(false);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -89,31 +90,24 @@ export default function KeysPage() {
     });
   }, [keys, typeFilter, groupFilter]);
 
-  const handleCopy = async (keyId: number, keyValue: string) => {
-    if (!keyValue) return;
-    try {
-      await navigator.clipboard.writeText(keyValue);
-      setCopiedKeyId(keyId);
-      window.setTimeout(() => setCopiedKeyId((current) => (current === keyId ? null : current)), 1500);
-    } catch {
-      // clipboard unavailable
-    }
-  };
-
   const handleToggle = async (keyId: number, status: string) => {
     if (!sessionToken) return;
-    const nextStatus = status === "active" ? "revoked" : "active";
+    const nextStatus = status === "active" ? "inactive" : "active";
     setBusyKeyId(keyId);
+    setMutateError(null);
     try {
       const res = await fetch(`/api-keys/${keyId}`, {
         method: "PUT",
         headers: authHeaders(sessionToken),
         body: JSON.stringify({ status: nextStatus }),
       });
-      if (!res.ok) throw new Error(t("errorPrefix"));
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractApiError(payload, t("errorPrefix")));
+      }
       await loadAll();
-    } catch {
-      // ignore — keep current state
+    } catch (err) {
+      setMutateError(err instanceof Error ? err.message : t("errorPrefix"));
     } finally {
       setBusyKeyId(null);
     }
@@ -123,15 +117,19 @@ export default function KeysPage() {
     if (!sessionToken || isProtectedApiKeyName(name)) return;
     if (!window.confirm(t("confirmDeleteKey"))) return;
     setBusyKeyId(keyId);
+    setMutateError(null);
     try {
       const res = await fetch(`/api-keys/${keyId}`, {
         method: "DELETE",
         headers: authHeaders(sessionToken),
       });
-      if (!res.ok) throw new Error(t("errorPrefix"));
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractApiError(payload, t("errorPrefix")));
+      }
       await loadAll();
-    } catch {
-      // ignore
+    } catch (err) {
+      setMutateError(err instanceof Error ? err.message : t("errorPrefix"));
     } finally {
       setBusyKeyId(null);
     }
@@ -141,6 +139,7 @@ export default function KeysPage() {
     e.preventDefault();
     setCreateError(null);
     setCreateSuccess(null);
+    setMutateError(null);
     if (!sessionToken || !newKeyName.trim() || !newKeyGroupId) return;
     setCreatingKey(true);
     try {
@@ -150,11 +149,16 @@ export default function KeysPage() {
         body: JSON.stringify({ name: newKeyName.trim(), group_id: newKeyGroupId }),
         cache: "no-store",
       });
+      const payload = await res.json().catch(() => null);
       if (!res.ok) {
-        const payload = await res.json().catch(() => null);
         throw new Error(extractApiError(payload, t("createKeyError")));
       }
-      setCreateSuccess(t("createKeySuccess"));
+      const record = (payload as { data?: { key?: unknown } } | null)?.data;
+      const plaintext = typeof record?.key === "string" ? record.key : "";
+      if (plaintext) {
+        setCreatedKey(plaintext);
+      }
+      setCreateSuccess(plaintext ? null : t("createKeySuccess"));
       setNewKeyName("");
       setNewKeyGroupId(null);
       await loadAll();
@@ -162,6 +166,17 @@ export default function KeysPage() {
       setCreateError(err instanceof Error ? err.message : t("createKeyError"));
     } finally {
       setCreatingKey(false);
+    }
+  };
+
+  const handleCopyCreatedKey = async () => {
+    if (!createdKey) return;
+    try {
+      await navigator.clipboard.writeText(createdKey);
+      setCopiedCreatedKey(true);
+      window.setTimeout(() => setCopiedCreatedKey(false), 1500);
+    } catch {
+      // clipboard unavailable
     }
   };
 
@@ -211,6 +226,22 @@ export default function KeysPage() {
       {/* API 密钥 tab */}
       {activeTab === "keys" ? (
         <div className="space-y-5">
+          {createdKey ? (
+            <div className="clay-panel space-y-3 border-2 border-[var(--accent)]/40 p-4">
+              <p className="text-sm font-bold text-[var(--ink)]">{t("createKeyRevealTitle")}</p>
+              <p className="text-xs text-[var(--ink-muted)]">{t("createKeyRevealHint")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 font-mono text-xs text-[var(--ink)]">{createdKey}</code>
+                <button type="button" onClick={() => void handleCopyCreatedKey()} className="rounded-full bg-[var(--ink)] px-4 py-2 text-xs font-bold text-[var(--paper)]">
+                  {copiedCreatedKey ? t("copied") : t("copy")}
+                </button>
+                <button type="button" onClick={() => { setCreatedKey(null); setCopiedCreatedKey(false); }} className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink)]">
+                  {t("closePanel")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {/* 创建 key */}
           <form onSubmit={handleCreateKey} aria-label={t("createKeyTitle")} className="clay-panel flex flex-wrap items-end gap-3 p-4">
             <div className="flex flex-col gap-1">
@@ -303,6 +334,8 @@ export default function KeysPage() {
             </div>
           </div>
 
+          {mutateError ? <p className="notice">{mutateError}</p> : null}
+
           {/* 列表 */}
           {loading ? (
             <div className="clay-panel p-5">
@@ -320,9 +353,7 @@ export default function KeysPage() {
                 <KeyRow
                   key={apiKey.id}
                   apiKey={apiKey}
-                  copiedKeyId={copiedKeyId}
                   busyKeyId={busyKeyId}
-                  onCopy={handleCopy}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
                   t={t}
@@ -330,12 +361,6 @@ export default function KeysPage() {
               ))}
             </ul>
           )}
-
-          {/* 操作提示 */}
-          <p className="text-xs text-[var(--ink-muted)]">
-            <MaterialIcon name="info" size={14} className="mr-1 align-[-2px]" />
-            {t("modelsHint")}
-          </p>
         </div>
       ) : null}
 
@@ -363,58 +388,17 @@ export default function KeysPage() {
 
 type KeyRowProps = {
   apiKey: ApiKeyItem;
-  copiedKeyId: number | null;
   busyKeyId: number | null;
-  onCopy: (keyId: number, keyValue: string) => void;
   onToggle: (keyId: number, status: string) => void;
   onDelete: (keyId: number, name: string) => void;
   t: (key: string) => string;
 };
 
-function KeyRow({ apiKey, copiedKeyId, busyKeyId, onCopy, onToggle, onDelete, t }: KeyRowProps) {
+function KeyRow({ apiKey, busyKeyId, onToggle, onDelete, t }: KeyRowProps) {
   const isProtected = isProtectedApiKeyName(apiKey.name);
   const isActive = apiKey.status === "active";
   const created = apiKey.created_at?.split("T")[0] ?? "—";
   const expires = apiKey.expires_at?.split("T")[0];
-
-  // Per-key supported models — lazy-loaded on expand via the gateway /v1/models.
-  const [showModels, setShowModels] = useState(false);
-  const [models, setModels] = useState<string[] | null>(null);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsError, setModelsError] = useState<string | null>(null);
-
-  const toggleModels = async () => {
-    if (showModels) {
-      setShowModels(false);
-      return;
-    }
-    setShowModels(true);
-    if (models !== null || !apiKey.key) return;
-    setModelsLoading(true);
-    setModelsError(null);
-    try {
-      const res = await fetch("/api/models", {
-        headers: { "x-api-key": apiKey.key },
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const payload = (await res.json()) as { data?: unknown };
-      const list = Array.isArray(payload?.data) ? payload.data : [];
-      const names = list
-        .map((item) =>
-          typeof item === "string"
-            ? item
-            : (item as { id?: string; name?: string })?.id ?? (item as { name?: string })?.name,
-        )
-        .filter((name): name is string => Boolean(name));
-      setModels(names);
-    } catch (e) {
-      setModelsError(e instanceof Error ? e.message : "error");
-      setModels([]);
-    } finally {
-      setModelsLoading(false);
-    }
-  };
 
   return (
     <li className="clay-panel p-4">
@@ -439,7 +423,7 @@ function KeyRow({ apiKey, copiedKeyId, busyKeyId, onCopy, onToggle, onDelete, t 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-[var(--ink-muted)]">
             <span className="flex items-center gap-1 font-mono">
               <MaterialIcon name="key" size={12} />
-              {maskApiKey(apiKey.key)}
+              {apiKey.key}
             </span>
             <span className="flex items-center gap-1">
               <MaterialIcon name="group" size={12} />
@@ -466,25 +450,6 @@ function KeyRow({ apiKey, copiedKeyId, busyKeyId, onCopy, onToggle, onDelete, t 
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            onClick={() => void toggleModels()}
-            disabled={!isActive || !apiKey.key}
-            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-            title={t("supportedModels")}
-            aria-expanded={showModels}
-          >
-            <MaterialIcon name={showModels ? "expand_less" : "expand_more"} size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onCopy(apiKey.id, apiKey.key)}
-            disabled={!apiKey.key}
-            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-            title={t("copy")}
-          >
-            <MaterialIcon name={copiedKeyId === apiKey.id ? "check" : "content_copy"} size={16} />
-          </button>
-          <button
-            type="button"
             onClick={() => onToggle(apiKey.id, apiKey.status)}
             disabled={busyKeyId === apiKey.id}
             className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
@@ -503,37 +468,6 @@ function KeyRow({ apiKey, copiedKeyId, busyKeyId, onCopy, onToggle, onDelete, t 
           </button>
         </div>
       </div>
-
-      {showModels ? (
-        <div className="mt-3 w-full border-t border-[var(--line)] pt-3">
-          <p
-            className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]"
-            style={{ fontFamily: "var(--font-editorial-mono)" }}
-          >
-            {t("supportedModels")}
-          </p>
-          {modelsLoading ? (
-            <p className="text-xs text-[var(--ink-muted)]">{t("loading")}</p>
-          ) : modelsError ? (
-            <p className="text-xs text-red-600">
-              {t("modelsLoadFailed")}({modelsError})
-            </p>
-          ) : models && models.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {models.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-md border border-[var(--line)] bg-[var(--paper)] px-2 py-0.5 font-mono text-[11px] text-[var(--ink)]"
-                >
-                  {name}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--ink-muted)]">{t("noModels")}</p>
-          )}
-        </div>
-      ) : null}
     </li>
   );
 }
