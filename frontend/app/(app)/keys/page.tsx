@@ -45,6 +45,7 @@ export default function KeysPage() {
   const [mutateError, setMutateError] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copiedCreatedKey, setCopiedCreatedKey] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -174,9 +175,12 @@ export default function KeysPage() {
     try {
       await navigator.clipboard.writeText(createdKey);
       setCopiedCreatedKey(true);
+      setCopyFailed(false);
       window.setTimeout(() => setCopiedCreatedKey(false), 1500);
     } catch {
-      // clipboard unavailable
+      // clipboard unavailable — tell the user instead of failing silently
+      setCopiedCreatedKey(false);
+      setCopyFailed(true);
     }
   };
 
@@ -231,14 +235,15 @@ export default function KeysPage() {
               <p className="text-sm font-bold text-[var(--ink)]">{t("createKeyRevealTitle")}</p>
               <p className="text-xs text-[var(--ink-muted)]">{t("createKeyRevealHint")}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 font-mono text-xs text-[var(--ink)]">{createdKey}</code>
+                <code className="min-w-0 flex-1 break-all rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 font-mono text-xs text-[var(--ink)]">{createdKey}</code>
                 <button type="button" onClick={() => void handleCopyCreatedKey()} className="rounded-full bg-[var(--ink)] px-4 py-2 text-xs font-bold text-[var(--paper)]">
                   {copiedCreatedKey ? t("copied") : t("copy")}
                 </button>
-                <button type="button" onClick={() => { setCreatedKey(null); setCopiedCreatedKey(false); }} className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink)]">
+                <button type="button" onClick={() => { setCreatedKey(null); setCopiedCreatedKey(false); setCopyFailed(false); }} className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink)]">
                   {t("closePanel")}
                 </button>
               </div>
+              {copyFailed ? <p className="text-xs font-bold text-red-500">{t("copyFailedHint")}</p> : null}
             </div>
           ) : null}
 

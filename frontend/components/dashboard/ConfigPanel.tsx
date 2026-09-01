@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { GATEWAY_BASE_URL, TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
-import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
+import { parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
 
 type ConfigPanelProps = {
   userKey: string;
@@ -44,7 +44,6 @@ export function ConfigPanel({
   const [createKeyError, setCreateKeyError] = useState<string | null>(null);
   const [existingKeys, setExistingKeys] = useState<ApiKeyItem[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
-  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   const handleCreateKey = async () => {
     setCreateKeyError(null);
@@ -97,17 +96,6 @@ export function ConfigPanel({
     };
   }, [sessionToken]);
 
-  const handleCopyKey = async (keyId: number, keyValue: string) => {
-    if (!keyValue) return;
-    try {
-      await navigator.clipboard.writeText(keyValue);
-      setCopiedKeyId(keyId);
-      window.setTimeout(() => setCopiedKeyId((current) => (current === keyId ? null : current)), 1500);
-    } catch {
-      // clipboard unavailable — ignore
-    }
-  };
-
   return (
     <div className="grid min-h-0 gap-0 overflow-y-auto lg:grid-cols-[280px_minmax(0,1fr)]">
       <div className="border-b border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 lg:border-b-0 lg:border-r">
@@ -136,7 +124,7 @@ export function ConfigPanel({
           </div>
           {createKeyError ? <p className="text-xs leading-5 text-red-500">{createKeyError}</p> : null}
 
-          {/* 已有 API 密钥:列出 / 复制 / 一键填入 */}
+          {/* 已有 API 密钥:仅展示(列表接口返回的是打码值,明文不可取回) */}
           <div className="space-y-2">
             <p className="text-sm font-semibold text-[var(--portal-ink)]">{t("existingKeys")}</p>
             {keysLoading ? (
@@ -156,26 +144,8 @@ export function ConfigPanel({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-[var(--portal-ink)]">{existingKey.name}</p>
-                      <p className="truncate font-mono text-[11px] text-[var(--portal-muted)]">{maskApiKey(existingKey.key)}</p>
+                      <p className="truncate font-mono text-[11px] text-[var(--portal-muted)]">{existingKey.key}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyKey(existingKey.id, existingKey.key)}
-                      disabled={!existingKey.key}
-                      className="shrink-0 rounded-lg border border-[var(--portal-line)] px-2 py-1 text-xs text-[var(--portal-ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-                      title={t("copy")}
-                    >
-                      {copiedKeyId === existingKey.id ? t("copiedKey") : t("copy")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => existingKey.key && onUserKeyChange(existingKey.key)}
-                      disabled={!existingKey.key}
-                      className="shrink-0 rounded-lg border border-[var(--portal-line)] px-2 py-1 text-xs text-[var(--portal-ink)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)] disabled:opacity-40"
-                      title={t("useKey")}
-                    >
-                      {t("useKey")}
-                    </button>
                   </li>
                 ))}
               </ul>
