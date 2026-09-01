@@ -1111,7 +1111,7 @@
     "createKeyGroupLabel": "Group",
     "createKeySubmit": "Create",
     "createKeyCreating": "Creating…",
-    "createKeySuccess": "API key created",
+    "createKeyNoPlaintext": "Key created but the full value could not be displayed — please delete it in the list and create a new one.",
     "createKeyError": "Failed to create API key",
     "createKeyRevealTitle": "API key created",
     "createKeyRevealHint": "The full key is shown only once — copy and store it now. The list will only show a masked value afterwards.",

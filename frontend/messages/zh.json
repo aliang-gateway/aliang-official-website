@@ -1111,7 +1111,7 @@
     "createKeyGroupLabel": "分组",
     "createKeySubmit": "创建",
     "createKeyCreating": "创建中…",
-    "createKeySuccess": "API 密钥创建成功",
+    "createKeyNoPlaintext": "密钥已创建，但未能显示完整值；请在列表中删除后重新创建。",
     "createKeyError": "创建 API 密钥失败",
     "createKeyRevealTitle": "密钥创建成功",
     "createKeyRevealHint": "完整密钥仅在此显示一次，请立即复制保存；之后列表中只显示打码值。",

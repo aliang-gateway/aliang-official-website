@@ -164,11 +164,15 @@ export default function KeysPage() {
     if (!sessionToken || !newKeyName.trim() || !newKeyGroupId) return;
     setCreatingKey(true);
     try {
+      // 10s 客户端上限（旧 Safari 守卫同 ensure-auto）：创建请求挂死时超时报错并解除弹窗的关闭禁用，
+      // 避免用户被"创建中"锁死在弹窗里。
+      const createSignal = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(10_000) : undefined;
       const res = await fetch("/api-keys", {
         method: "POST",
         headers: authHeaders(sessionToken),
         body: JSON.stringify({ name: newKeyName.trim(), group_id: newKeyGroupId }),
         cache: "no-store",
+        signal: createSignal,
       });
       const payload = await res.json().catch(() => null);
       if (!res.ok) {
@@ -179,7 +183,7 @@ export default function KeysPage() {
       if (plaintext) {
         setCreatedKey(plaintext);
       }
-      setCreateSuccess(plaintext ? null : t("createKeySuccess"));
+      setCreateSuccess(plaintext ? null : t("createKeyNoPlaintext"));
       setNewKeyName("");
       setNewKeyGroupId(null);
       // 不在此处刷新列表:明文只在弹窗里展示一次,等用户读完并关闭弹窗后再 loadAll。
