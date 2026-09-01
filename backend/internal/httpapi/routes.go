@@ -8380,17 +8380,6 @@ func (r *routes) loadAuthorizedGroupIDSet(ctx context.Context, userID int64) (ma
 	return result, nil
 }
 
-func (r *routes) loadAuthorizedVisibleGroupIDs(req *http.Request, authorizedGroupIDs map[int64]struct{}) (map[int64]struct{}, error) {
-	if len(authorizedGroupIDs) == 0 {
-		return map[int64]struct{}{}, nil
-	}
-	payload, err := r.loadUpstreamJSONPayload(req, "/api/v1/groups/available")
-	if err != nil {
-		return nil, err
-	}
-	return extractAuthorizedGroupIDs(payload, authorizedGroupIDs), nil
-}
-
 // loadPolicyVisibleGroupIDs computes the set of group IDs whose API keys the
 // user may see and manage: locally authorized groups (subscription-tier
 // bindings) plus every non-subscription group upstream reports as available
@@ -8509,20 +8498,6 @@ func writeForwardedJSON(w http.ResponseWriter, statusCode int, headers http.Head
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func filterGroupListPayloadByID(payload any, authorizedGroupIDs map[int64]struct{}) (any, error) {
-	if root, ok := payload.(map[string]any); ok {
-		cloned := cloneMap(root)
-		if groups, ok := root["data"].([]any); ok {
-			cloned["data"] = filterGroupItemsByID(groups, authorizedGroupIDs)
-			return cloned, nil
-		}
-	}
-	if groups, ok := payload.([]any); ok {
-		return filterGroupItemsByID(groups, authorizedGroupIDs), nil
-	}
-	return payload, nil
-}
-
 // groupPolicyVisible reports whether an upstream available-group item should be
 // visible to the user: non-subscription groups are open to everyone (billed
 // from balance); subscription groups require local authorization.
@@ -8625,35 +8600,6 @@ func isProtectedAPIKeyPayload(payload any) (bool, error) {
 		name = asString(item["label"])
 	}
 	return apikey.IsProtectedAPIKeyName(name), nil
-}
-
-func filterGroupItemsByID(groups []any, authorizedGroupIDs map[int64]struct{}) []any {
-	filtered := make([]any, 0, len(groups))
-	for _, raw := range groups {
-		item, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		groupID, ok := asInt64(item["id"])
-		if !ok {
-			continue
-		}
-		if _, allowed := authorizedGroupIDs[groupID]; allowed {
-			filtered = append(filtered, item)
-		}
-	}
-	return filtered
-}
-
-func extractAuthorizedGroupIDs(payload any, authorizedGroupIDs map[int64]struct{}) map[int64]struct{} {
-	result := make(map[int64]struct{})
-	filtered, _ := filterGroupListPayloadByID(payload, authorizedGroupIDs)
-	for _, item := range extractGroupItems(filtered) {
-		if groupID, ok := asInt64(item["id"]); ok {
-			result[groupID] = struct{}{}
-		}
-	}
-	return result
 }
 
 func extractGroupItems(payload any) []map[string]any {
