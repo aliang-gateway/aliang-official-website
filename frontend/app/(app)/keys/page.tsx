@@ -194,7 +194,9 @@ export default function KeysPage() {
     // 创建请求仍在进行时禁止关闭:若此刻放行,请求完成后明文会落在已关闭的
     // 弹窗里,用户再也看不到(列表里只有打码值),密钥等于白创建一次。
     if (creatingKey) return;
-    const hadCreatedKey = createdKey !== null;
+    // createdKey(明文已展示)或 createSuccess(后端成功但响应缺明文的兜底)
+    // 都说明刚才创建过密钥,关闭时刷新列表让它出现。
+    const didCreate = createdKey !== null || createSuccess !== null;
     setShowCreateModal(false);
     setCreatedKey(null);
     setCreateKeyCopied(false);
@@ -204,8 +206,8 @@ export default function KeysPage() {
     setNewKeyName("");
     setNewKeyGroupId(null);
     // 用户处理完明文后再刷新列表,新建的密钥才会出现。
-    if (hadCreatedKey) void loadAll();
-  }, [createdKey, creatingKey, loadAll]);
+    if (didCreate) void loadAll();
+  }, [createdKey, createSuccess, creatingKey, loadAll]);
 
   const handleCopyCreatedKey = async () => {
     if (!createdKey) return;
