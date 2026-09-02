@@ -203,17 +203,20 @@ function parseBalanceSummary(accountPayload: unknown): BalanceSummary {
   };
 }
 
-function parsePurchaseOptions(groupsPayload: unknown, currencyHint: string): PurchaseOptions {
-  const root = extractEnvelopeOrRoot(groupsPayload);
-  const tiersRaw = Array.isArray(root) ? root : Array.isArray(root?.tiers) ? root.tiers : [];
-  const tiers = tiersRaw
+function parsePurchaseOptions(packagesPayload: unknown, currencyHint: string): PurchaseOptions {
+  // 套餐购买的选项 = 管理后台发布且可见的套餐(/api/packages)。此前误用
+  // groups/available 作数据源:分组项没有 code 字段且 id 是数字,asString
+  // 解析为空后被过滤,导致所有用户的套餐下拉永远为空。
+  const root = extractEnvelopeOrRoot(packagesPayload);
+  const packagesRaw = Array.isArray(root) ? root : Array.isArray(root?.packages) ? root.packages : [];
+  const tiers = packagesRaw
     .map((item) => asRecord(item))
     .filter((item): item is UnknownRecord => Boolean(item))
     .map((item) => ({
-      code: asString(item.code) || asString(item.id),
-      name: asString(item.name),
+      code: asString(item.code),
+      name: asString(item.name) || asString(item.code),
     }))
-    .filter((item) => item.code && item.name);
+    .filter((item) => item.code);
 
   return {
     package_purchase: {
@@ -236,7 +239,7 @@ export function parseDashboardHomePayload(
   homePayload: unknown,
   subscriptionPayload: unknown,
   accountPayload: unknown,
-  groupsPayload: unknown,
+  packagesPayload: unknown,
 ): DashboardHomeResponse {
   const home = asRecord(homePayload);
   const stats = extractEnvelopeOrRoot(homePayload);
@@ -261,7 +264,7 @@ export function parseDashboardHomePayload(
 
   const packageSummary = parsePackageSummary(subscriptionPayload);
   const balanceSummary = parseBalanceSummary(accountPayload);
-  const purchaseOptions = parsePurchaseOptions(groupsPayload, balanceSummary.currency || "CNY");
+  const purchaseOptions = parsePurchaseOptions(packagesPayload, balanceSummary.currency || "CNY");
 
   return {
     request_trend: requestTrend,

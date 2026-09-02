@@ -91,13 +91,14 @@ export function useDashboardData(queryString: string): DashboardData {
           signal,
         };
 
-        const [homeResponse, subscriptionResponse, accountResponse, trendResponse, modelsResponse, groupsResponse] = await Promise.all([
+        const [homeResponse, subscriptionResponse, accountResponse, trendResponse, modelsResponse, packagesResponse] = await Promise.all([
           fetch("/api/dashboard/home", commonRequestInit),
           fetch("/api/subscriptions/summary", commonRequestInit),
           fetch("/api/dashboard/account", commonRequestInit),
           fetch(`/api/dashboard/trend?${queryString}`, commonRequestInit),
           fetch(`/api/dashboard/models?${queryString}`, commonRequestInit),
-          fetch("/api/groups/available", commonRequestInit),
+          // 充值弹窗「套餐和等级」的选项来源:后台发布且可见的套餐。
+          fetch("/api/packages", commonRequestInit),
         ]);
 
         if (homeResponse.status === 401 || homeResponse.status === 403) {
@@ -134,12 +135,12 @@ export function useDashboardData(queryString: string): DashboardData {
           accountPayload = (await accountResponse.json()) as unknown;
         }
 
-        let groupsPayload: unknown = null;
-        if (groupsResponse.ok) {
-          groupsPayload = (await groupsResponse.json()) as unknown;
+        let packagesPayload: unknown = null;
+        if (packagesResponse.ok) {
+          packagesPayload = (await packagesResponse.json()) as unknown;
         }
 
-        setDashboard(parseDashboardHomePayload(homePayload, subscriptionPayload, accountPayload, groupsPayload));
+        setDashboard(parseDashboardHomePayload(homePayload, subscriptionPayload, accountPayload, packagesPayload));
         setTokenTrend(parseTokenTrendResponse(trendPayload));
         setModelShare(normalizeModelShareData(modelsPayload));
         setMetricSummary(parseDashboardMetricSummary(homePayload, accountPayload));
