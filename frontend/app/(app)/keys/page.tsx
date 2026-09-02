@@ -53,8 +53,35 @@ export default function KeysPage() {
   const [copyFailed, setCopyFailed] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createKeyCopied, setCreateKeyCopied] = useState(false);
-  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [groupMenuRect, setGroupMenuRect] = useState<{ left: number; width: number; top: number | null; bottom: number | null } | null>(null);
   const createKeyTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const groupTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // 分组下拉用 fixed 定位(按触发按钮的视口坐标):面板容器有 overflow-hidden/
+  // overflow-y-auto,absolute 定位的列表会被裁掉;祖先链无 transform,fixed 可
+  // 逃逸裁剪。下方空间不足(max-h-60 = 240px + 间距)时自动向上弹出。
+  const toggleGroupMenu = () => {
+    setGroupMenuRect((current) => {
+      if (current) return null;
+      const el = groupTriggerRef.current;
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const openUp = window.innerHeight - rect.bottom < 248;
+      return {
+        left: rect.left,
+        width: rect.width,
+        top: openUp ? null : rect.bottom + 4,
+        bottom: openUp ? window.innerHeight - rect.top + 4 : null,
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!groupMenuRect) return;
+    const close = () => setGroupMenuRect(null);
+    window.addEventListener("resize", close);
+    return () => window.removeEventListener("resize", close);
+  }, [groupMenuRect]);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -223,7 +250,7 @@ export default function KeysPage() {
     setCreateSuccess(null);
     setNewKeyName("");
     setNewKeyGroupId(null);
-    setGroupMenuOpen(false);
+    setGroupMenuRect(null);
     // 用户处理完明文后再刷新列表,新建的密钥才会出现。
     if (didCreate) void loadAll();
   }, [createdKey, createSuccess, creatingKey, loadAll]);
@@ -437,15 +464,16 @@ export default function KeysPage() {
               <div className="relative">
                 <button
                   type="button"
+                  ref={groupTriggerRef}
                   id="new-key-group"
                   aria-haspopup="listbox"
-                  aria-expanded={groupMenuOpen}
-                  onClick={() => setGroupMenuOpen((open) => !open)}
+                  aria-expanded={groupMenuRect !== null}
+                  onClick={toggleGroupMenu}
                   onKeyDown={(event) => {
-                    if (event.key === "Escape" && groupMenuOpen) {
+                    if (event.key === "Escape" && groupMenuRect) {
                       // Esc 先只关下拉菜单,不冒泡给 Modal 关掉整个弹窗。
                       event.stopPropagation();
-                      setGroupMenuOpen(false);
+                      setGroupMenuRect(null);
                     }
                   }}
                   className="field flex w-full items-center justify-between text-left"
@@ -458,20 +486,25 @@ export default function KeysPage() {
                       return `${picked.name}${picked.platform ? ` · ${platformBadgeLabel(picked.platform)}` : ""}`;
                     })()}
                   </span>
-                  <MaterialIcon name={groupMenuOpen ? "expand_less" : "expand_more"} size={18} className="text-[var(--ink-muted)]" />
+                  <MaterialIcon name={groupMenuRect ? "expand_less" : "expand_more"} size={18} className="text-[var(--ink-muted)]" />
                 </button>
-                {groupMenuOpen ? (
+                {groupMenuRect ? (
                   <>
                     <button
                       type="button"
                       aria-hidden
                       tabIndex={-1}
                       className="fixed inset-0 z-10 cursor-default"
-                      onClick={() => setGroupMenuOpen(false)}
+                      onClick={() => setGroupMenuRect(null)}
                     />
                     <ul
                       role="listbox"
-                      className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow)]"
+                      className="fixed z-20 max-h-60 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow)]"
+                      style={
+                        groupMenuRect.top !== null
+                          ? { left: groupMenuRect.left, width: groupMenuRect.width, top: groupMenuRect.top }
+                          : { left: groupMenuRect.left, width: groupMenuRect.width, bottom: groupMenuRect.bottom ?? 0 }
+                      }
                     >
                       {groups.map((group) => {
                         const active = group.id === newKeyGroupId;
@@ -483,7 +516,7 @@ export default function KeysPage() {
                               aria-selected={active}
                               onClick={() => {
                                 setNewKeyGroupId(group.id);
-                                setGroupMenuOpen(false);
+                                setGroupMenuRect(null);
                               }}
                               className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--accent-wash)] ${
                                 active ? "bg-[var(--accent-wash)] font-bold text-[var(--accent-ink)]" : "text-[var(--ink)]"
