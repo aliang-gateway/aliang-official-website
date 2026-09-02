@@ -174,6 +174,7 @@ export default function PricePage() {
                     <h3 className="pricing-group-title">{t("groupSubscription")}</h3>
                     <div className="pricing-grid">
                       {subscriptions.map((p) => {
+                        const isFreeTier = p.price_micros <= 0;
                         const unit =
                           p.value_type === "days"
                             ? t("unitDays")
@@ -198,14 +199,21 @@ export default function PricePage() {
                                 ))}
                               </ul>
                             )}
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => void handleCheckout(p.code)}
-                              disabled={loadingTier === p.code}
-                            >
-                              {loadingTier === p.code ? t("redirecting") : t("cta")}
-                            </button>
+                            {isFreeTier ? (
+                              // 0 元套餐不走 Stripe 购买(后端同样拒绝 0 元会话),仅作展示。
+                              <span className="btn" aria-disabled>
+                                {t("noPurchaseNeeded")}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => void handleCheckout(p.code)}
+                                disabled={loadingTier === p.code}
+                              >
+                                {loadingTier === p.code ? t("redirecting") : t("cta")}
+                              </button>
+                            )}
                           </article>
                         );
                       })}

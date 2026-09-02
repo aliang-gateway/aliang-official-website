@@ -363,6 +363,7 @@
       "unitDays": "天",
       "unitTokens": "tokens",
       "cta": "立即订阅",
+      "noPurchaseNeeded": "免费方案，无需购买",
       "ctaTopup": "立即充值",
       "redirecting": "跳转 Stripe…",
       "surchargeHint": "单笔金额低于 {threshold} 的订单将加收 {amount} 手续费",

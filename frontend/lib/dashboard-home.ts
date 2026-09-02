@@ -212,6 +212,9 @@ function parsePurchaseOptions(packagesPayload: unknown, currencyHint: string): P
   const tiers = packagesRaw
     .map((item) => asRecord(item))
     .filter((item): item is UnknownRecord => Boolean(item))
+    // 0 元套餐(如注册赠送的 Free)不走 Stripe 购买,不进充值下拉;定价页展示
+    // 用的是 /price 页自己拉的 /api/packages,不受此过滤影响。
+    .filter((item) => asNumber(item.price_micros) > 0)
     .map((item) => ({
       code: asString(item.code),
       name: asString(item.name) || asString(item.code),

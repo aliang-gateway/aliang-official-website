@@ -363,6 +363,7 @@
       "unitDays": "days",
       "unitTokens": "tokens",
       "cta": "Subscribe now",
+      "noPurchaseNeeded": "Free plan — no purchase needed",
       "ctaTopup": "Top up now",
       "redirecting": "Redirecting to Stripe…",
       "surchargeHint": "Orders below {threshold} incur a {amount} handling fee",
