@@ -1,12 +1,12 @@
 # Stage 1: Install dependencies
-FROM node:25-alpine3.22 AS deps
+FROM node:25-alpine3.22@sha256:d4f742bdaee57b81d8b1a1c78e210e5c3c2b3892b335a30575956819028c804e AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Stage 2: Build the application
-FROM node:25-alpine3.22 AS builder
+FROM node:25-alpine3.22@sha256:d4f742bdaee57b81d8b1a1c78e210e5c3c2b3892b335a30575956819028c804e AS builder
 WORKDIR /app
 
 ARG CDN_URL=""
@@ -20,7 +20,7 @@ COPY . .
 RUN npm run build
 
 # Stage 3: Production image
-FROM node:25-alpine3.22 AS runner
+FROM node:25-alpine3.22@sha256:d4f742bdaee57b81d8b1a1c78e210e5c3c2b3892b335a30575956819028c804e AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
