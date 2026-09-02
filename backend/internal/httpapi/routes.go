@@ -4739,6 +4739,11 @@ func (r *routes) handleCreatePackageCheckoutSession(w http.ResponseWriter, req *
 		}
 		priceMicros = payload.AmountMicros
 	}
+	// 0 元套餐不走 Stripe(Stripe 拒绝 0 元会话):免费套餐由注册/后台直接发放。
+	if priceMicros <= 0 {
+		writeError(w, http.StatusBadRequest, "this package is free and does not require payment")
+		return
+	}
 	// 手续费：enabled 且 订单金额 < 阈值 时加收（admin 通过 global-vars 配置）。
 	feeMicros := int64(0)
 	if surchargeEnabled, feeMicrosCfg, thresholdMicros := r.loadPaymentSurcharge(req.Context()); surchargeEnabled && thresholdMicros > 0 && priceMicros < thresholdMicros {

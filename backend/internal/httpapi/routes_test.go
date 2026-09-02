@@ -655,6 +655,54 @@ func TestCreatePackageCheckoutSessionReturnsStripeURL(t *testing.T) {
 	}
 }
 
+func TestCreatePackageCheckoutSessionRejectsFreePackage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	tierID := insertTier(t, ctx, database, "free-tier", "Free")
+	if _, err := database.ExecContext(ctx, `UPDATE als_tiers SET price_micros = 0, value_type = 'days', value_amount = 1, is_enabled = 1 WHERE id = ?;`, tierID); err != nil {
+		t.Fatalf("update tier fields: %v", err)
+	}
+
+	// Stripe 传输层一旦被触达即失败:0 元套餐必须在到达 Stripe 之前被拒绝。
+	stripeClient, err := portalstripe.NewClientWithHTTPClient(portalstripe.Config{
+		SecretKey:     "sk_test_free",
+		WebhookSecret: "whsec_free",
+		SuccessURL:    "https://portal.example.com/dashboard?checkout=success",
+		CancelURL:     "https://portal.example.com/dashboard?checkout=cancelled",
+		Currency:      "cny",
+	}, &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			t.Fatalf("stripe must not be called for free packages, got %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("new stripe client: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{
+		AdminBootstrapSecret: "test-admin-secret",
+		StripeClient:         stripeClient,
+	})
+	_, sessionToken := createUserViaAPI(t, mux, "free-user@example.com", "Free User", "user", "")
+
+	req := httptest.NewRequest(http.MethodPost, "/checkout/package", bytes.NewBufferString(`{"tier_code":"free-tier"}`))
+	req.Header.Set("Content-Type", "application/json")
+	setBearerAuth(req, sessionToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "this package is free and does not require payment") {
+		t.Fatalf("expected free-package message, got %s", rec.Body.String())
+	}
+}
+
 func TestCreatePackageCheckoutAcceptsBalanceWithSubscriptionGroup(t *testing.T) {
 	t.Parallel()
 
