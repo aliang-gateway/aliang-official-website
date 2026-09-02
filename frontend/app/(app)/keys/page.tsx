@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { Modal } from "@/components/ui/Modal";
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { extractApiError } from "@/lib/api-response";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
@@ -53,35 +54,7 @@ export default function KeysPage() {
   const [copyFailed, setCopyFailed] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createKeyCopied, setCreateKeyCopied] = useState(false);
-  const [groupMenuRect, setGroupMenuRect] = useState<{ left: number; width: number; top: number | null; bottom: number | null } | null>(null);
   const createKeyTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const groupTriggerRef = useRef<HTMLButtonElement | null>(null);
-
-  // 分组下拉用 fixed 定位(按触发按钮的视口坐标):面板容器有 overflow-hidden/
-  // overflow-y-auto,absolute 定位的列表会被裁掉;祖先链无 transform,fixed 可
-  // 逃逸裁剪。下方空间不足(max-h-60 = 240px + 间距)时自动向上弹出。
-  const toggleGroupMenu = () => {
-    setGroupMenuRect((current) => {
-      if (current) return null;
-      const el = groupTriggerRef.current;
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      const openUp = window.innerHeight - rect.bottom < 248;
-      return {
-        left: rect.left,
-        width: rect.width,
-        top: openUp ? null : rect.bottom + 4,
-        bottom: openUp ? window.innerHeight - rect.top + 4 : null,
-      };
-    });
-  };
-
-  useEffect(() => {
-    if (!groupMenuRect) return;
-    const close = () => setGroupMenuRect(null);
-    window.addEventListener("resize", close);
-    return () => window.removeEventListener("resize", close);
-  }, [groupMenuRect]);
 
   useEffect(() => {
     setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) ?? "");
@@ -250,7 +223,6 @@ export default function KeysPage() {
     setCreateSuccess(null);
     setNewKeyName("");
     setNewKeyGroupId(null);
-    setGroupMenuRect(null);
     // 用户处理完明文后再刷新列表,新建的密钥才会出现。
     if (didCreate) void loadAll();
   }, [createdKey, createSuccess, creatingKey, loadAll]);
@@ -458,80 +430,17 @@ export default function KeysPage() {
               <label htmlFor="new-key-group" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
                 {t("createKeyGroupLabel")}
               </label>
-              {/* 自绘下拉:原生 <select> 的弹出层由浏览器绘制,CSS 管不到其在
-                  fixed 弹窗内的锚定位置(部分环境会错锚到屏幕角落),普通 DOM
-                  元素则永远留在弹窗内。 */}
-              <div className="relative">
-                <button
-                  type="button"
-                  ref={groupTriggerRef}
-                  id="new-key-group"
-                  aria-haspopup="listbox"
-                  aria-expanded={groupMenuRect !== null}
-                  onClick={toggleGroupMenu}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape" && groupMenuRect) {
-                      // Esc 先只关下拉菜单,不冒泡给 Modal 关掉整个弹窗。
-                      event.stopPropagation();
-                      setGroupMenuRect(null);
-                    }
-                  }}
-                  className="field flex w-full items-center justify-between text-left"
-                >
-                  <span className={newKeyGroupId === null ? "text-[var(--ink-muted)]" : ""}>
-                    {(() => {
-                      if (newKeyGroupId === null) return "—";
-                      const picked = groups.find((group) => group.id === newKeyGroupId);
-                      if (!picked) return "—";
-                      return `${picked.name}${picked.platform ? ` · ${platformBadgeLabel(picked.platform)}` : ""}`;
-                    })()}
-                  </span>
-                  <MaterialIcon name={groupMenuRect ? "expand_less" : "expand_more"} size={18} className="text-[var(--ink-muted)]" />
-                </button>
-                {groupMenuRect ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-hidden
-                      tabIndex={-1}
-                      className="fixed inset-0 z-10 cursor-default"
-                      onClick={() => setGroupMenuRect(null)}
-                    />
-                    <ul
-                      role="listbox"
-                      className="fixed z-20 max-h-60 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow)]"
-                      style={
-                        groupMenuRect.top !== null
-                          ? { left: groupMenuRect.left, width: groupMenuRect.width, top: groupMenuRect.top }
-                          : { left: groupMenuRect.left, width: groupMenuRect.width, bottom: groupMenuRect.bottom ?? 0 }
-                      }
-                    >
-                      {groups.map((group) => {
-                        const active = group.id === newKeyGroupId;
-                        return (
-                          <li key={group.id}>
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={active}
-                              onClick={() => {
-                                setNewKeyGroupId(group.id);
-                                setGroupMenuRect(null);
-                              }}
-                              className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--accent-wash)] ${
-                                active ? "bg-[var(--accent-wash)] font-bold text-[var(--accent-ink)]" : "text-[var(--ink)]"
-                              }`}
-                            >
-                              <span className="truncate">{group.name}</span>
-                              {group.platform ? <span className="shrink-0 text-xs text-[var(--ink-muted)]">{platformBadgeLabel(group.platform)}</span> : null}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </>
-                ) : null}
-              </div>
+              {/* 弹窗内必须用自绘下拉:原生 <select> 的弹出层由浏览器绘制,在 fixed 弹窗内会错锚甚至不弹出。 */}
+              <SelectMenu
+                id="new-key-group"
+                value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
+                options={groups.map((group) => ({
+                  value: String(group.id),
+                  label: group.name,
+                  hint: group.platform ? platformBadgeLabel(group.platform) : undefined,
+                }))}
+                onChange={(value) => setNewKeyGroupId(value ? Number(value) : null)}
+              />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button

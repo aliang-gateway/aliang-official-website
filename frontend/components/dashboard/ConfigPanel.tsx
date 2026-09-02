@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { GATEWAY_BASE_URL, TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
 import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
@@ -84,25 +85,24 @@ export function ConfigPanel({
             <label htmlFor="config-key-select" className="text-sm font-semibold text-[var(--portal-ink)]">
               {t("selectKey")}
             </label>
-            <select
+            {/* 本面板同时用于 keys 配置 tab 和 dashboard 的 ConfigModal(fixed 弹窗):
+                原生 <select> 的弹出层在弹窗内会错锚甚至不弹出,统一用自绘下拉。 */}
+            <SelectMenu
               id="config-key-select"
-              className="field"
               value={selectedKeyId === null ? "" : String(selectedKeyId)}
-              onChange={(event) => {
-                const id = event.target.value ? Number(event.target.value) : null;
+              options={existingKeys.map((existingKey) => ({
+                value: String(existingKey.id),
+                label: `${existingKey.name || `Key #${existingKey.id}`} · ${maskApiKey(existingKey.key)}`,
+              }))}
+              onChange={(value) => {
+                const id = value ? Number(value) : null;
                 setSelectedKeyId(id);
                 // 列表接口返回的是全量密钥：选中即把真实 key 填入配置。
                 const picked = existingKeys.find((k) => k.id === id);
                 onUserKeyChange(picked?.key ?? "");
               }}
-            >
-              <option value="">{t("selectKeyPlaceholder")}</option>
-              {existingKeys.map((existingKey) => (
-                <option key={existingKey.id} value={String(existingKey.id)}>
-                  {`${existingKey.name || `Key #${existingKey.id}`} · ${maskApiKey(existingKey.key)}`}
-                </option>
-              ))}
-            </select>
+              placeholder={t("selectKeyPlaceholder")}
+            />
           </div>
 
           <div className="space-y-2">

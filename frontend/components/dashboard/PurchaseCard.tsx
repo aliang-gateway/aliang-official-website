@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { usePurchaseActions } from "@/lib/hooks/use-purchase-actions";
 import type { DashboardHomeResponse } from "@/lib/dashboard-types";
 
@@ -107,23 +108,20 @@ export function PurchaseCard({ sessionToken, dashboard, onReload, bare = false }
               <label htmlFor="dashboard-package-tier" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
                 {t("packageTier")}
               </label>
-              <select
-                id="dashboard-package-tier"
-                className="field mt-2"
-                value={selectedTierCode}
-                onChange={(event) => {
-                  setSelectedTierCode(event.target.value);
-                  setTopupYuan("");
-                }}
-                disabled={packageTiers.length === 0 || packageActionLoading}
-              >
-                {packageTiers.length === 0 ? <option value="">{t("noPublicTiers")}</option> : null}
-                {packageTiers.map((tier) => (
-                  <option key={tier.code} value={tier.code}>
-                    {tier.name} ({tier.code})
-                  </option>
-                ))}
-              </select>
+              {/* 弹窗内必须用自绘下拉:原生 <select> 的弹出层由浏览器绘制,在 fixed 弹窗内会错锚甚至不弹出。 */}
+              <div className="mt-2">
+                <SelectMenu
+                  id="dashboard-package-tier"
+                  value={selectedTierCode}
+                  options={packageTiers.map((tier) => ({ value: tier.code, label: `${tier.name} (${tier.code})` }))}
+                  onChange={(value) => {
+                    setSelectedTierCode(value);
+                    setTopupYuan("");
+                  }}
+                  placeholder={packageTiers.length === 0 ? t("noPublicTiers") : "—"}
+                  disabled={packageTiers.length === 0 || packageActionLoading}
+                />
+              </div>
             </div>
 
             {isTopup && (

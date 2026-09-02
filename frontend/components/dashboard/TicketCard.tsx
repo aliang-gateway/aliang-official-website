@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { useTicketForm } from "@/lib/hooks/use-ticket-form";
 
 type TicketCardProps = {
@@ -60,18 +61,21 @@ export function TicketCard({ sessionToken, bare = false }: TicketCardProps) {
             <label htmlFor="dashboard-ticket-category" className="text-xs uppercase tracking-[0.18em] text-[var(--portal-muted)]">
               {t("category")}
             </label>
-            <select
-              id="dashboard-ticket-category"
-              className="field mt-2"
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              disabled={submitting}
-            >
-              <option value="delivery_issue">{t("deliveryIssue")}</option>
-              <option value="model_feedback">{t("modelFeedback")}</option>
-              <option value="billing_question">{t("billingQuestion")}</option>
-              <option value="other">{t("other")}</option>
-            </select>
+            {/* 弹窗内必须用自绘下拉:原生 <select> 的弹出层由浏览器绘制,在 fixed 弹窗内会错锚甚至不弹出。 */}
+            <div className="mt-2">
+              <SelectMenu
+                id="dashboard-ticket-category"
+                value={category}
+                options={[
+                  { value: "delivery_issue", label: t("deliveryIssue") },
+                  { value: "model_feedback", label: t("modelFeedback") },
+                  { value: "billing_question", label: t("billingQuestion") },
+                  { value: "other", label: t("other") },
+                ]}
+                onChange={setCategory}
+                disabled={submitting}
+              />
+            </div>
           </div>
 
           <div>
