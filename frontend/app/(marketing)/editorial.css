@@ -26,6 +26,22 @@
   --accent-wash: rgba(20, 122, 79, 0.1);
   --focus-ring: #0b6b45;
   --shadow: 0 30px 60px -30px rgba(21, 20, 15, 0.26);
+
+  /* stitch 语义别名必须随本作用域钉为亮色。它们在 globals.css 的 :root 声明,
+     会在 html(.dark) 层就解析完并作为"已求值"值继承下来 —— html.dark 把
+     --stitch-bg-elevated/--stitch-bg 翻成深夜色,而文字被本作用域的
+     `--ink`(亮色) + `.editorial button { color: inherit }` 钉死,于是
+     语言切换按钮、blog 卡片等一切 bg-[var(--stitch-*)] 元素在暗色主题下
+     变成深底深字。此处覆盖后,主题切换只对 (app) 控制台生效,营销壳
+     无论主题如何都保持亮色报纸观感。 */
+  --stitch-primary: var(--color-accent);
+  --stitch-bg: var(--color-paper);
+  --stitch-bg-elevated: var(--color-bone);
+  --stitch-text: var(--color-ink);
+  --stitch-text-muted: var(--color-ink-muted);
+  --stitch-border: var(--line);
+  --stitch-card-bg: var(--color-paper-warm);
+
   --sans: var(--font-editorial);
   --body: var(--font-editorial-body);
   --serif: var(--font-editorial-serif);
