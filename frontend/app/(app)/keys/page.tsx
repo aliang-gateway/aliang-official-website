@@ -53,6 +53,7 @@ export default function KeysPage() {
   const [copyFailed, setCopyFailed] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createKeyCopied, setCreateKeyCopied] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const createKeyTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -222,6 +223,7 @@ export default function KeysPage() {
     setCreateSuccess(null);
     setNewKeyName("");
     setNewKeyGroupId(null);
+    setGroupMenuOpen(false);
     // 用户处理完明文后再刷新列表,新建的密钥才会出现。
     if (didCreate) void loadAll();
   }, [createdKey, createSuccess, creatingKey, loadAll]);
@@ -429,20 +431,74 @@ export default function KeysPage() {
               <label htmlFor="new-key-group" className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
                 {t("createKeyGroupLabel")}
               </label>
-              <select
-                id="new-key-group"
-                value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
-                onChange={(event) => setNewKeyGroupId(event.target.value ? Number(event.target.value) : null)}
-                className="field w-full"
-              >
-                <option value="">—</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={String(group.id)}>
-                    {group.name}
-                    {group.platform ? ` · ${platformBadgeLabel(group.platform)}` : ""}
-                  </option>
-                ))}
-              </select>
+              {/* 自绘下拉:原生 <select> 的弹出层由浏览器绘制,CSS 管不到其在
+                  fixed 弹窗内的锚定位置(部分环境会错锚到屏幕角落),普通 DOM
+                  元素则永远留在弹窗内。 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  id="new-key-group"
+                  aria-haspopup="listbox"
+                  aria-expanded={groupMenuOpen}
+                  onClick={() => setGroupMenuOpen((open) => !open)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && groupMenuOpen) {
+                      // Esc 先只关下拉菜单,不冒泡给 Modal 关掉整个弹窗。
+                      event.stopPropagation();
+                      setGroupMenuOpen(false);
+                    }
+                  }}
+                  className="field flex w-full items-center justify-between text-left"
+                >
+                  <span className={newKeyGroupId === null ? "text-[var(--ink-muted)]" : ""}>
+                    {(() => {
+                      if (newKeyGroupId === null) return "—";
+                      const picked = groups.find((group) => group.id === newKeyGroupId);
+                      if (!picked) return "—";
+                      return `${picked.name}${picked.platform ? ` · ${platformBadgeLabel(picked.platform)}` : ""}`;
+                    })()}
+                  </span>
+                  <MaterialIcon name={groupMenuOpen ? "expand_less" : "expand_more"} size={18} className="text-[var(--ink-muted)]" />
+                </button>
+                {groupMenuOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-hidden
+                      tabIndex={-1}
+                      className="fixed inset-0 z-10 cursor-default"
+                      onClick={() => setGroupMenuOpen(false)}
+                    />
+                    <ul
+                      role="listbox"
+                      className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper)] py-1 shadow-[var(--shadow)]"
+                    >
+                      {groups.map((group) => {
+                        const active = group.id === newKeyGroupId;
+                        return (
+                          <li key={group.id}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={active}
+                              onClick={() => {
+                                setNewKeyGroupId(group.id);
+                                setGroupMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--accent-wash)] ${
+                                active ? "bg-[var(--accent-wash)] font-bold text-[var(--accent-ink)]" : "text-[var(--ink)]"
+                              }`}
+                            >
+                              <span className="truncate">{group.name}</span>
+                              {group.platform ? <span className="shrink-0 text-xs text-[var(--ink-muted)]">{platformBadgeLabel(group.platform)}</span> : null}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
