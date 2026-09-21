@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { asRecord, asString, extractApiError } from "@/lib/api-response";
+import { scanPollNeedsNewSession } from "@/lib/auth/scan-login";
 import { useTranslations } from "next-intl";
 
 export function ScanLoginPanel({ nextPath }: { nextPath: string }) {
@@ -68,6 +69,12 @@ export function ScanLoginPanel({ nextPath }: { nextPath: string }) {
         headers: { accept: "application/json" },
       });
       if (!res.ok) {
+        if (scanPollNeedsNewSession(res.status)) {
+          // 行已被服务端清理（404）：这个 device_code 永远不会有结果了，
+          // 换新码而不是拿着死码轮询到天荒地老。
+          if (!stoppedRef.current) schedule(startSession, 500);
+          return;
+        }
         if (!stoppedRef.current) schedule(poll, intervalRef.current * 1000);
         return;
       }

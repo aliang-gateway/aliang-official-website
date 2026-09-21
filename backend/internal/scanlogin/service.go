@@ -201,6 +201,9 @@ func maxInt(a, b int) int {
 func Hash(code string) string { return hashCode(code) }
 
 // Scan 由 App（已登录）调用：把 pending 行原子置为 scanned 并绑定 App 用户。
+// 幂等：同一用户对已绑定自己的行重复调用（扫码帧连发/网络重试）直接成功。
+// 2026-09-21 生产事故：iOS 扫码帧双发，第二发 409 后到覆盖成功 UI，而 scanned
+// 行永远无法重扫，用户被卡死到网页 TTL 换码。过期行不参与幂等（TTL 是配对窗口硬边界）。
 func (s *Service) Scan(ctx context.Context, scanCode string, userID int64) error {
 	now := s.now().UTC()
 	res, err := s.db.ExecContext(ctx, db.Rebind(s.dialect, `
@@ -212,9 +215,56 @@ func (s *Service) Scan(ctx context.Context, scanCode string, userID int64) error
 		return fmt.Errorf("scan: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.scanCodeError(ctx, scanCode)
+		idempotent, err := s.repeatOutcomeForUser(ctx, scanCode, userID, false)
+		if err != nil {
+			return err
+		}
+		if idempotent {
+			return nil
+		}
+		return ErrInvalidState
 	}
 	return nil
+}
+
+// lookupScanCodeRow 按 scan_code 哈希取行的 (status, user_id, expires_at)。
+func (s *Service) lookupScanCodeRow(ctx context.Context, scanCode string) (Status, sql.NullInt64, time.Time, error) {
+	var (
+		status    Status
+		rowUser   sql.NullInt64
+		expiresAt time.Time
+	)
+	err := s.db.QueryRowContext(ctx, db.Rebind(s.dialect, `
+		SELECT status, user_id, expires_at FROM als_scan_codes WHERE scan_code_hash = ?;
+	`), hashCode(scanCode)).Scan(&status, &rowUser, &expiresAt)
+	return status, rowUser, expiresAt, err
+}
+
+// repeatOutcomeForUser 判定「同一用户对已推进状态的行重复调用」是否幂等成功。
+// 返回 (true, nil) = 幂等成功；(false, nil) = 真状态冲突；(非nil err) = NotFound/DB 错误。
+// expectAuthorized（Confirm 路径）只认 authorized；Scan 路径只认 scanned——
+// authorized 行是已消费的登录，对 Scan 幂等会允许旧二维码重放出一次「再次登录成功」。
+// denied 行与过期行一律不算幂等。
+func (s *Service) repeatOutcomeForUser(ctx context.Context, scanCode string, userID int64, expectAuthorized bool) (bool, error) {
+	status, rowUser, expiresAt, err := s.lookupScanCodeRow(ctx, scanCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	if !rowUser.Valid || rowUser.Int64 != userID || !expiresAt.After(s.now()) {
+		return false, ErrInvalidState
+	}
+	switch status {
+	case StatusAuthorized:
+		// Scan 路径不认可已消费的 authorized 行（防旧码重放），只有 Confirm 自己认。
+		return expectAuthorized, nil
+	case StatusScanned:
+		return !expectAuthorized, nil
+	default:
+		return false, ErrInvalidState
+	}
 }
 
 // scanCodeError 在转移失败时区分「不存在」与「状态不对」。
@@ -233,12 +283,29 @@ func (s *Service) scanCodeError(ctx context.Context, scanCode string) error {
 }
 
 // Confirm 由 App 调用：先签发 session，再用单条原子 UPDATE 完成 scanned→authorized 并写入明文 token。
-// 先 mint 后转移：即使进程在两步之间崩溃，scan_codes 仍停留在 scanned（PC 继续轮询、可重试确认），
-// 不会卡在 authorized 却无 token 的状态。极端并发重复确认时，als_sessions 可能留下未被领取的
-// 哈希行（无人持有明文，无害）。confirmer 必须等于扫码者（SQL 内 user_id 校验）。
+// mint 前硬闸：状态预检不通（不存在/pending/denied/过期/他人行）直接返回错误，
+// 不 mint——否则每个无效 confirm 都会向无清理机制的 als_sessions 烧一条孤儿行。
+// 唯一允许 mint 的窗口是「scanned+同人+未过期」。该窗口内先 mint 后转移：即使进程在
+// 两步之间崩溃，scan_codes 仍停留在 scanned（PC 继续轮询、可重试确认），不会卡在
+// authorized 却无 token 的状态。并发双确认的输家经下方幂等回查返回成功；
+// 多 mint 的那行 als_sessions 无人持有明文，无害。confirmer 必须等于扫码者。
 func (s *Service) Confirm(ctx context.Context, scanCode string, confirmerID int64) error {
 	if s.minter == nil {
 		return errors.New("session minter not configured")
+	}
+	status, rowUser, expiresAt, err := s.lookupScanCodeRow(ctx, scanCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	sameUser := rowUser.Valid && rowUser.Int64 == confirmerID && expiresAt.After(s.now())
+	if status == StatusAuthorized && sameUser {
+		return nil // 幂等：已由本确认者确认过（连点/重试）
+	}
+	if status != StatusScanned || !sameUser {
+		return ErrInvalidState
 	}
 	plaintext, tokenHash, err := s.minter.MintSessionForUser(ctx, confirmerID)
 	if err != nil {
@@ -254,7 +321,14 @@ func (s *Service) Confirm(ctx context.Context, scanCode string, confirmerID int6
 		return fmt.Errorf("confirm transition: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.scanCodeError(ctx, scanCode)
+		idempotent, err := s.repeatOutcomeForUser(ctx, scanCode, confirmerID, true)
+		if err != nil {
+			return err
+		}
+		if idempotent {
+			return nil
+		}
+		return ErrInvalidState
 	}
 	return nil
 }
