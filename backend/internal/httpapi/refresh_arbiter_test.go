@@ -353,3 +353,120 @@ func TestRefreshArbiterMarksTransportFailureUncertain(t *testing.T) {
 		t.Fatalf("ambiguous rotation must revoke local sessions, found=%v err=%v", found, err)
 	}
 }
+
+// decodeRefreshAnchorPayload extracts the anchor-relevant fields from a refresh
+// arbiter response body.
+func decodeRefreshAnchorPayload(t *testing.T, body string) (upstreamIn, upstreamAt, expiresIn int64) {
+	t.Helper()
+	var payload struct {
+		Data struct {
+			ExpiresIn         int64 `json:"expires_in"`
+			UpstreamExpiresIn int64 `json:"upstream_expires_in"`
+			UpstreamExpiresAt int64 `json:"upstream_expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode refresh anchor payload: %v (body=%s)", err, body)
+	}
+	return payload.Data.UpstreamExpiresIn, payload.Data.UpstreamExpiresAt, payload.Data.ExpiresIn
+}
+
+func assertCloseSeconds(t *testing.T, label string, got, want, tolerance int64) {
+	t.Helper()
+	if diff := got - want; diff > tolerance || diff < -tolerance {
+		t.Fatalf("%s = %d, want ≈%d (±%ds)", label, got, want, tolerance)
+	}
+}
+
+// TestRefreshArbiterResponseCarriesUpstreamAnchor proves the refresh response
+// exposes the upstream access token's real expiry (upstream_expires_in /
+// upstream_expires_at) alongside the unchanged rolling-local expires_in, so
+// clients can anchor their credential countdown on the constraint that actually
+// forces a re-authentication.
+func TestRefreshArbiterResponseCarriesUpstreamAnchor(t *testing.T) {
+	t.Parallel()
+
+	// Scenario 1 — cached-fresh vault with a known access_expires_at: the anchor
+	// mirrors it exactly, with zero upstream calls.
+	h := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
+		t.Errorf("cached-fresh anchor refresh must not reach upstream: %s", req.URL.Path)
+	})
+	userID, _ := createUserViaAPI(t, h.mux, "anchor-fresh@example.com", "Anchor Fresh", "user", "")
+	session := h.mintSession(t, userID)
+	anchorTTL := 7*time.Hour + 30*time.Minute
+	anchorAt := time.Now().UTC().Add(anchorTTL)
+	if _, err := h.db.ExecContext(context.Background(), `
+		INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token, access_expires_at)
+		VALUES (?, NULL, ?, ?, ?);
+	`, userID, fakeAccessJWT(t, anchorAt.Unix()), "R0", anchorAt); err != nil {
+		t.Fatalf("seed anchored vault: %v", err)
+	}
+
+	status, body := h.postRefresh(t, session)
+	if status != http.StatusOK {
+		t.Fatalf("expected 200 from anchored cached refresh, got %d body=%s", status, body)
+	}
+	upstreamIn, upstreamAt, expiresIn := decodeRefreshAnchorPayload(t, body)
+	assertCloseSeconds(t, "data.upstream_expires_in", upstreamIn, int64(anchorTTL.Seconds()), 60)
+	assertCloseSeconds(t, "data.upstream_expires_at", upstreamAt, anchorAt.Unix(), 60)
+	if expiresIn <= 0 {
+		t.Fatalf("local expires_in must stay a positive rolling value, got %d (body=%s)", expiresIn, body)
+	}
+
+	// Scenario 2 — vault with NULL access_expires_at plus an opaque rotated
+	// access token: the persisted expiry comes from the defaultAccessTTL
+	// fallback, and the response anchor mirrors that ~50-minute window.
+	h2 := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/refresh" {
+			t.Errorf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"rotated-opaque-access","refresh_token":"R1","expires_in":3600,"token_type":"Bearer"}}`))
+	})
+	userID2, _ := createUserViaAPI(t, h2.mux, "anchor-fallback@example.com", "Anchor Fallback", "user", "")
+	session2 := h2.mintSession(t, userID2)
+	h2.seedVault(t, userID2, "A0", "R0") // NULL access_expires_at forces one rotation
+
+	status2, body2 := h2.postRefresh(t, session2)
+	if status2 != http.StatusOK {
+		t.Fatalf("expected 200 from fallback anchored refresh, got %d body=%s", status2, body2)
+	}
+	upstreamIn2, _, expiresIn2 := decodeRefreshAnchorPayload(t, body2)
+	assertCloseSeconds(t, "data.upstream_expires_in (defaultAccessTTL fallback)", upstreamIn2, int64(defaultAccessTTL.Seconds()), 60)
+	if expiresIn2 <= 0 {
+		t.Fatalf("local expires_in must stay a positive rolling value, got %d (body=%s)", expiresIn2, body2)
+	}
+
+	// Scenario 3 — vault whose access_expires_at is already in the past (and
+	// whose rotated upstream access token is likewise an expired JWT): the
+	// anchor must floor at 1 instead of reporting a negative countdown.
+	expiredAt := time.Now().UTC().Add(-time.Hour)
+	expiredAccess := fakeAccessJWT(t, expiredAt.Unix())
+	h3 := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/refresh" {
+			t.Errorf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"` + expiredAccess + `","refresh_token":"R1","expires_in":3600,"token_type":"Bearer"}}`))
+	})
+	userID3, _ := createUserViaAPI(t, h3.mux, "anchor-clamp@example.com", "Anchor Clamp", "user", "")
+	session3 := h3.mintSession(t, userID3)
+	if _, err := h3.db.ExecContext(context.Background(), `
+		INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token, access_expires_at)
+		VALUES (?, NULL, ?, ?, ?);
+	`, userID3, expiredAccess, "R0", expiredAt); err != nil {
+		t.Fatalf("seed expired vault: %v", err)
+	}
+
+	status3, body3 := h3.postRefresh(t, session3)
+	if status3 != http.StatusOK {
+		t.Fatalf("expected 200 from clamped anchored refresh, got %d body=%s", status3, body3)
+	}
+	upstreamIn3, _, expiresIn3 := decodeRefreshAnchorPayload(t, body3)
+	if upstreamIn3 != 1 {
+		t.Fatalf("data.upstream_expires_in = %d, want 1 (floor clamp) (body=%s)", upstreamIn3, body3)
+	}
+	if expiresIn3 <= 0 {
+		t.Fatalf("local expires_in must stay a positive rolling value, got %d (body=%s)", expiresIn3, body3)
+	}
+}
