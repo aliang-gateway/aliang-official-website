@@ -1402,6 +1402,32 @@ func (r *routes) rotateUpstreamVaultLocked(ctx context.Context, userID int64, va
 	return 0, nil, fmt.Errorf("persist rotated upstream tokens: %w", persistErr)
 }
 
+// upstreamAnchorSeconds reports how much longer the vault's upstream sub2api
+// access token is expected to remain valid — the real constraint on the
+// session, unlike the rolling-local expires_in the refresh/login responses
+// advertise. Preference order: the stored access_expires_at, the JWT exp
+// decoded from the token itself, then the conservative defaultAccessTTL.
+// Never returns less than 1 so clients always receive a usable countdown seed.
+func (r *routes) upstreamAnchorSeconds(ctx context.Context, userID int64) int {
+	upstreamExpiresIn := int(defaultAccessTTL.Seconds())
+	vault, vErr := r.sub2api.LoadVault(ctx, userID)
+	if vErr != nil {
+		slog.Warn("upstream anchor: load vault failed", "user_id", userID, "error", vErr)
+	} else if vault != nil {
+		if vault.HasAccessExpires {
+			upstreamExpiresIn = int(time.Until(vault.AccessExpiresAt).Seconds())
+		} else if vault.AccessToken != "" {
+			if exp := accessTokenExpiry(vault.AccessToken); exp != nil {
+				upstreamExpiresIn = int(time.Until(*exp).Seconds())
+			}
+		}
+	}
+	if upstreamExpiresIn < 1 {
+		upstreamExpiresIn = 1
+	}
+	return upstreamExpiresIn
+}
+
 func (r *routes) writeLocalSessionRefresh(w http.ResponseWriter, ctx context.Context, userID int64, sessionToken string) {
 	expiresAt, err := r.extendLocalSessionExpiry(ctx, userID, sessionToken)
 	if err != nil {
@@ -1417,6 +1443,7 @@ func (r *routes) writeLocalSessionRefresh(w http.ResponseWriter, ctx context.Con
 	if expiresIn < 1 {
 		expiresIn = 1
 	}
+	upstreamExpiresIn := r.upstreamAnchorSeconds(ctx, userID)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"code":    0,
@@ -1426,6 +1453,10 @@ func (r *routes) writeLocalSessionRefresh(w http.ResponseWriter, ctx context.Con
 			"refresh_token": sessionToken,
 			"expires_in":    expiresIn,
 			"token_type":    "Bearer",
+			// The upstream access token's real expiry anchor; expires_in above
+			// stays the rolling-local session lifetime.
+			"upstream_expires_in": upstreamExpiresIn,
+			"upstream_expires_at": time.Now().UTC().Add(time.Duration(upstreamExpiresIn) * time.Second).Unix(),
 		},
 	})
 }
@@ -2522,7 +2553,11 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 				writeError(w, http.StatusInternalServerError, "failed to load local profile")
 				return
 			}
-			responseBody, err = injectLocalSessionIntoAuthResponse(responseBody, sessionToken, localProfile)
+			// captureSub2APITokens just wrote the vault, so loading it back
+			// yields the freshly captured upstream expiry — expose it as the
+			// real credential anchor alongside the local session fields.
+			upstreamExpiresIn := r.upstreamAnchorSeconds(req.Context(), localUserID)
+			responseBody, err = injectLocalSessionIntoAuthResponse(responseBody, sessionToken, localProfile, upstreamExpiresIn)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to finalize login response")
 				return
@@ -3223,21 +3258,31 @@ func (r *routes) extendLocalSessionExpiry(ctx context.Context, userID int64, ses
 	return newExpiry, nil
 }
 
-func injectLocalSessionIntoAuthResponse(body []byte, sessionToken string, profile *user.UserProfile) ([]byte, error) {
+// injectLocalSessionIntoAuthResponse rewrites an upstream auth response to use
+// the device-local session credential. upstreamExpiresIn carries the upstream
+// access token's real remaining lifetime (see upstreamAnchorSeconds) so clients
+// can anchor their countdown on it; expires_in itself keeps its rolling-local
+// session semantics.
+func injectLocalSessionIntoAuthResponse(body []byte, sessionToken string, profile *user.UserProfile, upstreamExpiresIn int) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
+	upstreamExpiresAt := time.Now().UTC().Add(time.Duration(upstreamExpiresIn) * time.Second).Unix()
 	payload["session_token"] = sessionToken
 	payload["access_token"] = sessionToken
 	payload["refresh_token"] = sessionToken
 	payload["expires_in"] = int(user.SessionLifetime / time.Second)
+	payload["upstream_expires_in"] = upstreamExpiresIn
+	payload["upstream_expires_at"] = upstreamExpiresAt
 	overlayLocalProfile(payload, profile)
 	if data, ok := payload["data"].(map[string]any); ok {
 		data["session_token"] = sessionToken
 		data["access_token"] = sessionToken
 		data["refresh_token"] = sessionToken
 		data["expires_in"] = int(user.SessionLifetime / time.Second)
+		data["upstream_expires_in"] = upstreamExpiresIn
+		data["upstream_expires_at"] = upstreamExpiresAt
 		overlayLocalProfile(data, profile)
 		payload["data"] = data
 	}

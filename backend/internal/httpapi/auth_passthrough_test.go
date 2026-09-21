@@ -17,6 +17,7 @@ import (
 
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/proxy"
+	"ai-api-portal/backend/internal/user"
 )
 
 func TestAuthLoginPassthroughStoresSub2APITokensByEmail(t *testing.T) {
@@ -1028,4 +1029,85 @@ func TestDashboardPassthroughReturnsBadGatewayWhenUpstreamUnavailable(t *testing
 	if rec.Body.String() == "" {
 		t.Fatalf("expected non-empty error body")
 	}
+}
+
+// TestLoginResponseCarriesUpstreamAnchor proves the login injection exposes the
+// freshly captured upstream access expiry (upstream_expires_in /
+// upstream_expires_at) next to the unchanged 24h local expires_in, so clients
+// can anchor their credential countdown on the real upstream constraint.
+func TestLoginResponseCarriesUpstreamAnchor(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+	const userID int64 = 7010
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_users(id, email, name, role)
+		VALUES (?, ?, ?, ?);
+	`, userID, "anchor-login@example.com", "Anchor Login", "user"); err != nil {
+		t.Fatalf("seed sub2api-aligned local user: %v", err)
+	}
+
+	anchorTTL := 7*time.Hour + 30*time.Minute
+	anchorAt := time.Now().UTC().Add(anchorTTL)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/login" {
+			t.Fatalf("unexpected upstream path: %s", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"` + fakeAccessJWT(t, anchorAt.Unix()) + `","refresh_token":"up-rt-anchor","expires_in":3600,"token_type":"Bearer","user":{"id":7010,"email":"anchor-login@example.com","role":"user"}}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+
+	m := http.NewServeMux()
+	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(`{"email":"anchor-login@example.com","password":"secret"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		UpstreamExpiresIn int64 `json:"upstream_expires_in"`
+		UpstreamExpiresAt int64 `json:"upstream_expires_at"`
+		Data              struct {
+			ExpiresIn         int64 `json:"expires_in"`
+			UpstreamExpiresIn int64 `json:"upstream_expires_in"`
+			UpstreamExpiresAt int64 `json:"upstream_expires_at"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&payload); err != nil {
+		t.Fatalf("decode login anchor payload: %v", err)
+	}
+	assertCloseSeconds(t, "data.upstream_expires_in", payload.Data.UpstreamExpiresIn, int64(anchorTTL.Seconds()), 60)
+	assertCloseSeconds(t, "data.upstream_expires_at", payload.Data.UpstreamExpiresAt, anchorAt.Unix(), 60)
+	if payload.Data.ExpiresIn != int64(user.SessionLifetime/time.Second) {
+		t.Fatalf("local expires_in must keep its 24h rolling semantics, got %d", payload.Data.ExpiresIn)
+	}
+	if payload.UpstreamExpiresIn != payload.Data.UpstreamExpiresIn || payload.UpstreamExpiresAt != payload.Data.UpstreamExpiresAt {
+		t.Fatalf("root and data anchor fields must agree: root=(%d,%d) data=(%d,%d)",
+			payload.UpstreamExpiresIn, payload.UpstreamExpiresAt, payload.Data.UpstreamExpiresIn, payload.Data.UpstreamExpiresAt)
+	}
+
+	// The anchor must reflect the vault row captureSub2APITokens just wrote.
+	var storedExpires sql.NullTime
+	if err := database.QueryRowContext(ctx, `
+		SELECT access_expires_at
+		FROM als_sub2api_auth_tokens
+		WHERE user_id = ?;
+	`, userID).Scan(&storedExpires); err != nil {
+		t.Fatalf("query stored access expiry: %v", err)
+	}
+	if !storedExpires.Valid {
+		t.Fatal("expected stored access_expires_at to be set after login capture")
+	}
+	assertCloseSeconds(t, "vault access_expires_at", storedExpires.Time.Unix(), anchorAt.Unix(), 60)
 }
