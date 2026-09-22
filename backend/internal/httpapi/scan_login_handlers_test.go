@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/user"
@@ -249,4 +250,93 @@ func TestScanLoginWithAccessToken(t *testing.T) {
 	if status != http.StatusUnauthorized {
 		t.Fatalf("scan with bogus token status = %d, want 401", status)
 	}
+}
+
+// TestScanStatusCarriesUpstreamAnchor proves the authorized scan-status response
+// exposes the upstream access token's real expiry (upstream_expires_in /
+// upstream_expires_at) at the JSON top level, so the polling client can anchor
+// its refresh countdown on the actual constraint instead of assuming 24h. The
+// pending response must stay free of both keys (they only exist once a user —
+// and therefore a vault — is bound to the scan code).
+func TestScanStatusCarriesUpstreamAnchor(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := setupTestDB(t)
+
+	res, err := database.ExecContext(ctx, `
+		INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);
+	`, "anchor-scan@example.com", "Anchor Scan", "user")
+	if err != nil {
+		t.Fatalf("seed phone user: %v", err)
+	}
+	phoneUserID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("phone user LastInsertId: %v", err)
+	}
+	// Vault with a known access_expires_at: both the bearer credential for
+	// scan/confirm and the anchor source (upstreamAnchorSeconds prefers the
+	// stored expiry over the JWT exp).
+	anchorTTL := 3 * time.Hour
+	anchorAt := time.Now().UTC().Add(anchorTTL)
+	const phoneAccessToken = "anchor_scan_sub2api_access"
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token, access_expires_at)
+		VALUES (?, NULL, ?, ?, ?);
+	`, phoneUserID, phoneAccessToken, "R0", anchorAt); err != nil {
+		t.Fatalf("seed anchored vault: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{SQLDialect: "sqlite"})
+
+	// 1. Init → device_code + scan_code.
+	_, payload := doJSON(t, mux, http.MethodPost, "/auth/scan/init", map[string]string{}, "")
+	deviceCode, _ := payload["device_code"].(string)
+	scanCode, _ := payload["scan_code"].(string)
+	if deviceCode == "" || scanCode == "" {
+		t.Fatalf("init missing codes: %v", payload)
+	}
+
+	// 2. Pending status must not carry the anchor keys (omitempty contract).
+	status, payload := doJSON(t, mux, http.MethodGet, "/auth/scan/status?device_code="+deviceCode, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("pending status = %d, body=%v", status, payload)
+	}
+	if got, _ := payload["status"].(string); got != "pending" {
+		t.Fatalf("pending status field = %q, want pending", got)
+	}
+	if _, ok := payload["upstream_expires_in"]; ok {
+		t.Fatalf("pending status must not carry upstream_expires_in: %v", payload)
+	}
+	if _, ok := payload["upstream_expires_at"]; ok {
+		t.Fatalf("pending status must not carry upstream_expires_at: %v", payload)
+	}
+
+	// 3. Scan + confirm with the vault access_token bearer → authorized.
+	if status, _ = doJSON(t, mux, http.MethodPost, "/auth/scan/scan", map[string]string{"code": scanCode}, phoneAccessToken); status != http.StatusOK {
+		t.Fatalf("scan status = %d, want 200", status)
+	}
+	if status, _ = doJSON(t, mux, http.MethodPost, "/auth/scan/confirm", map[string]string{"code": scanCode}, phoneAccessToken); status != http.StatusOK {
+		t.Fatalf("confirm status = %d, want 200", status)
+	}
+
+	// 4. Authorized status carries the anchor at the JSON top level.
+	status, payload = doJSON(t, mux, http.MethodGet, "/auth/scan/status?device_code="+deviceCode, nil, "")
+	if status != http.StatusOK {
+		t.Fatalf("authorized status = %d, body=%v", status, payload)
+	}
+	if got, _ := payload["status"].(string); got != "authorized" {
+		t.Fatalf("authorized status field = %q, want authorized", got)
+	}
+	upstreamIn, ok := payload["upstream_expires_in"].(float64)
+	if !ok {
+		t.Fatalf("authorized status missing upstream_expires_in: %v", payload)
+	}
+	upstreamAt, ok := payload["upstream_expires_at"].(float64)
+	if !ok {
+		t.Fatalf("authorized status missing upstream_expires_at: %v", payload)
+	}
+	assertCloseSeconds(t, "upstream_expires_in", int64(upstreamIn), int64(anchorTTL.Seconds()), 60)
+	assertCloseSeconds(t, "upstream_expires_at", int64(upstreamAt), anchorAt.Unix(), 60)
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"ai-api-portal/backend/internal/auth"
 	"ai-api-portal/backend/internal/scanlogin"
@@ -26,6 +27,18 @@ func (r *routes) handleScanInit(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// scanStatusAnchorResponse layers the upstream expiry anchor on top of the
+// scan-login status payload. Embedding the pointer promotes every
+// scanlogin.StatusResult field to the JSON top level, so the anchor keys land
+// next to status/session_token exactly where the polling client reads them —
+// and the pointer + omitempty combination keeps pending/expired/denied
+// responses byte-identical to the pre-anchor shape.
+type scanStatusAnchorResponse struct {
+	*scanlogin.StatusResult
+	UpstreamExpiresIn *int   `json:"upstream_expires_in,omitempty"`
+	UpstreamExpiresAt *int64 `json:"upstream_expires_at,omitempty"`
+}
+
 func (r *routes) handleScanStatus(w http.ResponseWriter, req *http.Request) {
 	res, err := r.scanLogin.Status(req.Context(), req.URL.Query().Get("device_code"))
 	if err != nil {
@@ -37,6 +50,22 @@ func (r *routes) handleScanStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	// Only an authorized row has a bound user, and only that user's vault can
+	// supply the real upstream access expiry — the anchor clients must anchor
+	// their refresh countdown on (a 24h constant is wrong when the upstream
+	// JWT lives shorter; 2026-09-20 incident's last unfixed path). The
+	// scanlogin package stays vault-agnostic; this handler owns the join.
+	if res.Status == scanlogin.StatusAuthorized && res.User != nil {
+		if anchor := r.upstreamAnchorSeconds(req.Context(), res.User.ID); anchor > 0 {
+			anchorAt := time.Now().UTC().Add(time.Duration(anchor) * time.Second).Unix()
+			writeJSON(w, http.StatusOK, scanStatusAnchorResponse{
+				StatusResult:      res,
+				UpstreamExpiresIn: &anchor,
+				UpstreamExpiresAt: &anchorAt,
+			})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, res)
 }
 
