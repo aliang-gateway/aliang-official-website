@@ -1290,7 +1290,7 @@
     "badge": "Privacy",
     "title": "We respect and protect your privacy",
     "subtitle": "This policy explains what information we collect when providing our services, how we use it, and the rights you have.",
-    "lastUpdated": "Last updated: June 2026",
+    "lastUpdated": "Last updated: September 29, 2026",
     "sections": [
       {
         "icon": "info",
@@ -1342,6 +1342,25 @@
           "Request deletion of your account and related data.",
           "Export your data.",
           "Withdraw consent or stop using the service at any time."
+        ]
+      },
+      {
+        "icon": "smartphone",
+        "heading": "Mobile App (Aliang Vibe Coding)",
+        "points": [
+          "Credentials: login credentials are encrypted and stored only on your device in the system keychain.",
+          "Session & terminal content: AI session and terminal content relayed through the platform service is used solely to provide core features — never for ads or resale.",
+          "Voice input: speech is used only for real-time transcription and discarded afterwards; no voiceprint modelling.",
+          "Biometrics: fingerprint/Face ID unlock is verified on-device; secrets never leave the device.",
+          "Diagnostics: crash and runtime logs are de-identified and retained for a limited period to improve stability."
+        ]
+      },
+      {
+        "icon": "delete",
+        "heading": "Data Deletion & Account Closure",
+        "points": [
+          "You may close your account in the app or by emailing support@aliang.one; we will delete your account and associated data.",
+          "To export or delete specific data, email us and we will respond within a reasonable timeframe."
         ]
       }
     ]
@@ -1419,6 +1438,45 @@
         "paragraphs": [
           "We may update these terms from time to time; updates take effect when published within the service, and continued use constitutes acceptance.",
           "You may stop using the service and close your account at any time; we also reserve the right to suspend or terminate the service in the event of a breach of these terms."
+        ]
+      }
+    ]
+  },
+  "supportPage": {
+    "badge": "Support",
+    "title": "Help & Support",
+    "subtitle": "Support channels for Aliang Vibe Coding and the platform service",
+    "lastUpdated": "Last updated: September 29, 2026",
+    "sections": [
+      {
+        "icon": "mail",
+        "heading": "Contact Us",
+        "paragraphs": [
+          "Questions, feedback, or feature requests — drop us a line:"
+        ],
+        "points": [
+          "Email: liangsqrt@163.com (we usually reply within 1-2 business days)"
+        ]
+      },
+      {
+        "icon": "smartphone",
+        "heading": "Aliang Vibe Coding App",
+        "paragraphs": [
+          "Your AI coding agent, in your pocket — take over Claude Code / Codex / OpenCode sessions from your phone."
+        ],
+        "points": [
+          "Sign-in issues: make sure your account exists on the platform service, or use a demo account.",
+          "Connection issues: the app works together with your self-hosted platform service and desktop agent — see the docs."
+        ]
+      },
+      {
+        "icon": "shield",
+        "heading": "Privacy & Security",
+        "paragraphs": [
+          "We take your privacy and security seriously:"
+        ],
+        "points": [
+          "See our privacy policy at /privacy; to report a security issue, please email us."
         ]
       }
     ]
