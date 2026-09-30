@@ -40,24 +40,24 @@ import (
 )
 
 type routes struct {
-	db                    *sql.DB
-	sqlDialect            string
-	apiKey                *apikey.Service
-	articleSvc            *article.Service
-	docSvc                *doc.Service
-	configCenterSvc       *configcenter.Service
-	downloadSvc           *download.Service
-	serviceDirectionSvc   *servicedirection.Service
-	fulfillmentSvc        *fulfillment.Service
-	userSvc               *user.Service
-	sub2api               *sub2api.Gateway
-	proxyClient           *proxy.Client
-	stripeClient          *portalstripe.Client
-	userUsageCache        UserUsageCache
-	adminBootstrapSecret  string
-	scanLogin             *scanlogin.Service
-	phoneServerAdminURL   string
-	phoneServerAdminToken string
+	db                       *sql.DB
+	sqlDialect               string
+	apiKey                   *apikey.Service
+	articleSvc               *article.Service
+	docSvc                   *doc.Service
+	configCenterSvc          *configcenter.Service
+	downloadSvc              *download.Service
+	serviceDirectionSvc      *servicedirection.Service
+	fulfillmentSvc           *fulfillment.Service
+	userSvc                  *user.Service
+	sub2api                  *sub2api.Gateway
+	proxyClient              *proxy.Client
+	stripeClient             *portalstripe.Client
+	userUsageCache           UserUsageCache
+	adminBootstrapSecret     string
+	scanLogin                *scanlogin.Service
+	phoneServerAdminURL      string
+	phoneServerAdminPassword string
 	// refreshArbiter serializes refreshes per user so concurrent/multi-device
 	// refreshes never reach sub2api twice with the same token (which would trip
 	// its refresh-token replay detection and revoke the whole family).
@@ -80,8 +80,8 @@ type RoutesOptions struct {
 	Sub2APITokenEncryptionKey string
 	// Companion phone platform server admin API for the best-effort mirror
 	// purge during self-service account deletion. Empty values skip the purge.
-	PhoneServerAdminURL   string
-	PhoneServerAdminToken string
+	PhoneServerAdminURL      string
+	PhoneServerAdminPassword string
 	// BackgroundCtx, when non-nil, starts the fulfillment retry worker that
 	// drains failed_retryable jobs whose backoff has elapsed. Cancel it to stop
 	// the worker (typically on SIGTERM in main).
@@ -782,24 +782,24 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	// this broker keeps the upstream token family private.
 	sub2apiGateway := sub2api.NewGateway(opts.ProxyClient, sub2apiauth.NewServiceWithDialectAndKey(database, strings.TrimSpace(opts.SQLDialect), opts.Sub2APITokenEncryptionKey))
 	r := &routes{
-		db:                    database,
-		sqlDialect:            strings.TrimSpace(opts.SQLDialect),
-		apiKey:                apikey.NewService(database),
-		articleSvc:            article.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
-		docSvc:                doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
-		configCenterSvc:       configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
-		downloadSvc:           download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
-		serviceDirectionSvc:   servicedirection.NewService(database, strings.TrimSpace(opts.SQLDialect)),
-		fulfillmentSvc:        fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
-		userSvc:               userSvc,
-		sub2api:               sub2apiGateway,
-		proxyClient:           opts.ProxyClient,
-		stripeClient:          opts.StripeClient,
-		adminBootstrapSecret:  strings.TrimSpace(opts.AdminBootstrapSecret),
-		userUsageCache:        opts.UserUsageCache,
-		scanLogin:             scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
-		phoneServerAdminURL:   strings.TrimSpace(opts.PhoneServerAdminURL),
-		phoneServerAdminToken: strings.TrimSpace(opts.PhoneServerAdminToken),
+		db:                       database,
+		sqlDialect:               strings.TrimSpace(opts.SQLDialect),
+		apiKey:                   apikey.NewService(database),
+		articleSvc:               article.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
+		docSvc:                   doc.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		configCenterSvc:          configcenter.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		downloadSvc:              download.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		serviceDirectionSvc:      servicedirection.NewService(database, strings.TrimSpace(opts.SQLDialect)),
+		fulfillmentSvc:           fulfillment.NewServiceWithDialect(database, strings.TrimSpace(opts.SQLDialect)),
+		userSvc:                  userSvc,
+		sub2api:                  sub2apiGateway,
+		proxyClient:              opts.ProxyClient,
+		stripeClient:             opts.StripeClient,
+		adminBootstrapSecret:     strings.TrimSpace(opts.AdminBootstrapSecret),
+		userUsageCache:           opts.UserUsageCache,
+		scanLogin:                scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
+		phoneServerAdminURL:      strings.TrimSpace(opts.PhoneServerAdminURL),
+		phoneServerAdminPassword: strings.TrimSpace(opts.PhoneServerAdminPassword),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -170,8 +171,8 @@ func (r *routes) purgeLocalAccountData(ctx context.Context, userID int64) error 
 // upstream deletion has already succeeded at this point.
 func (r *routes) purgePhoneServerAccount(ctx context.Context, email string) {
 	baseURL := strings.TrimRight(strings.TrimSpace(r.phoneServerAdminURL), "/")
-	token := strings.TrimSpace(r.phoneServerAdminToken)
-	if baseURL == "" || token == "" {
+	password := strings.TrimSpace(r.phoneServerAdminPassword)
+	if baseURL == "" || password == "" {
 		return
 	}
 
@@ -182,6 +183,15 @@ func (r *routes) purgePhoneServerAccount(ctx context.Context, email string) {
 
 	purgeCtx, cancel := context.WithTimeout(ctx, accountDeleteUpstreamTimeout)
 	defer cancel()
+
+	// Admin routes authenticate via a short-lived web session (awt_…) minted by
+	// POST /api/admin/login and carried in the x-admin-token header (plus the
+	// x-admin-console flag) — there is no static token to configure.
+	token, err := loginPhoneServerAdmin(purgeCtx, baseURL, password)
+	if err != nil {
+		slog.Warn("phone server admin login failed", "error", err)
+		return
+	}
 
 	phoneServerUserID, err := findPhoneServerUserByEmail(purgeCtx, baseURL, token, email)
 	if err != nil {
@@ -218,6 +228,40 @@ func (r *routes) purgePhoneServerAccount(ctx context.Context, email string) {
 		return
 	}
 	slog.Info("phone server mirror account deleted", "email", email)
+}
+
+// loginPhoneServerAdmin mints a short-lived admin web session on the phone
+// server (POST /api/admin/login {password} → {token: "awt_…"}).
+func loginPhoneServerAdmin(ctx context.Context, baseURL, password string) (string, error) {
+	body, err := json.Marshal(map[string]string{"password": password})
+	if err != nil {
+		return "", fmt.Errorf("encode admin login body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/admin/login", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("build admin login request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := phoneServerHTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("admin login: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("admin login: status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("decode admin login response: %w", err)
+	}
+	if strings.TrimSpace(payload.Token) == "" {
+		return "", fmt.Errorf("admin login response carries no token")
+	}
+	return payload.Token, nil
 }
 
 // findPhoneServerUserByEmail resolves the phone server's user id for an email,

@@ -89,9 +89,27 @@ type phoneServerDeleteStub struct {
 func newPhoneServerDeleteStub(t *testing.T) *phoneServerDeleteStub {
 	t.Helper()
 
+	const adminPassword = "phone-admin-password"
+	const adminToken = "awt_stub_admin_session"
 	stub := &phoneServerDeleteStub{}
 	stub.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Header.Get("x-admin-token") == "" || req.Header.Get("x-admin-console") != "1" {
+		// Login first: admin routes only accept the short-lived awt_ session
+		// issued by POST /api/admin/login, never a static credential.
+		if req.Method == http.MethodPost && req.URL.Path == "/api/admin/login" {
+			var body struct {
+				Password string `json:"password"`
+			}
+			_ = json.NewDecoder(req.Body).Decode(&body)
+			if body.Password != adminPassword {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"invalid_admin_password"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"token":%q,"expires_at":"2030-01-01T00:00:00Z"}`, adminToken)))
+			return
+		}
+		if req.Header.Get("x-admin-token") != adminToken || req.Header.Get("x-admin-console") != "1" {
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"error":"admin_only"}`))
 			return
@@ -259,7 +277,7 @@ func TestHandleAuthAccountDelete(t *testing.T) {
 			opts := RoutesOptions{ProxyClient: proxyClient}
 			if tt.configurePhone {
 				opts.PhoneServerAdminURL = phoneStub.server.URL
-				opts.PhoneServerAdminToken = "phone-admin-token"
+				opts.PhoneServerAdminPassword = "phone-admin-password"
 			}
 			m := http.NewServeMux()
 			RegisterRoutesWithOptions(m, database, opts)

@@ -25,8 +25,8 @@ type Config struct {
 	// Companion phone platform server admin API, used only for the best-effort
 	// mirror purge during self-service account deletion. Optional: when either
 	// value is empty the mirror purge is skipped entirely.
-	PhoneServerAdminURL   string `yaml:"phone_server_admin_url"`
-	PhoneServerAdminToken string `yaml:"phone_server_admin_token"`
+	PhoneServerAdminURL      string `yaml:"phone_server_admin_url"`
+	PhoneServerAdminPassword string `yaml:"phone_server_admin_password"`
 }
 
 type ServerConfig struct {
@@ -106,7 +106,7 @@ func Load(path string) (*Config, error) {
 	applyEnvString(&cfg.Sub2APIAdminKey, "SUB2API_ADMIN_KEY")
 	applyEnvString(&cfg.Sub2APITokenEncryptionKey, "SUB2API_TOKEN_ENCRYPTION_KEY")
 	applyEnvString(&cfg.PhoneServerAdminURL, "PHONE_SERVER_ADMIN_URL")
-	applyEnvString(&cfg.PhoneServerAdminToken, "PHONE_SERVER_ADMIN_TOKEN")
+	applyEnvString(&cfg.PhoneServerAdminPassword, "PHONE_SERVER_ADMIN_PASSWORD")
 	applyEnvString(&cfg.Stripe.SecretKey, "STRIPE_SECRET_KEY")
 	applyEnvString(&cfg.Stripe.PublishableKey, "STRIPE_PUBLISHABLE_KEY")
 	applyEnvString(&cfg.Stripe.WebhookSecret, "STRIPE_WEBHOOK_SECRET")
@@ -128,7 +128,7 @@ func (c *Config) applyDefaults() {
 	c.Sub2APIAdminKey = strings.TrimSpace(c.Sub2APIAdminKey)
 	c.Sub2APITokenEncryptionKey = strings.TrimSpace(c.Sub2APITokenEncryptionKey)
 	c.PhoneServerAdminURL = strings.TrimRight(strings.TrimSpace(c.PhoneServerAdminURL), "/")
-	c.PhoneServerAdminToken = strings.TrimSpace(c.PhoneServerAdminToken)
+	c.PhoneServerAdminPassword = strings.TrimSpace(c.PhoneServerAdminPassword)
 	c.Stripe.SecretKey = strings.TrimSpace(c.Stripe.SecretKey)
 	c.Stripe.PublishableKey = strings.TrimSpace(c.Stripe.PublishableKey)
 	c.Stripe.WebhookSecret = strings.TrimSpace(c.Stripe.WebhookSecret)
