@@ -105,7 +105,7 @@ func newPhoneServerDeleteStub(t *testing.T) *phoneServerDeleteStub {
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"users":[{"id":"user_phone1","username":"deleteme","email":%q,"role":"user"}]}`, accountDeleteTestEmail)))
 		case req.Method == http.MethodDelete && req.URL.Path == "/api/admin/users/user_phone1":
 			stub.mu.Lock()
-			stub.deletes = append(stub.deletes, req.URL.Path)
+			stub.deletes = append(stub.deletes, req.URL.RequestURI())
 			stub.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"status":"deleted","user_id":"user_phone1"}`))
@@ -293,6 +293,14 @@ func TestHandleAuthAccountDelete(t *testing.T) {
 			}
 			if got := len(phoneStub.deletePaths()); got != tt.wantPhoneDeletes {
 				t.Fatalf("phone server deletes = %d, want %d", got, tt.wantPhoneDeletes)
+			}
+			// The mirror purge must request the full data wipe (purgeData=true),
+			// not just the account row — self-service deletion removes personal
+			// data too (App Store 5.1.1(v)).
+			for _, uri := range phoneStub.deletePaths() {
+				if uri != "/api/admin/users/user_phone1?purgeData=true" {
+					t.Fatalf("phone server delete URI = %q, want purgeData=true query", uri)
+				}
 			}
 
 			wantRowCount := int64(0)

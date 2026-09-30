@@ -193,7 +193,10 @@ func (r *routes) purgePhoneServerAccount(ctx context.Context, email string) {
 		return
 	}
 
-	deleteReq, err := http.NewRequestWithContext(purgeCtx, http.MethodDelete, baseURL+"/api/admin/users/"+url.PathEscape(phoneServerUserID), nil)
+	// purgeData=true opts the phone server into wiping the account's business
+	// rows (sessions, voice-transcription records) too, not just the account —
+	// self-service deletion must remove personal data, per App Store 5.1.1(v).
+	deleteReq, err := http.NewRequestWithContext(purgeCtx, http.MethodDelete, baseURL+"/api/admin/users/"+url.PathEscape(phoneServerUserID)+"?purgeData=true", nil)
 	if err != nil {
 		slog.Warn("build phone server delete request failed", "email", email, "error", err)
 		return
