@@ -191,6 +191,8 @@ func main() {
 		AdminBootstrapSecret:      cfg.Auth.AdminBootstrapSecret,
 		SQLDialect:                cfg.Database.Driver,
 		Sub2APITokenEncryptionKey: cfg.Sub2APITokenEncryptionKey,
+		PhoneServerAdminURL:       cfg.PhoneServerAdminURL,
+		PhoneServerAdminToken:     cfg.PhoneServerAdminToken,
 		BackgroundCtx:             ctx,
 		WorkerInterval:            time.Duration(loadIntEnv("FULFILLMENT_WORKER_INTERVAL_MS", 10000)) * time.Millisecond,
 		WorkerBatchSize:           loadIntEnv("FULFILLMENT_WORKER_BATCH_SIZE", 25),
