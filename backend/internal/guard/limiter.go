@@ -63,8 +63,12 @@ func (l *RateLimiter) sweepLocked(now time.Time) {
 			delete(l.hits, key)
 			continue
 		}
+		// Sweep conservatively: the widest configured window is 24h
+		// (per-email), so only drop keys idle longer than that — a shorter
+		// TTL would silently reset still-active counters under memory
+		// pressure.
 		last := stamps[len(stamps)-1]
-		if now.Sub(last) >= time.Hour {
+		if now.Sub(last) >= 24*time.Hour {
 			delete(l.hits, key)
 		}
 	}

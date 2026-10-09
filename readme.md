@@ -66,7 +66,10 @@ curl http://localhost:8080/healthz
 ## Backend Auth (current minimal scheme)
 
 - Authenticated endpoints use `X-User-Id: <numeric-user-id>` request header.
-- Create users with `POST /users` (role defaults to `user`, can be `admin`).
+- Create users with `POST /users` — requires an authenticated **admin** session;
+  escalating the created role to `admin`/`distributor` additionally requires the
+  `X-Admin-Bootstrap-Secret` header. (Was public pre-2026-10; closed as part of
+  the register-abuse hardening.)
 - API key endpoints:
   - `POST /api-keys` issues a new key for the authenticated user and returns plaintext key once.
   - `DELETE /api-keys/{id}` revokes a key owned by the user (admins can revoke any key).

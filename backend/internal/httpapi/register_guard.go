@@ -15,9 +15,11 @@ import (
 // optional email-domain allowlist, and server-side Turnstile verification.
 //
 // A zero-value RoutesOptions builds a nil guard (every check off) so tests
-// and local development keep the raw passthrough behaviour; production wires
-// resolved values from config. Turnstile activates only when a secret is
-// configured, so rollout can stage: deploy code → set TURNSTILE_SECRET_KEY.
+// and local development keep the raw passthrough behaviour. In production
+// the rate limits and domain filtering are active by default from config;
+// Turnstile additionally activates once a secret is configured, staging the
+// rollout: deploy code first → set TURNSTILE_SECRET_KEY to enforce the
+// captcha.
 type registerGuard struct {
 	turnstile         *guard.TurnstileVerifier // nil → turnstile off
 	limiter           *guard.RateLimiter
@@ -69,9 +71,6 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 		if !g.limiter.Allow("ip:"+clientIP, g.maxPerIPPerHour, time.Hour) {
 			return http.StatusTooManyRequests, "too many registration attempts from this address, please try again later"
 		}
-		if !g.limiter.Allow("email:"+email, g.maxPerEmailPerDay, 24*time.Hour) {
-			return http.StatusTooManyRequests, "too many registration attempts for this email, please try again later"
-		}
 	}
 
 	if email != "" {
@@ -90,18 +89,33 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 		}
 	}
 
+	// The per-email budget is consumed only after the captcha passed, so a
+	// griefing attacker cannot lock a victim's mailbox out of registration
+	// without paying for Turnstile solves.
+	if g.limiter != nil {
+		if !g.limiter.Allow("email:"+email, g.maxPerEmailPerDay, 24*time.Hour) {
+			return http.StatusTooManyRequests, "too many registration attempts for this email, please try again later"
+		}
+	}
+
 	return 0, ""
 }
 
-// registerClientIP resolves the best-effort client IP for abuse controls:
-// the left-most X-Forwarded-For entry when present (set by the ingress and
-// forwarded by the Next.js proxy), otherwise the socket peer.
+// registerClientIP resolves the best-effort client IP for abuse controls.
+// Every proxy on this deployment's path (edge nginx, the frp tunnel, and
+// ingress-nginx with compute-full-forwarded-for) APPENDS to X-Forwarded-For
+// rather than overwriting it, so the right-most entry is an internal hop and
+// the second-to-last entry is the ingress's view of the real client. The
+// left-most entries are fully attacker-controlled (a script can prepend any
+// number of fake IPs), so they must never key a rate limit.
 func registerClientIP(req *http.Request) string {
 	if xff := strings.TrimSpace(req.Header.Get("X-Forwarded-For")); xff != "" {
-		if idx := strings.IndexByte(xff, ','); idx >= 0 {
-			xff = xff[:idx]
+		parts := strings.Split(xff, ",")
+		idx := len(parts) - 2
+		if idx < 0 {
+			idx = 0
 		}
-		if ip := strings.TrimSpace(xff); ip != "" {
+		if ip := strings.TrimSpace(parts[idx]); ip != "" {
 			return ip
 		}
 	}

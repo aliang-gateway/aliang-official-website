@@ -255,3 +255,60 @@ func newTurnstileTestEndpoint(t *testing.T, success bool) string {
 	t.Cleanup(server.Close)
 	return server.URL
 }
+
+func TestRegisterClientIPPrefersPenultimateXFFHop(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		xff  string
+		peer string
+		want string
+	}{
+		{
+			// 本部署链路（边缘 nginx→frp→ingress）对 XFF 一律追加：最右是内网跳，
+			// 倒数第二跳恒为真实客户端。攻击者再怎么在前面塞伪造值，倒数第二跳不变。
+			name: "multi hop keeps attacker real ip as penultimate",
+			xff:  "6.6.6.6, 7.7.7.7, 8.8.8.8, 172.16.111.101",
+			want: "8.8.8.8",
+		},
+		{
+			name: "legit browser request real client penultimate",
+			xff:  "1.2.3.4, 172.16.111.101",
+			want: "1.2.3.4",
+		},
+		{
+			name: "single entry used as is",
+			xff:  "1.2.3.4",
+			want: "1.2.3.4",
+		},
+		{
+			name: "no xff falls back to peer addr",
+			xff:  "",
+			peer: "9.9.9.9:51234",
+			want: "9.9.9.9",
+		},
+		{
+			name: "entries are trimmed",
+			xff:  " 5.5.5.5 , 172.16.111.101 ",
+			want: "5.5.5.5",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", nil)
+			if tc.peer != "" {
+				req.RemoteAddr = tc.peer
+			}
+			if tc.xff != "" {
+				req.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			if got := registerClientIP(req); got != tc.want {
+				t.Fatalf("registerClientIP = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
