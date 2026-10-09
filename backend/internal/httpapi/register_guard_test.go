@@ -1,0 +1,257 @@
+package httpapi
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"testing"
+
+	"ai-api-portal/backend/internal/proxy"
+)
+
+// newRegisterGuardTestRoutes wires a routes mux whose upstream counts how
+// many registration requests actually reached it.
+func newRegisterGuardTestRoutes(t *testing.T, opts RoutesOptions) (*http.ServeMux, *atomic.Int64) {
+	t.Helper()
+
+	var upstreamHits atomic.Int64 // counts only /api/v1/auth/register hits
+	var userIDMu sync.Mutex
+	upstreamUserIDs := map[string]int64{} // stable upstream id per email
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/register" {
+			// Async default-keys hook calls like groups/available land here.
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{}}`))
+			return
+		}
+		hits := upstreamHits.Add(1)
+		var body struct {
+			Email string `json:"email"`
+		}
+		_ = json.NewDecoder(req.Body).Decode(&body)
+		userIDMu.Lock()
+		id, seen := upstreamUserIDs[body.Email]
+		if !seen {
+			id = int64(71000 + hits)
+			upstreamUserIDs[body.Email] = id
+		}
+		userIDMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":    0,
+			"message": "success",
+			"data": map[string]any{
+				"access_token":  fmt.Sprintf("up-at-%d", hits),
+				"refresh_token": fmt.Sprintf("up-rt-%d", hits),
+				"role":          "user",
+				"user": map[string]any{
+					"id":    id,
+					"email": body.Email,
+					"role":  "user",
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	proxyClient, err := proxy.NewClient(upstream.URL)
+	if err != nil {
+		t.Fatalf("create proxy client: %v", err)
+	}
+	opts.ProxyClient = proxyClient
+
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, setupTestDB(t), opts)
+	return mux, &upstreamHits
+}
+
+func postRegister(t *testing.T, mux *http.ServeMux, xff, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	if xff != "" {
+		req.Header.Set("X-Forwarded-For", xff)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestRegisterGuardBlocksDisposableEmailDomain(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{RegisterBlockDisposableDomains: true})
+
+	rec := postRegister(t, mux, "", `{"email":"bot@mailinator.com","name":"bot","password":"pw123456"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for disposable domain, got %d", rec.Code)
+	}
+	if hits := upstreamHits.Load(); hits != 0 {
+		t.Fatalf("disposable-domain registration must not reach upstream, got %d hits", hits)
+	}
+}
+
+func TestRegisterGuardAllowsOrdinaryDomainWhenDisposableBlocked(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{RegisterBlockDisposableDomains: true})
+
+	rec := postRegister(t, mux, "", `{"email":"someone@gmail.com","name":"ok","password":"pw123456"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if hits := upstreamHits.Load(); hits != 1 {
+		t.Fatalf("expected 1 upstream hit, got %d", hits)
+	}
+}
+
+func TestRegisterGuardRateLimitsPerIP(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{
+		RegisterMaxPerIPPerHour: 2,
+	})
+
+	for i := 0; i < 2; i++ {
+		if rec := postRegister(t, mux, "8.8.8.8", `{"email":"u`+strconv.Itoa(i)+`@gmail.com","name":"u","password":"pw"}`); rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+	rec := postRegister(t, mux, "8.8.8.8", `{"email":"third@gmail.com","name":"u","password":"pw"}`)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 once per-IP limit is exceeded, got %d", rec.Code)
+	}
+	if hits := upstreamHits.Load(); hits != 2 {
+		t.Fatalf("rate-limited request must not reach upstream, got %d hits", hits)
+	}
+	// A different IP is not affected.
+	if rec := postRegister(t, mux, "9.9.9.9", `{"email":"other@gmail.com","name":"u","password":"pw"}`); rec.Code != http.StatusOK {
+		t.Fatalf("expected other IP unaffected, got %d", rec.Code)
+	}
+}
+
+func TestRegisterGuardRateLimitsPerEmail(t *testing.T) {
+	t.Parallel()
+
+	mux, _ := newRegisterGuardTestRoutes(t, RoutesOptions{
+		RegisterMaxPerEmailPerDay: 1,
+	})
+
+	if rec := postRegister(t, mux, "8.8.8.8", `{"email":"same@gmail.com","name":"u","password":"pw"}`); rec.Code != http.StatusOK {
+		t.Fatalf("first attempt: expected 200, got %d", rec.Code)
+	}
+	if rec := postRegister(t, mux, "9.9.9.9", `{"email":"same@gmail.com","name":"u","password":"pw"}`); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("second attempt from another IP: expected 429, got %d", rec.Code)
+	}
+}
+
+func TestRegisterGuardRequiresTurnstileWhenSecretSet(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{
+		TurnstileSecretKey: "guard-secret",
+		TurnstileEndpoint:  newTurnstileTestEndpoint(t, false),
+	})
+
+	rec := postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without a turnstile token, got %d", rec.Code)
+	}
+	if hits := upstreamHits.Load(); hits != 0 {
+		t.Fatalf("unverified registration must not reach upstream, got %d hits", hits)
+	}
+
+	rec = postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw","turnstile_token":"forged"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a rejected token, got %d", rec.Code)
+	}
+}
+
+func TestRegisterGuardForwardsWhenTurnstilePasses(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{
+		TurnstileSecretKey: "guard-secret",
+		TurnstileEndpoint:  newTurnstileTestEndpoint(t, true),
+	})
+
+	rec := postRegister(t, mux, "8.8.4.4", `{"email":"human@gmail.com","name":"u","password":"pw","turnstile_token":"real-token"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if hits := upstreamHits.Load(); hits != 1 {
+		t.Fatalf("expected registration forwarded upstream, got %d hits", hits)
+	}
+}
+
+func TestRegisterGuardDisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{})
+
+	// Disposable domain, no token, more requests than any sane limit — with a
+	// zero-value guard none of the checks may fire (backward compatibility).
+	for i := 0; i < 15; i++ {
+		rec := postRegister(t, mux, "", `{"email":"bot@mailinator.com","name":"b","password":"pw"}`)
+		if rec.Code == http.StatusTooManyRequests || rec.Code == http.StatusForbidden || rec.Code == http.StatusBadRequest {
+			t.Fatalf("request %d: guard unexpectedly fired with status %d", i+1, rec.Code)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected upstream 200, got %d", i+1, rec.Code)
+		}
+	}
+	if hits := upstreamHits.Load(); hits != 15 {
+		t.Fatalf("expected 15 upstream hits, got %d", hits)
+	}
+}
+
+func TestRegisterGuardAllowedEmailDomains(t *testing.T) {
+	t.Parallel()
+
+	mux, _ := newRegisterGuardTestRoutes(t, RoutesOptions{
+		RegisterAllowedEmailDomains: []string{"aliang.one"},
+	})
+
+	if rec := postRegister(t, mux, "", `{"email":"a@aliang.one","name":"u","password":"pw"}`); rec.Code != http.StatusOK {
+		t.Fatalf("allowed domain: expected 200, got %d", rec.Code)
+	}
+	if rec := postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("domain outside allowlist: expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRegisterGuardSkipsMalformedBody(t *testing.T) {
+	t.Parallel()
+
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{
+		TurnstileSecretKey:             "guard-secret",
+		TurnstileEndpoint:              newTurnstileTestEndpoint(t, false),
+		RegisterBlockDisposableDomains: true,
+	})
+
+	// Malformed JSON is upstream's business — the guard must not 4xx it
+	// itself (upstream returns its own 400).
+	rec := postRegister(t, mux, "", `not-json`)
+	if rec.Code == http.StatusForbidden || rec.Code == http.StatusBadRequest {
+		t.Fatalf("guard must not reject a malformed body itself, got %d", rec.Code)
+	}
+	if hits := upstreamHits.Load(); hits != 1 {
+		t.Fatalf("malformed body should be forwarded for upstream validation, got %d hits", hits)
+	}
+}
+
+// newTurnstileTestEndpoint stands in for Cloudflare's siteverify endpoint.
+func newTurnstileTestEndpoint(t *testing.T, success bool) string {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": success})
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}

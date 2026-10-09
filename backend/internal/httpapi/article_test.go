@@ -505,8 +505,8 @@ func setupAdminArticleTestServer(t *testing.T) (*sql.DB, *http.ServeMux, string,
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
 
-	_, adminSessionToken := createUserViaAPI(t, mux, "admin-article@example.com", "Admin Article", "admin", "test-admin-secret")
-	_, nonAdminSessionToken := createUserViaAPI(t, mux, "member-article@example.com", "Member Article", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "admin-article@example.com", "Admin Article", "admin", "test-admin-secret")
+	_, nonAdminSessionToken := createTestUser(t, database, mux, "member-article@example.com", "Member Article", "user", "")
 
 	return database, mux, adminSessionToken, nonAdminSessionToken
 }

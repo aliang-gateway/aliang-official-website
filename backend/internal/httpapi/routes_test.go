@@ -225,7 +225,7 @@ func TestAdminUnitPriceEndpointsRequireAdmin(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
-	_, nonAdminSessionToken := createUserViaAPI(t, mux, "member@example.com", "Member", "user", "")
+	_, nonAdminSessionToken := createTestUser(t, database, mux, "member@example.com", "Member", "user", "")
 
 	reqMissingAuth := httptest.NewRequest(http.MethodPut, "/admin/unit-prices", bytes.NewReader([]byte(`{"service_item_code":"tokens_in","price_per_unit_micros":123}`)))
 	recMissingAuth := httptest.NewRecorder()
@@ -251,7 +251,7 @@ func TestAdminUnitPriceLifecycleSetListDeactivate(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "admin@example.com", "Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "admin@example.com", "Admin", "admin", "test-admin-secret")
 
 	setGlobalV1Req := httptest.NewRequest(http.MethodPut, "/admin/unit-prices", bytes.NewReader([]byte(`{"service_item_code":"tokens_in","price_per_unit_micros":1000}`)))
 	setBearerAuth(setGlobalV1Req, adminSessionToken)
@@ -425,7 +425,7 @@ func TestAdminPaymentSuccessEndpointRequiresAdmin(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, nonAdminSessionToken := createUserViaAPI(t, mux, "member-payment@example.com", "Member Payment", "user", "")
+	_, nonAdminSessionToken := createTestUser(t, database, mux, "member-payment@example.com", "Member Payment", "user", "")
 
 	body := `{"payment_event_id":"evt_1","user_id":1}`
 	reqMissingAuth := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -453,8 +453,8 @@ func TestAdminPaymentSuccessIngestionLifecycle(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	userID, _ := createUserViaAPI(t, mux, "target-payment@example.com", "Target Payment", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "admin-payment@example.com", "Admin Payment", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "target-payment@example.com", "Target Payment", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "admin-payment@example.com", "Admin Payment", "admin", "test-admin-secret")
 
 	body := `{"payment_event_id":"evt_success_1","order_id":"ord_1","provider":"stripe","user_id":` + strconv.FormatInt(userID, 10) + `,"payload":{"invoice_id":"in_1"}}`
 	firstReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -527,8 +527,8 @@ func TestAdminPaymentSuccessRejectsMissingIdempotencyKeyAndConflicts(t *testing.
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	userID, _ := createUserViaAPI(t, mux, "target-conflict@example.com", "Target Conflict", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "admin-conflict@example.com", "Admin Conflict", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "target-conflict@example.com", "Target Conflict", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "admin-conflict@example.com", "Admin Conflict", "admin", "test-admin-secret")
 
 	body := `{"payment_event_id":"evt_conflict_1","user_id":` + strconv.FormatInt(userID, 10) + `}`
 	missingKeyReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -618,7 +618,7 @@ func TestCreatePackageCheckoutSessionReturnsStripeURL(t *testing.T) {
 		AdminBootstrapSecret: "test-admin-secret",
 		StripeClient:         stripeClient,
 	})
-	userID, sessionToken := createUserViaAPI(t, mux, "checkout-user@example.com", "Checkout User", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "checkout-user@example.com", "Checkout User", "user", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/checkout/package", bytes.NewBufferString(`{"tier_code":"pro-monthly"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -687,7 +687,7 @@ func TestCreatePackageCheckoutSessionRejectsFreePackage(t *testing.T) {
 		AdminBootstrapSecret: "test-admin-secret",
 		StripeClient:         stripeClient,
 	})
-	_, sessionToken := createUserViaAPI(t, mux, "free-user@example.com", "Free User", "user", "")
+	_, sessionToken := createTestUser(t, database, mux, "free-user@example.com", "Free User", "user", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/checkout/package", bytes.NewBufferString(`{"tier_code":"free-tier"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -750,7 +750,7 @@ func TestCreatePackageCheckoutAcceptsBalanceWithSubscriptionGroup(t *testing.T) 
 		ProxyClient:          proxyClient,
 		StripeClient:         stripeClient,
 	})
-	_, sessionToken := createUserViaAPI(t, mux, "checkout-balance-sub@example.com", "Checkout Balance Sub User", "user", "")
+	_, sessionToken := createTestUser(t, database, mux, "checkout-balance-sub@example.com", "Checkout Balance Sub User", "user", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/checkout/package", bytes.NewBufferString(`{"tier_code":"balance-sub"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -834,7 +834,7 @@ func TestStripeWebhookCreatesLocalSubscriptionAndRedeemsPackage(t *testing.T) {
 		ProxyClient:          proxyClient,
 		StripeClient:         stripeClient,
 	})
-	userID, _ := createUserViaAPI(t, mux, "stripe-webhook-user@example.com", "Stripe Webhook User", "user", "")
+	userID, _ := createTestUser(t, database, mux, "stripe-webhook-user@example.com", "Stripe Webhook User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, userID, 9001, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -942,8 +942,8 @@ func TestCheckoutStatusAutoRetriesRetryableFulfillment(t *testing.T) {
 		AdminBootstrapSecret: "test-admin-secret",
 		ProxyClient:          proxyClient,
 	})
-	userID, userSessionToken := createUserViaAPI(t, mux, "retry-status-user@example.com", "Retry Status User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "retry-status-admin@example.com", "Retry Status Admin", "admin", "test-admin-secret")
+	userID, userSessionToken := createTestUser(t, database, mux, "retry-status-user@example.com", "Retry Status User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "retry-status-admin@example.com", "Retry Status Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -1014,9 +1014,9 @@ func TestAdminGetFulfillmentJobRequiresAdminAndReturnsJob(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	userID, _ := createUserViaAPI(t, mux, "fulfillment-target@example.com", "Fulfillment Target", "user", "")
-	_, nonAdminSessionToken := createUserViaAPI(t, mux, "fulfillment-member@example.com", "Fulfillment Member", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "fulfillment-admin@example.com", "Fulfillment Admin", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "fulfillment-target@example.com", "Fulfillment Target", "user", "")
+	_, nonAdminSessionToken := createTestUser(t, database, mux, "fulfillment-member@example.com", "Fulfillment Member", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "fulfillment-admin@example.com", "Fulfillment Admin", "admin", "test-admin-secret")
 
 	body := `{"payment_event_id":"evt_admin_get_1","user_id":` + strconv.FormatInt(userID, 10) + `}`
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -1097,9 +1097,9 @@ func TestUserGetFulfillmentJobOwnsAccess(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	ownerUserID, ownerSessionToken := createUserViaAPI(t, mux, "fulfillment-owner@example.com", "Fulfillment Owner", "user", "")
-	otherUserID, otherSessionToken := createUserViaAPI(t, mux, "fulfillment-other@example.com", "Fulfillment Other", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "fulfillment-admin2@example.com", "Fulfillment Admin Two", "admin", "test-admin-secret")
+	ownerUserID, ownerSessionToken := createTestUser(t, database, mux, "fulfillment-owner@example.com", "Fulfillment Owner", "user", "")
+	otherUserID, otherSessionToken := createTestUser(t, database, mux, "fulfillment-other@example.com", "Fulfillment Other", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "fulfillment-admin2@example.com", "Fulfillment Admin Two", "admin", "test-admin-secret")
 
 	body := `{"payment_event_id":"evt_user_get_1","user_id":` + strconv.FormatInt(ownerUserID, 10) + `}`
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/fulfillment/payment-success", bytes.NewReader([]byte(body)))
@@ -1217,8 +1217,8 @@ func TestAdminPaymentSuccessExecutesBalanceRechargeImmediately(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, _ := createUserViaAPI(t, mux, "balance-target@example.com", "Balance Target", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "balance-admin@example.com", "Balance Admin", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "balance-target@example.com", "Balance Target", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "balance-admin@example.com", "Balance Admin", "admin", "test-admin-secret")
 
 	if userID != 1 {
 		t.Fatalf("expected first created user id to be 1 for upstream route assertion, got %d", userID)
@@ -1328,8 +1328,8 @@ func TestPackageBalanceFulfillmentUsesAdminBalanceUpdate(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, _ := createUserViaAPI(t, mux, "credit-user@example.com", "Credit User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "credit-admin@example.com", "Credit Admin", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "credit-user@example.com", "Credit User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "credit-admin@example.com", "Credit Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, userID, 1, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -1387,8 +1387,8 @@ func TestAdminPaymentSuccessExecutesDelegatedAPIKeyCreationImmediately(t *testin
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, _ := createUserViaAPI(t, mux, "apikey-target@example.com", "API Key Target", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "apikey-admin@example.com", "API Key Admin", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "apikey-target@example.com", "API Key Target", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "apikey-admin@example.com", "API Key Admin", "admin", "test-admin-secret")
 
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
@@ -1448,8 +1448,8 @@ func TestAdminAvailableGroupsRequiresAdmin(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	_, userSessionToken := createUserViaAPI(t, mux, "groups-user@example.com", "Groups User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
+	_, userSessionToken := createTestUser(t, database, mux, "groups-user@example.com", "Groups User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
 
 	unauthReq := httptest.NewRequest(http.MethodGet, "/admin/groups/available", nil)
 	unauthRec := httptest.NewRecorder()
@@ -1501,7 +1501,7 @@ func TestAdminAvailableGroupsReturnsMappedGroups(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	_, adminSessionToken := createUserViaAPI(t, mux, "groups-admin2@example.com", "Groups Admin Two", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "groups-admin2@example.com", "Groups Admin Two", "admin", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/groups/available?platform=openai", nil)
 	setBearerAuth(req, adminSessionToken)
@@ -1574,7 +1574,7 @@ func TestAdminQuickCreateUserRegistersUpstreamAndStoresToken(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	_, adminSessionToken := createUserViaAPI(t, mux, "quick-admin@example.com", "Quick Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "quick-admin@example.com", "Quick Admin", "admin", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/quick-create", bytes.NewReader([]byte(`{"email":"Quick-User@Example.com"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -1666,7 +1666,7 @@ func TestDistributorQuickCreateUserBindsCreatedUser(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	distributorID, distributorSessionToken := createUserViaAPI(t, mux, "quick-distributor@example.com", "Quick Distributor", "distributor", "test-admin-secret")
+	distributorID, distributorSessionToken := createTestUser(t, database, mux, "quick-distributor@example.com", "Quick Distributor", "distributor", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodPost, "/distributor/users/quick-create", bytes.NewReader([]byte(`{"email":"New-Distributor-User@Example.com"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -1739,12 +1739,12 @@ func TestDistributorRelationshipListsSupportPagination(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
 
-	_, adminSessionToken := createUserViaAPI(t, mux, "pagination-admin@example.com", "Pagination Admin", "admin", "test-admin-secret")
-	distributorID, distributorSessionToken := createUserViaAPI(t, mux, "pagination-distributor@example.com", "Pagination Distributor", "distributor", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "pagination-admin@example.com", "Pagination Admin", "admin", "test-admin-secret")
+	distributorID, distributorSessionToken := createTestUser(t, database, mux, "pagination-distributor@example.com", "Pagination Distributor", "distributor", "test-admin-secret")
 
 	targetIDs := make([]int64, 0, 3)
 	for index := 1; index <= 3; index++ {
-		userID, _ := createUserViaAPI(t, mux, fmt.Sprintf("pagination-user-%d@example.com", index), fmt.Sprintf("Pagination User %d", index), "user", "")
+		userID, _ := createTestUser(t, database, mux, fmt.Sprintf("pagination-user-%d@example.com", index), fmt.Sprintf("Pagination User %d", index), "user", "")
 		targetIDs = append(targetIDs, userID)
 		createdAt := fmt.Sprintf("2026-06-0%d 00:00:00", index)
 		if _, err := database.ExecContext(ctx, `
@@ -1886,8 +1886,8 @@ func TestAdminAssignPackageAcceptsUpstreamUserID(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	localUserID, _ := createUserViaAPI(t, mux, "assign-upstream-user@example.com", "Assign Upstream User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "assign-upstream-admin@example.com", "Assign Upstream Admin", "admin", "test-admin-secret")
+	localUserID, _ := createTestUser(t, database, mux, "assign-upstream-user@example.com", "Assign Upstream User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "assign-upstream-admin@example.com", "Assign Upstream Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 32, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -1977,8 +1977,8 @@ func TestAdminAssignPackageAcceptsEmail(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	localUserID, _ := createUserViaAPI(t, mux, "assign-email-user@example.com", "Assign Email User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "assign-email-admin@example.com", "Assign Email Admin", "admin", "test-admin-secret")
+	localUserID, _ := createTestUser(t, database, mux, "assign-email-user@example.com", "Assign Email User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "assign-email-admin@example.com", "Assign Email Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 32, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -2066,7 +2066,7 @@ func TestAdminAssignPackageImportsExistingUpstreamUserID(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	_, adminSessionToken := createUserViaAPI(t, mux, "assign-import-admin@example.com", "Assign Import Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "assign-import-admin@example.com", "Assign Import Admin", "admin", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/users/assign-package", bytes.NewReader([]byte(`{"user_id":40,"tier_code":"imported-pro"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -2157,8 +2157,8 @@ func TestAdminAssignPackageReturnsErrorWhenFulfillmentFails(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	localUserID, _ := createUserViaAPI(t, mux, "assign-fail-user@example.com", "Assign Fail User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "assign-fail-admin@example.com", "Assign Fail Admin", "admin", "test-admin-secret")
+	localUserID, _ := createTestUser(t, database, mux, "assign-fail-user@example.com", "Assign Fail User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "assign-fail-admin@example.com", "Assign Fail Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 34, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -2237,8 +2237,8 @@ func TestAdminAssignPackageGrantsStandardGroupAndCreatesKey(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	localUserID, _ := createUserViaAPI(t, mux, "assign-invalid-group-user@example.com", "Assign Invalid Group User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "assign-invalid-group-admin@example.com", "Assign Invalid Group Admin", "admin", "test-admin-secret")
+	localUserID, _ := createTestUser(t, database, mux, "assign-invalid-group-user@example.com", "Assign Invalid Group User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "assign-invalid-group-admin@example.com", "Assign Invalid Group Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 88, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -2324,8 +2324,8 @@ func TestPackagePurchaseRenewsExistingSubscriptionAndSkipsExistingAutoKey(t *tes
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	localUserID, _ := createUserViaAPI(t, mux, "renew-package-user@example.com", "Renew Package User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "renew-package-admin@example.com", "Renew Package Admin", "admin", "test-admin-secret")
+	localUserID, _ := createTestUser(t, database, mux, "renew-package-user@example.com", "Renew Package User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "renew-package-admin@example.com", "Renew Package Admin", "admin", "test-admin-secret")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, localUserID, 501, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -2407,8 +2407,8 @@ func TestAdminReplayFulfillmentJobRequiresAdminAndRetriesRetryableJob(t *testing
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "replay-user@example.com", "Replay User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "replay-admin@example.com", "Replay Admin", "admin", "test-admin-secret")
+	userID, userSessionToken := createTestUser(t, database, mux, "replay-user@example.com", "Replay User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "replay-admin@example.com", "Replay Admin", "admin", "test-admin-secret")
 	if userID != 1 {
 		t.Fatalf("expected first user id to be 1 for upstream assertion, got %d", userID)
 	}
@@ -2501,8 +2501,8 @@ func TestAdminReplayFulfillmentJobRejectsNonRetryableStatus(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	userID, _ := createUserViaAPI(t, mux, "terminal-user@example.com", "Terminal User", "user", "")
-	_, adminSessionToken := createUserViaAPI(t, mux, "replay-admin-2@example.com", "Replay Admin Two", "admin", "test-admin-secret")
+	userID, _ := createTestUser(t, database, mux, "terminal-user@example.com", "Terminal User", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "replay-admin-2@example.com", "Replay Admin Two", "admin", "test-admin-secret")
 
 	service := fulfillment.NewService(database)
 	job, err := service.CreateOrLoadJobByIdempotency(ctx, &fulfillment.CreateJobInput{
@@ -2550,7 +2550,7 @@ func TestAdminPackageLifecyclePersistsTierGroupBindings(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "package-admin@example.com", "Package Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "package-admin@example.com", "Package Admin", "admin", "test-admin-secret")
 
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/packages", bytes.NewReader([]byte(`{"code":"starter","name":"Starter Package","group_ids":[11,22]}`)))
 	setBearerAuth(createReq, adminSessionToken)
@@ -2681,7 +2681,7 @@ func TestAdminPackageValidationAndNotFound(t *testing.T) {
 	insertTier(t, ctx, database, "existing", "Existing Package")
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "package-admin2@example.com", "Package Admin 2", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "package-admin2@example.com", "Package Admin 2", "admin", "test-admin-secret")
 
 	badCreateReq := httptest.NewRequest(http.MethodPost, "/admin/packages", bytes.NewReader([]byte(`{"name":"Missing Code","group_ids":[11]}`)))
 	setBearerAuth(badCreateReq, adminSessionToken)
@@ -2734,7 +2734,7 @@ func TestAdminDeletePackageRemovesLocalTierAndBindings(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "package-delete-admin@example.com", "Package Delete Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "package-delete-admin@example.com", "Package Delete Admin", "admin", "test-admin-secret")
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/packages/delete-me", nil)
 	setBearerAuth(deleteReq, adminSessionToken)
@@ -2783,7 +2783,7 @@ func TestAdminPackageCRUDDoesNotTouchSub2API(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	_, adminSessionToken := createUserViaAPI(t, mux, "package-subscription-admin@example.com", "Package Subscription Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "package-subscription-admin@example.com", "Package Subscription Admin", "admin", "test-admin-secret")
 
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/packages", bytes.NewReader([]byte(`{"code":"local-only","name":"Local Only","group_ids":[11],"is_visible":true,"is_published":false}`)))
 	setBearerAuth(createReq, adminSessionToken)
@@ -2830,8 +2830,8 @@ func TestUserVisibleGroupsAreFilteredByPackageBindings(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "groups-user@example.com", "Groups User", "user", "")
-	adminID, adminSessionToken := createUserViaAPI(t, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
+	userID, userSessionToken := createTestUser(t, database, mux, "groups-user@example.com", "Groups User", "user", "")
+	adminID, adminSessionToken := createTestUser(t, database, mux, "groups-admin@example.com", "Groups Admin", "admin", "test-admin-secret")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
@@ -2931,8 +2931,8 @@ func TestUserAPIKeysAreFilteredAndDetailForbiddenAcrossGroups(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "keys-user@example.com", "Keys User", "user", "")
-	adminID, adminSessionToken := createUserViaAPI(t, mux, "keys-admin@example.com", "Keys Admin", "admin", "test-admin-secret")
+	userID, userSessionToken := createTestUser(t, database, mux, "keys-user@example.com", "Keys User", "user", "")
+	adminID, adminSessionToken := createTestUser(t, database, mux, "keys-admin@example.com", "Keys Admin", "admin", "test-admin-secret")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
@@ -3076,7 +3076,7 @@ func TestAPIKeysListFreshUserSeesStandardGroupKeys(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 	// 全新用户：无 tier 绑定、无订阅。
-	userID, userSessionToken := createUserViaAPI(t, mux, "fresh-keys-user@example.com", "Fresh Keys User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "fresh-keys-user@example.com", "Fresh Keys User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "fresh-keys-user-token", "fresh-keys-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -3129,7 +3129,7 @@ func TestAPIKeysListUnboundKeyVisible(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "unbound-keys-user@example.com", "Unbound Keys User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "unbound-keys-user@example.com", "Unbound Keys User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "unbound-keys-user-token", "unbound-keys-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -3196,7 +3196,7 @@ func TestAPIKeyDetailToggleFreshUserStandardGroup(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "toggle-keys-user@example.com", "Toggle Keys User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "toggle-keys-user@example.com", "Toggle Keys User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "toggle-keys-user-token", "toggle-keys-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -3254,7 +3254,7 @@ func TestAPIKeyDetailForbiddenForSubscriptionGroup(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "sub-keys-user@example.com", "Sub Keys User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "sub-keys-user@example.com", "Sub Keys User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "sub-keys-user-token", "sub-keys-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -3303,7 +3303,7 @@ func TestAPIKeyDeleteUnboundKeyAllowed(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "delete-keys-user@example.com", "Delete Keys User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "delete-keys-user@example.com", "Delete Keys User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "delete-keys-user-token", "delete-keys-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -3362,8 +3362,8 @@ func TestAPIKeyDeleteRejectsAutoKeyForUsersAndAdmins(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "auto-key-user@example.com", "Auto Key User", "user", "")
-	adminID, adminSessionToken := createUserViaAPI(t, mux, "auto-key-admin@example.com", "Auto Key Admin", "admin", "test-admin-secret")
+	userID, userSessionToken := createTestUser(t, database, mux, "auto-key-user@example.com", "Auto Key User", "user", "")
+	adminID, adminSessionToken := createTestUser(t, database, mux, "auto-key-admin@example.com", "Auto Key Admin", "admin", "test-admin-secret")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
@@ -3433,7 +3433,7 @@ func TestSubscriptionsSummaryReturnsLocalPackageConfiguration(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
-	userID, sessionToken := createUserViaAPI(t, mux, "summary-package-user@example.com", "Summary Package User", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "summary-package-user@example.com", "Summary Package User", "user", "")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01 00:00:00")
 
 	req := httptest.NewRequest(http.MethodGet, "/subscriptions/summary", nil)
@@ -3543,13 +3543,13 @@ func TestDistributorCanListBoundUserStatsAndAssignPackage(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient, UserUsageCache: usageCache})
-	_, adminSessionToken := createUserViaAPI(t, mux, "distributor-admin@example.com", "Distributor Admin", "admin", "test-admin-secret")
-	distributorID, distributorSessionToken := createUserViaAPI(t, mux, "distributor@example.com", "Distributor", "user", "")
+	_, adminSessionToken := createTestUser(t, database, mux, "distributor-admin@example.com", "Distributor Admin", "admin", "test-admin-secret")
+	distributorID, distributorSessionToken := createTestUser(t, database, mux, "distributor@example.com", "Distributor", "user", "")
 	if _, err := database.ExecContext(ctx, `UPDATE als_users SET role = 'distributor' WHERE id = ?;`, distributorID); err != nil {
 		t.Fatalf("promote distributor role: %v", err)
 	}
-	targetUserID, _ := createUserViaAPI(t, mux, "distributor-user@example.com", "Distributor User", "user", "")
-	otherUserID, _ := createUserViaAPI(t, mux, "other-distributor-user@example.com", "Other User", "user", "")
+	targetUserID, _ := createTestUser(t, database, mux, "distributor-user@example.com", "Distributor User", "user", "")
+	otherUserID, _ := createTestUser(t, database, mux, "other-distributor-user@example.com", "Other User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?);`, targetUserID, 50, "upstream-user-token", "upstream-refresh-token"); err != nil {
 		t.Fatalf("seed sub2api auth token: %v", err)
 	}
@@ -3733,7 +3733,7 @@ func TestAdminSetUnitPriceValidation(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "admin2@example.com", "Admin Two", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "admin2@example.com", "Admin Two", "admin", "test-admin-secret")
 
 	testCases := []struct {
 		name       string
@@ -3864,7 +3864,7 @@ func TestAdminPackageCRUDWithNewFields(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, adminSessionToken := createUserViaAPI(t, mux, "pkg-new-fields@example.com", "Pkg Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "pkg-new-fields@example.com", "Pkg Admin", "admin", "test-admin-secret")
 
 	// Create package with all new fields
 	createBody, _ := json.Marshal(map[string]any{
@@ -4040,7 +4040,7 @@ func TestDistributorPackageAccessOnlyIncludesDistributorLevel(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	_, distributorSessionToken := createUserViaAPI(t, mux, "distributor-packages@example.com", "Package Distributor", "distributor", "test-admin-secret")
+	_, distributorSessionToken := createTestUser(t, database, mux, "distributor-packages@example.com", "Package Distributor", "distributor", "test-admin-secret")
 
 	if _, err := database.ExecContext(ctx, `
 		INSERT INTO als_tiers(code, name, level, price_micros, value_type, value_amount, description, features_json, is_enabled, is_visible, is_published)
@@ -4115,8 +4115,8 @@ func TestAdminUpdateUserRoleControlsLocalRole(t *testing.T) {
 	database := setupTestDB(t)
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
-	adminID, adminSessionToken := createUserViaAPI(t, mux, "role-admin@example.com", "Role Admin", "admin", "test-admin-secret")
-	_, distributorSessionToken := createUserViaAPI(t, mux, "role-distributor@example.com", "Role Distributor", "distributor", "test-admin-secret")
+	adminID, adminSessionToken := createTestUser(t, database, mux, "role-admin@example.com", "Role Admin", "admin", "test-admin-secret")
+	_, distributorSessionToken := createTestUser(t, database, mux, "role-distributor@example.com", "Role Distributor", "distributor", "test-admin-secret")
 	targetID := createUser(t, ctx, database, "role-target@example.com", "Role Target", "user")
 
 	body := []byte(`{"email":"role-target@example.com","role":"distributor"}`)
@@ -4186,7 +4186,7 @@ func TestAdminUpdateUserRoleImportsUpstreamUserOverlay(t *testing.T) {
 		AdminBootstrapSecret: "test-admin-secret",
 		ProxyClient:          proxyClient,
 	})
-	_, adminSessionToken := createUserViaAPI(t, mux, "role-import-admin@example.com", "Role Import Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "role-import-admin@example.com", "Role Import Admin", "admin", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodPut, "/admin/users/role", bytes.NewReader([]byte(`{"user_id":901,"role":"distributor"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -4355,7 +4355,7 @@ func TestGroupsAvailableUpstreamFailureFallsBackToEmptyList(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-	userID, userSessionToken := createUserViaAPI(t, mux, "groups-fallback-user@example.com", "Groups Fallback User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "groups-fallback-user@example.com", "Groups Fallback User", "user", "")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-user-token", "upstream-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
@@ -4396,7 +4396,7 @@ func TestGroupsAvailableFreshUserSeesStandardGroups(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 	// 全新用户：无 tier 绑定、无订阅 —— 仅上游标准组应对其可见。
-	userID, userSessionToken := createUserViaAPI(t, mux, "fresh-user@example.com", "Fresh User", "user", "")
+	userID, userSessionToken := createTestUser(t, database, mux, "fresh-user@example.com", "Fresh User", "user", "")
 	if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-fresh-user-token", "upstream-fresh-user-refresh-token"); err != nil {
 		t.Fatalf("seed user sub2api auth token: %v", err)
 	}
@@ -4490,7 +4490,7 @@ func TestEnsureAutoAPIKeysEndpoint(t *testing.T) {
 
 			mux := http.NewServeMux()
 			RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
-			userID, userSessionToken := createUserViaAPI(t, mux, "ensure-auto-user@example.com", "Ensure Auto User", "user", "")
+			userID, userSessionToken := createTestUser(t, database, mux, "ensure-auto-user@example.com", "Ensure Auto User", "user", "")
 			if _, err := database.ExecContext(ctx, `INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token) VALUES (?, ?, ?);`, userID, "upstream-ensure-token", "upstream-ensure-token-refresh"); err != nil {
 				t.Fatalf("seed user sub2api auth token: %v", err)
 			}

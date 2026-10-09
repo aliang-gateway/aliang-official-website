@@ -24,6 +24,12 @@ export async function POST(request: Request) {
   if (authorization) {
     headers.set("authorization", authorization);
   }
+  // Forward the ingress-provided client IP so the backend's registration
+  // rate limiter can key on real clients instead of this pod's address.
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    headers.set("x-forwarded-for", forwardedFor);
+  }
 
   const upstream = await fetch(`${apiBaseUrl}/auth/register`, {
     method: "POST",

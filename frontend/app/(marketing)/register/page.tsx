@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { buildRegisterBody, validateRegisterSubmit } from "@/lib/auth/register";
 
 type RegisterResponse = {
   user_id?: number;
@@ -38,6 +40,8 @@ export default function RegisterPage() {
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [requireEmailVerification, setRequireEmailVerification] = useState<boolean | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -55,12 +59,16 @@ export default function RegisterPage() {
     setError(null);
     setSuccess(null);
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (!agreeTerms) {
-      setError("Please agree to the terms first");
+    const validationError = validateRegisterSubmit({
+      email,
+      password,
+      confirmPassword,
+      agreeTerms,
+      turnstileEnabled,
+      turnstileToken,
+    });
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -72,15 +80,21 @@ export default function RegisterPage() {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({
-          email: email.trim(),
-          name: username.trim(),
-          password,
-        }),
+        body: JSON.stringify(
+          buildRegisterBody({
+            email,
+            name: username,
+            password,
+            turnstileToken,
+          }),
+        ),
       });
 
       const payload = (await response.json()) as unknown;
       if (!response.ok) {
+        // The Turnstile token is single-use: reset the widget so a retry
+        // mints a fresh one instead of resubmitting a burnt token.
+        setTurnstileReset((signal) => signal + 1);
         throw new Error(extractApiError(payload, "Register failed"));
       }
 
@@ -275,6 +289,12 @@ export default function RegisterPage() {
                 <Link href="/privacy">{t("privacyPolicy")}</Link>
               </span>
             </label>
+
+            {turnstileEnabled ? (
+              <div className="field">
+                <Turnstile onToken={setTurnstileToken} resetSignal={turnstileReset} />
+              </div>
+            ) : null}
 
             {error ? <p className="auth-error">{error}</p> : null}
             {success ? <p className="auth-success">{success}</p> : null}

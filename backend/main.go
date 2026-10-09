@@ -193,9 +193,16 @@ func main() {
 		Sub2APITokenEncryptionKey: cfg.Sub2APITokenEncryptionKey,
 		PhoneServerAdminURL:       cfg.PhoneServerAdminURL,
 		PhoneServerAdminPassword:  cfg.PhoneServerAdminPassword,
-		BackgroundCtx:             ctx,
-		WorkerInterval:            time.Duration(loadIntEnv("FULFILLMENT_WORKER_INTERVAL_MS", 10000)) * time.Millisecond,
-		WorkerBatchSize:           loadIntEnv("FULFILLMENT_WORKER_BATCH_SIZE", 25),
+		TurnstileSecretKey:        cfg.Register.TurnstileSecretKey,
+		RegisterMaxPerIPPerHour:   cfg.Register.MaxPerIPPerHour,
+		RegisterMaxPerEmailPerDay: cfg.Register.MaxPerEmailPerDay,
+		// Zero was already defaulted in config; a negative limit means the
+		// operator explicitly disabled that dimension.
+		RegisterBlockDisposableDomains: cfg.Register.ShouldBlockDisposableDomains(),
+		RegisterAllowedEmailDomains:    cfg.Register.AllowedEmailDomains,
+		BackgroundCtx:                  ctx,
+		WorkerInterval:                 time.Duration(loadIntEnv("FULFILLMENT_WORKER_INTERVAL_MS", 10000)) * time.Millisecond,
+		WorkerBatchSize:                loadIntEnv("FULFILLMENT_WORKER_BATCH_SIZE", 25),
 	})
 
 	handler := requestLogger(mux)

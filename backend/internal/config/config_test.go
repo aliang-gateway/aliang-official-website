@@ -286,3 +286,88 @@ func writeConfigFile(t *testing.T, body string) string {
 
 	return path
 }
+
+// --- register guard configuration ---
+
+func guardTestConfig() string {
+	return `
+server:
+  port: "8081"
+database:
+  path: "./test.db"
+sub2api_base_url: "http://upstream.test"
+`
+}
+
+func TestLoad_AppliesRegisterGuardDefaults(t *testing.T) {
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Register.MaxPerIPPerHour != 10 {
+		t.Fatalf("MaxPerIPPerHour default = %d, want 10", cfg.Register.MaxPerIPPerHour)
+	}
+	if cfg.Register.MaxPerEmailPerDay != 5 {
+		t.Fatalf("MaxPerEmailPerDay default = %d, want 5", cfg.Register.MaxPerEmailPerDay)
+	}
+	if !cfg.Register.ShouldBlockDisposableDomains() {
+		t.Fatal("BlockDisposableDomains must default to true")
+	}
+	if cfg.Register.TurnstileSecretKey != "" {
+		t.Fatalf("TurnstileSecretKey should default to empty, got %q", cfg.Register.TurnstileSecretKey)
+	}
+}
+
+func TestLoad_TurnstileSecretFromEnv(t *testing.T) {
+	t.Setenv("TURNSTILE_SECRET_KEY", "  0xAAAA  ")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Register.TurnstileSecretKey != "0xAAAA" {
+		t.Fatalf("TurnstileSecretKey = %q, want trimmed env value", cfg.Register.TurnstileSecretKey)
+	}
+}
+
+func TestLoad_RegisterGuardOverrides(t *testing.T) {
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()+`
+register:
+  max_per_ip_per_hour: 3
+  max_per_email_per_day: 2
+  block_disposable_domains: false
+  turnstile_secret_key: "cfg-secret"
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Register.MaxPerIPPerHour != 3 || cfg.Register.MaxPerEmailPerDay != 2 {
+		t.Fatalf("limits not applied: %+v", cfg.Register)
+	}
+	if cfg.Register.ShouldBlockDisposableDomains() {
+		t.Fatal("explicit false must win over the default")
+	}
+	if cfg.Register.TurnstileSecretKey != "cfg-secret" {
+		t.Fatalf("TurnstileSecretKey = %q", cfg.Register.TurnstileSecretKey)
+	}
+}
+
+func TestLoad_NegativeRegisterLimitStaysNegative(t *testing.T) {
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()+`
+register:
+  max_per_ip_per_hour: -1
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Register.MaxPerIPPerHour != -1 {
+		t.Fatalf("MaxPerIPPerHour = %d, want -1 (explicitly disabled)", cfg.Register.MaxPerIPPerHour)
+	}
+}

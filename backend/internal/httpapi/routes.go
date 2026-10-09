@@ -63,6 +63,9 @@ type routes struct {
 	// its refresh-token replay detection and revoke the whole family).
 	refreshMu     sync.Mutex
 	refreshUserMu map[int64]*userRefreshMutex
+	// registerGuard enforces the anti-abuse checks on POST /auth/register.
+	// nil when every check is disabled (tests, local dev).
+	registerGuard *registerGuard
 }
 
 type userRefreshMutex struct {
@@ -90,6 +93,17 @@ type RoutesOptions struct {
 	// cadence (zero → package defaults of 10s / 25). Populated from env in main.
 	WorkerInterval  time.Duration
 	WorkerBatchSize int
+
+	// Registration anti-abuse guard. The zero value keeps every check off
+	// (raw passthrough) so tests and local dev are unaffected; main wires
+	// resolved values from config. TurnstileEndpoint overrides the Cloudflare
+	// siteverify URL (tests only).
+	TurnstileSecretKey             string
+	TurnstileEndpoint              string
+	RegisterMaxPerIPPerHour        int
+	RegisterMaxPerEmailPerDay      int
+	RegisterBlockDisposableDomains bool
+	RegisterAllowedEmailDomains    []string
 }
 
 type UserUsageCache interface {
@@ -800,6 +814,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		scanLogin:                scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
 		phoneServerAdminURL:      strings.TrimSpace(opts.PhoneServerAdminURL),
 		phoneServerAdminPassword: strings.TrimSpace(opts.PhoneServerAdminPassword),
+		registerGuard:            newRegisterGuardFromOptions(opts),
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
 
@@ -814,7 +829,11 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("POST /auth/scan/confirm", r.requireUserForScan(http.HandlerFunc(r.handleScanConfirm)))
 	mux.Handle("POST /auth/scan/deny", r.requireUserForScan(http.HandlerFunc(r.handleScanDeny)))
 
-	mux.HandleFunc("POST /users", r.handleCreateUser)
+	// User creation requires an authenticated admin; role escalation to
+	// admin/distributor additionally requires the bootstrap secret (checked
+	// inside the handler). This endpoint used to be fully public and handed
+	// out session tokens to anonymous callers.
+	mux.Handle("POST /users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleCreateUser))))
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
 	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
 	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)
@@ -2466,6 +2485,18 @@ func (r *routes) handleAuthPassthrough(w http.ResponseWriter, req *http.Request,
 
 	requestEmail := ""
 	requestRefreshToken := ""
+
+	// Registration anti-abuse gate: rate limits, disposable/allowlisted email
+	// domains, and server-side Turnstile verification. Runs before anything
+	// else so rejected traffic never touches the login locks or the upstream.
+	if upstreamPath == "/api/v1/auth/register" && r.registerGuard != nil {
+		if status, message := r.registerGuard.check(req, requestBody); status != 0 {
+			slog.Warn("register guard rejected request", "status", status, "ip", registerClientIP(req))
+			writeError(w, status, message)
+			return
+		}
+	}
+
 	if (upstreamPath == "/api/v1/auth/login" || upstreamPath == "/api/v1/auth/register") && len(requestBody) > 0 {
 		requestEmail = extractAuthEmailFromRequestBody(requestBody)
 		slog.Debug("auth login request", "email", requestEmail)

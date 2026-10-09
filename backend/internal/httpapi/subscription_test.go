@@ -21,7 +21,7 @@ func TestCreateSubscriptionWithTierCode(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
-	userID, sessionToken := createUserViaAPI(t, mux, "user1@example.com", "User One", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "user1@example.com", "User One", "user", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/subscription", bytes.NewReader([]byte(`{"tier_code":"starter"}`)))
 	setBearerAuth(req, sessionToken)
@@ -81,7 +81,7 @@ func TestSubscriptionOverrideReflectedInGet(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
-	_, sessionToken := createUserViaAPI(t, mux, "user2@example.com", "User Two", "user", "")
+	_, sessionToken := createTestUser(t, database, mux, "user2@example.com", "User Two", "user", "")
 
 	createBody := []byte(`{"tier_code":"pro","overrides":[{"service_item_code":"tokens_out","included_units":750}]}`)
 	createReq := httptest.NewRequest(http.MethodPost, "/subscription", bytes.NewReader(createBody))
@@ -140,7 +140,7 @@ func TestReplacingActiveSubscriptionEndsPrevious(t *testing.T) {
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
-	userID, sessionToken := createUserViaAPI(t, mux, "user3@example.com", "User Three", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "user3@example.com", "User Three", "user", "")
 
 	firstReq := httptest.NewRequest(http.MethodPost, "/subscription", bytes.NewReader([]byte(`{"tier_code":"basic"}`)))
 	setBearerAuth(firstReq, sessionToken)

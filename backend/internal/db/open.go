@@ -32,6 +32,14 @@ func Open(ctx context.Context, driver, dsn string) (*sql.DB, error) {
 			return nil, fmt.Errorf("enable foreign keys: %w", err)
 		}
 
+		// SQLite is single-writer: without a busy timeout any concurrent
+		// write (e.g. the async default-keys hook racing a registration)
+		// surfaces as an immediate SQLITE_BUSY and a 500. Wait instead.
+		if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000;"); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("set sqlite busy timeout: %w", err)
+		}
+
 		if err := db.PingContext(ctx); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("ping sqlite: %w", err)
