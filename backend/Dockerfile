@@ -6,6 +6,10 @@ WORKDIR /app
 
 ENV GOTOOLCHAIN=auto
 
+# 国内构建环境可覆盖：--build-arg GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+
 COPY go.mod go.sum ./
 RUN go mod download
 
