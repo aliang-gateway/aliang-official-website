@@ -7,6 +7,8 @@ export type ApiKeyItem = {
   group_id: number;
   group_name: string;
   group_platform: string;
+  /** 计费倍率：实际计费 = 原始费用 × 倍率。上游缺失时回退 1。 */
+  group_rate_multiplier: number;
   status: string;
   quota: number;
   quota_used: number;
@@ -18,6 +20,7 @@ export type AvailableGroup = {
   id: number;
   name: string;
   platform: string;
+  rate_multiplier: number;
 };
 
 export type ApiKeyFormatFilter = "all" | "openai" | "anthropic";
@@ -122,6 +125,7 @@ export function parseApiKeysList(payload: unknown): ApiKeyItem[] {
         group_id: asNumber(item.group_id),
         group_name: asString(group?.name) || asString(item.group_name) || `Group #${item.group_id}`,
         group_platform: asString(group?.platform) || asString(item.group_platform),
+        group_rate_multiplier: asNumber(group?.rate_multiplier ?? item.rate_multiplier, 1),
         status: asString(item.status, "active"),
         quota: asNumber(item.quota),
         quota_used: asNumber(item.quota_used),
@@ -149,5 +153,14 @@ export function parseAvailableGroups(payload: unknown): AvailableGroup[] {
       id: asNumber(item.id),
       name: asString(item.name) || `Group #${item.id}`,
       platform: asString(item.platform) || asString(item.group_platform),
+      rate_multiplier: asNumber(item.rate_multiplier, 1),
     }));
+}
+
+/** 渲染计费倍率徽章文案：×1、×1.5……异常值按无倍率（×1）处理。 */
+export function formatRateMultiplier(rate: number): string {
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return "×1";
+  }
+  return `×${Number.isInteger(rate) ? rate : Number(rate.toFixed(2))}`;
 }

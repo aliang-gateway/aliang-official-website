@@ -11,6 +11,7 @@ const SESSION_TOKEN_STORAGE_KEY = "session_token";
 
 const adminNavItems = [
   { href: "/admin", labelKey: "overview", icon: "dashboard" },
+  { href: "/admin/cache-stats", labelKey: "cacheStats", icon: "bolt" },
   { href: "/admin/users", labelKey: "users", icon: "people" },
   { href: "/admin/packages", labelKey: "packages", icon: "inventory_2" },
   { href: "/admin/payments", labelKey: "payments", icon: "receipt_long" },

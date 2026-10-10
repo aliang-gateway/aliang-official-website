@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<AuthMeResponse | null>(null);
   const quickLinks = [
+    { href: "/admin/cache-stats", icon: "bolt", label: t("cacheStats"), desc: t("cacheStatsDesc") },
     { href: "/admin/users", icon: "people", label: t("users"), desc: t("usersDesc") },
     { href: "/admin/packages", icon: "inventory_2", label: t("packages"), desc: t("packagesDesc") },
     { href: "/admin/payments", icon: "receipt_long", label: t("payments"), desc: t("paymentsDesc") },

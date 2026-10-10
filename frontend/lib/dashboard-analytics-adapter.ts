@@ -52,6 +52,11 @@ export type DashboardUsageRowAdapter = {
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  /** 计费倍率：实际计费 = 原始费用 × 倍率。上游缺失时回退 1。 */
+  rate_multiplier: number;
+  group_name: string;
   total_cost: number;
   actual_cost: number;
   duration_ms: number;
@@ -264,6 +269,7 @@ export function parseDashboardUsageEnvelope(payload: unknown): DashboardUsageEnv
         item.tokens,
         asNumber(item.input_tokens) + asNumber(item.output_tokens),
       );
+      const group = asRecord(item.group);
 
       return {
         id: asNumber(item.id),
@@ -273,6 +279,10 @@ export function parseDashboardUsageEnvelope(payload: unknown): DashboardUsageEnv
         input_tokens: asNumber(item.input_tokens),
         output_tokens: asNumber(item.output_tokens),
         total_tokens: Number.isFinite(totalTokens) ? totalTokens : 0,
+        cache_read_tokens: asNumber(item.cache_read_tokens),
+        cache_creation_tokens: asNumber(item.cache_creation_tokens),
+        rate_multiplier: asNumber(item.rate_multiplier ?? group?.rate_multiplier, 1),
+        group_name: asString(group?.name) || asString(item.group_name) || "",
         total_cost: asNumber(item.total_cost),
         actual_cost: pickFirstFiniteNumber(item.actual_cost, item.total_cost, 0),
         duration_ms: pickFirstFiniteNumber(item.duration_ms, item.latency_ms, item.latency, 0),
@@ -369,4 +379,47 @@ export function parseDashboardSimpleTrendPoints(payload: unknown, metric: Dashbo
   }
 
   return parseLegacyTrendPoints(payload, metric);
+}
+
+// --- 缓存命中率统计 ---
+// 口径：cache_read / (input + cache_read + cache_creation)——衡量每次请求
+// 有多少输入 token 靠提示缓存命中。分母为 0（无请求）时返回 null，由调用
+// 方决定展示占位符。
+
+export type CacheRateInput = {
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+};
+
+export function cacheHitRate(
+  inputTokens: number,
+  cacheReadTokens: number,
+  cacheCreationTokens: number,
+): number | null {
+  const denominator = inputTokens + cacheReadTokens + cacheCreationTokens;
+  if (denominator <= 0) {
+    return null;
+  }
+  return cacheReadTokens / denominator;
+}
+
+export function aggregateCacheRate(rows: CacheRateInput[]): number | null {
+  let input = 0;
+  let read = 0;
+  let creation = 0;
+  for (const row of rows) {
+    input += asNumber(row.input_tokens);
+    read += asNumber(row.cache_read_tokens);
+    creation += asNumber(row.cache_creation_tokens);
+  }
+  return cacheHitRate(input, read, creation);
+}
+
+/** 渲染缓存命中率：null（无请求）→ "—"，否则百分比分母化保留一位。 */
+export function formatCacheHitRate(rate: number | null): string {
+  if (rate === null || !Number.isFinite(rate)) {
+    return "—";
+  }
+  return `${(rate * 100).toFixed(1)}%`;
 }

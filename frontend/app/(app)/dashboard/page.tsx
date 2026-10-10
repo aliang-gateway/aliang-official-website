@@ -12,6 +12,7 @@ import {
   TicketCard,
   TokenTrendCard,
 } from "@/components/dashboard";
+import { CacheRateCard } from "@/components/dashboard/CacheRateCard";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { Modal } from "@/components/ui/Modal";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
@@ -49,6 +50,9 @@ function DashboardPageContent() {
         onPurchase={() => setShowPurchase(true)}
         purchaseButtonRef={purchaseTriggerRef}
       />
+
+      {/* 缓存命中率(随所选时间范围聚合) */}
+      <CacheRateCard sessionToken={data.sessionToken} queryString={trend.queryString} />
 
       {/* 用量趋势(全宽) */}
       <TokenTrendCard

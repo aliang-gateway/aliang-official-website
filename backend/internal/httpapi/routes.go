@@ -843,6 +843,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("POST /users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleCreateUser))))
 	mux.HandleFunc("GET /auth/register-captcha", r.handleRegisterCaptcha)
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
+	mux.Handle("GET /admin/cache-stats", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCacheStats))))
 	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
 	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)
 	mux.HandleFunc("POST /auth/refresh", r.handleAuthRefreshPassthrough)
