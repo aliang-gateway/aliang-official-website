@@ -5,7 +5,13 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { parseDashboardSimpleTrendPoints, parseDashboardUsageEnvelope } from "@/lib/dashboard-analytics-adapter";
+import {
+  cacheHitRate,
+  formatCacheHitRate,
+  parseDashboardSimpleTrendPoints,
+  parseDashboardUsageEnvelope,
+} from "@/lib/dashboard-analytics-adapter";
+import { formatRateMultiplier } from "@/lib/api-keys";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
 const USAGE_RECORDS_PER_PAGE = 20;
@@ -26,8 +32,13 @@ type UsageRecord = {
   id: number;
   request_id: string;
   model: string;
+  group_name: string;
   inbound_endpoint: string;
   total_tokens: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  rate_multiplier: number;
   actual_cost: number;
   duration_ms: number;
   created_at: string;
@@ -171,8 +182,13 @@ function parseDashboardUsagePayload(payload: unknown): DashboardUsageResponse {
       id: record.id,
       request_id: record.request_id || "--",
       model: record.model || "",
+      group_name: record.group_name,
       inbound_endpoint: record.inbound_endpoint || "",
       total_tokens: record.total_tokens,
+      input_tokens: record.input_tokens,
+      cache_read_tokens: record.cache_read_tokens,
+      cache_creation_tokens: record.cache_creation_tokens,
+      rate_multiplier: record.rate_multiplier,
       actual_cost: record.actual_cost,
       duration_ms: record.duration_ms,
       created_at: record.created_at || "",
@@ -565,6 +581,8 @@ function DashboardDetailsPageContent() {
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("requestId")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("endpoint")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("model")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("rateMultiplierColumn")}</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("cacheHitRateColumn")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("totalTokens")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("actualCost")}</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--portal-muted)]">{t("duration")}</th>
@@ -578,7 +596,14 @@ function DashboardDetailsPageContent() {
                     <div className="font-medium">{record.request_id || "--"}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-[var(--portal-muted)]">{record.inbound_endpoint || "--"}</td>
-                  <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{record.model || "--"}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">
+                    <div>{record.model || "--"}</div>
+                    {record.group_name ? <div className="text-xs text-[var(--portal-muted)]">{record.group_name}</div> : null}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{formatRateMultiplier(record.rate_multiplier)}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">
+                    {formatCacheHitRate(cacheHitRate(record.input_tokens, record.cache_read_tokens, record.cache_creation_tokens))}
+                  </td>
                   <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{record.total_tokens > 0 ? formatNumber(record.total_tokens) : "--"}</td>
                   <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{record.actual_cost > 0 ? formatCost(record.actual_cost) : "--"}</td>
                   <td className="px-4 py-3 text-sm text-[var(--portal-ink)]">{record.duration_ms > 0 ? `${formatNumber(record.duration_ms)} ms` : "--"}</td>
@@ -587,7 +612,7 @@ function DashboardDetailsPageContent() {
 
               {!usageError && !usageLoading && usageRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8">
+                  <td colSpan={9} className="px-4 py-8">
                     <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--bone)]/30 p-5 text-sm">
                       <p className="font-semibold text-[var(--portal-ink)]">{t("noUsageRecordsTitle")}</p>
                       <p className="text-[var(--portal-muted)]">
@@ -600,7 +625,7 @@ function DashboardDetailsPageContent() {
 
               {usageLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8">
+                  <td colSpan={9} className="px-4 py-8">
                     <div className="space-y-2 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--bone)]/30 p-5 text-sm">
                       <p className="font-semibold text-[var(--portal-ink)]">{t("loadingUsageRecords")}</p>
                       <p className="text-[var(--portal-muted)]">{t("fetchingUsageDescription")}</p>

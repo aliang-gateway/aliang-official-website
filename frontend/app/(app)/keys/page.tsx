@@ -12,6 +12,7 @@ import { extractApiError } from "@/lib/api-response";
 import { useConfigModal } from "@/lib/hooks/use-config-modal";
 import {
   authHeaders,
+  formatRateMultiplier,
   isProtectedApiKeyName,
   maskApiKey,
   matchesFormatFilter,
@@ -434,11 +435,14 @@ export default function KeysPage() {
               <SelectMenu
                 id="new-key-group"
                 value={newKeyGroupId === null ? "" : String(newKeyGroupId)}
-                options={groups.map((group) => ({
-                  value: String(group.id),
-                  label: group.name,
-                  hint: group.platform ? platformBadgeLabel(group.platform) : undefined,
-                }))}
+                options={groups.map((group) => {
+                  const hintParts = [group.platform ? platformBadgeLabel(group.platform) : "", formatRateMultiplier(group.rate_multiplier)];
+                  return {
+                    value: String(group.id),
+                    label: group.name,
+                    hint: hintParts.filter(Boolean).join(" · "),
+                  };
+                })}
                 onChange={(value) => setNewKeyGroupId(value ? Number(value) : null)}
               />
             </div>
@@ -523,6 +527,12 @@ function KeyRow({ apiKey, busyKeyId, copiedKeyId, onCopy, onToggle, onDelete, t 
             <span className="flex items-center gap-1">
               <MaterialIcon name="group" size={12} />
               {apiKey.group_name}
+            </span>
+            <span
+              className="rounded-md bg-[var(--accent-wash)] px-1.5 py-0.5 font-bold text-[var(--accent-ink)]"
+              title={t("rateMultiplierHint")}
+            >
+              {formatRateMultiplier(apiKey.group_rate_multiplier)}
             </span>
             <span className="flex items-center gap-1">
               <MaterialIcon name="schedule" size={12} />

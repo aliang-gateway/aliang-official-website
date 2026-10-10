@@ -801,7 +801,8 @@
     "docs": "Docs",
     "configCenter": "Config Center",
     "downloads": "Downloads",
-    "services": "Services"
+    "services": "Services",
+    "cacheStats": "Cache stats"
   },
   "adminHome": {
     "checking": "Checking admin session...",
@@ -818,7 +819,9 @@
     "configCenter": "Config Center",
     "configCenterDesc": "Software configs, templates, and global vars",
     "downloads": "Downloads",
-    "downloadsDesc": "Manage software downloads and version control"
+    "downloadsDesc": "Manage software downloads and version control",
+    "cacheStats": "Cache stats",
+    "cacheStatsDesc": "Site-wide prompt cache hit rate"
   },
   "adminUsers": {
     "title": "User Management",
@@ -1106,6 +1109,7 @@
     "filterAll": "All",
     "noKeysYet": "No API keys yet.",
     "createdLabel": "Created",
+    "rateMultiplierHint": "Billing multiplier: usage cost × rate",
     "expiresLabel": "Expires",
     "disableKey": "Disable key",
     "enableKey": "Enable key",
@@ -1191,6 +1195,8 @@
     "requestId": "Request ID",
     "endpoint": "Endpoint",
     "model": "Model",
+    "rateMultiplierColumn": "Rate",
+    "cacheHitRateColumn": "Cache hit",
     "actualCost": "Actual cost",
     "duration": "Duration",
     "noUsageRecordsTitle": "No usage records yet.",
@@ -1200,7 +1206,9 @@
     "showingRecords": "Showing {range} of {total} records",
     "previous": "Previous",
     "nextPage": "Next page",
-    "requestRecordsTrendsDescription": "Review recent request activity and the two deeper trend surfaces exposed by the simplified dashboard contract."
+    "requestRecordsTrendsDescription": "Review recent request activity and the two deeper trend surfaces exposed by the simplified dashboard contract.",
+    "cacheHitRateLabel": "Prompt cache hit rate",
+    "cacheRateHint": "Share of input tokens served from the prompt cache over the selected range (cache_read / all input tokens). Higher hit rate means faster responses and lower cost."
   },
   "aboutPage": {
     "badge": "About Us",
@@ -1486,5 +1494,20 @@
         ]
       }
     ]
+  },
+  "adminCacheStats": {
+    "title": "Prompt cache statistics",
+    "dateRange": "{start} → {end}",
+    "lastNDays": "Last {count} days",
+    "refresh": "Refresh",
+    "errorPrefix": "Failed to load: ",
+    "cacheHitRate": "Cache hit rate",
+    "requests": "Requests",
+    "cacheReadTokens": "Cache read tokens",
+    "inputTokens": "Input tokens",
+    "group": "Group",
+    "multiplier": "Multiplier",
+    "noData": "No usage records in this range.",
+    "loading": "Loading…"
   }
 }

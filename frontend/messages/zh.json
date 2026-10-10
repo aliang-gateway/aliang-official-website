@@ -801,7 +801,8 @@
     "docs": "文档",
     "configCenter": "配置中心",
     "downloads": "下载",
-    "services": "服务时间线"
+    "services": "服务时间线",
+    "cacheStats": "缓存率"
   },
   "adminHome": {
     "checking": "正在检查管理会话...",
@@ -818,7 +819,9 @@
     "configCenter": "配置中心",
     "configCenterDesc": "软件配置、模板与全局变量",
     "downloads": "下载",
-    "downloadsDesc": "管理软件下载与版本控制"
+    "downloadsDesc": "管理软件下载与版本控制",
+    "cacheStats": "缓存率",
+    "cacheStatsDesc": "全站提示缓存命中率统计"
   },
   "adminUsers": {
     "title": "用户管理",
@@ -1106,6 +1109,7 @@
     "filterAll": "全部",
     "noKeysYet": "暂无 API 密钥。",
     "createdLabel": "创建于",
+    "rateMultiplierHint": "计费倍率：用量费用 × 该倍率",
     "expiresLabel": "到期",
     "disableKey": "停用密钥",
     "enableKey": "启用密钥",
@@ -1191,6 +1195,8 @@
     "requestId": "请求 ID",
     "endpoint": "端点",
     "model": "模型",
+    "rateMultiplierColumn": "倍率",
+    "cacheHitRateColumn": "缓存率",
     "actualCost": "实际费用",
     "duration": "耗时",
     "noUsageRecordsTitle": "暂无用量记录。",
@@ -1200,7 +1206,9 @@
     "showingRecords": "显示 {range} / 共 {total} 条记录",
     "previous": "上一页",
     "nextPage": "下一页",
-    "requestRecordsTrendsDescription": "查看近期的请求活动以及简化控制台合约暴露的两个更深层趋势视图。"
+    "requestRecordsTrendsDescription": "查看近期的请求活动以及简化控制台合约暴露的两个更深层趋势视图。",
+    "cacheHitRateLabel": "提示缓存命中率",
+    "cacheRateHint": "所选时间范围内，输入 token 由提示缓存直接命中的比例（cache_read / 全部输入 token）。命中率越高，响应越快、费用越低。"
   },
   "aboutPage": {
     "badge": "关于我们",
@@ -1486,5 +1494,20 @@
         ]
       }
     ]
+  },
+  "adminCacheStats": {
+    "title": "提示缓存统计",
+    "dateRange": "{start} → {end}",
+    "lastNDays": "近 {count} 天",
+    "refresh": "刷新",
+    "errorPrefix": "加载失败：",
+    "cacheHitRate": "缓存命中率",
+    "requests": "请求数",
+    "cacheReadTokens": "缓存命中 token",
+    "inputTokens": "输入 token",
+    "group": "分组",
+    "multiplier": "倍率",
+    "noData": "该时间范围内没有用量记录。",
+    "loading": "加载中…"
   }
 }
