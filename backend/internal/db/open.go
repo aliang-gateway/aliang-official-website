@@ -22,6 +22,13 @@ func Open(ctx context.Context, driver, dsn string) (*sql.DB, error) {
 			return nil, err
 		}
 
+		// busy_timeout (and friends) are per-connection attributes; a plain
+		// ExecContext only configures whichever pooled connection happens to
+		// be borrowed. Thread them through the DSN so every connection in
+		// the pool gets them — modernc.org/sqlite applies DSN pragmas on
+		// connect.
+		dsn = appendSQLiteParam(dsn, "_pragma=busy_timeout(5000)")
+
 		db, err := sql.Open("sqlite", dsn)
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite: %w", err)
@@ -30,6 +37,14 @@ func Open(ctx context.Context, driver, dsn string) (*sql.DB, error) {
 		if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON;"); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("enable foreign keys: %w", err)
+		}
+
+		// SQLite is single-writer: without a busy timeout any concurrent
+		// write (e.g. the async default-keys hook racing a registration)
+		// surfaces as an immediate SQLITE_BUSY and a 500. Wait instead.
+		if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000;"); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("set sqlite busy timeout: %w", err)
 		}
 
 		if err := db.PingContext(ctx); err != nil {
@@ -53,6 +68,15 @@ func Open(ctx context.Context, driver, dsn string) (*sql.DB, error) {
 	default:
 		return nil, fmt.Errorf("unsupported database driver %q", driver)
 	}
+}
+
+// appendSQLiteParam adds a query parameter to a SQLite DSN whether or not it
+// already carries one.
+func appendSQLiteParam(dsn, param string) string {
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + param
+	}
+	return dsn + "?" + param
 }
 
 func ensureParentDir(dbPath string) error {

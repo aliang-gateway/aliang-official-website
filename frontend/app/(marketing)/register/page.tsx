@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import {
+  SliderCaptchaField,
+  fetchRegisterCaptcha,
+  type SlideCaptchaChallenge,
+  type SlideCaptchaSolve,
+} from "@/components/auth/SlideCaptcha";
+import { Turnstile, turnstileEnabled } from "@/components/auth/Turnstile";
 import { asRecord, asString, extractApiError, unwrapData } from "@/lib/api-response";
+import { buildRegisterBody, validateRegisterSubmit } from "@/lib/auth/register";
 
 type RegisterResponse = {
   user_id?: number;
@@ -38,6 +46,10 @@ export default function RegisterPage() {
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [requireEmailVerification, setRequireEmailVerification] = useState<boolean | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const [slideChallenge, setSlideChallenge] = useState<SlideCaptchaChallenge | null>(null);
+  const [sliderSolve, setSliderSolve] = useState<SlideCaptchaSolve | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -50,17 +62,46 @@ export default function RegisterPage() {
     setIsCheckingSession(false);
   }, [router]);
 
+  // Load the slider challenge once the session check has settled. A null
+  // result (slider disabled upstream or network hiccup) simply hides the
+  // widget — the backend only enforces what it issued.
+  useEffect(() => {
+    if (isCheckingSession) {
+      return;
+    }
+    let cancelled = false;
+    fetchRegisterCaptcha().then((challenge) => {
+      if (!cancelled) {
+        setSlideChallenge(challenge);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCheckingSession]);
+
+  const refreshSlideChallenge = useCallback(async () => {
+    setSliderSolve(null);
+    setSlideChallenge(await fetchRegisterCaptcha());
+  }, []);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSuccess(null);
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (!agreeTerms) {
-      setError("Please agree to the terms first");
+    const validationError = validateRegisterSubmit({
+      email,
+      password,
+      confirmPassword,
+      agreeTerms,
+      turnstileEnabled,
+      turnstileToken,
+      sliderRequired: slideChallenge !== null,
+      sliderSolved: sliderSolve !== null,
+    });
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -72,15 +113,25 @@ export default function RegisterPage() {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({
-          email: email.trim(),
-          name: username.trim(),
-          password,
-        }),
+        body: JSON.stringify(
+          buildRegisterBody({
+            email,
+            name: username,
+            password,
+            turnstileToken,
+            slider: sliderSolve,
+          }),
+        ),
       });
 
       const payload = (await response.json()) as unknown;
       if (!response.ok) {
+        // Captcha artifacts are single-use: reset the Turnstile widget and
+        // fetch a fresh slider so a retry starts from clean state.
+        setTurnstileReset((signal) => signal + 1);
+        if (slideChallenge !== null) {
+          void refreshSlideChallenge();
+        }
         throw new Error(extractApiError(payload, "Register failed"));
       }
 
@@ -275,6 +326,31 @@ export default function RegisterPage() {
                 <Link href="/privacy">{t("privacyPolicy")}</Link>
               </span>
             </label>
+
+            {turnstileEnabled ? (
+              <div className="field">
+                <Turnstile onToken={setTurnstileToken} resetSignal={turnstileReset} />
+              </div>
+            ) : null}
+
+            {slideChallenge ? (
+              <div className="field">
+                <SliderCaptchaField
+                  challenge={slideChallenge}
+                  solved={sliderSolve !== null}
+                  onSolve={setSliderSolve}
+                  onReset={() => setSliderSolve(null)}
+                  onRefresh={refreshSlideChallenge}
+                  labels={{
+                    button: t("sliderCaptchaButton"),
+                    verified: t("sliderCaptchaVerified"),
+                    hint: t("sliderCaptchaHint"),
+                    refresh: t("sliderCaptchaRefresh"),
+                    close: t("sliderCaptchaClose"),
+                  }}
+                />
+              </div>
+            ) : null}
 
             {error ? <p className="auth-error">{error}</p> : null}
             {success ? <p className="auth-success">{success}</p> : null}

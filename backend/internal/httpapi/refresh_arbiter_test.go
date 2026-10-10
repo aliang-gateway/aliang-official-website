@@ -140,7 +140,7 @@ func TestRefreshArbiterDedupesAndRotates(t *testing.T) {
 		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"` + rotatedAccess + `","refresh_token":"` + rotatedRefresh + `","expires_in":3600,"token_type":"Bearer"}}`))
 	})
 
-	userID, _ := createUserViaAPI(t, h.mux, "arbiter@example.com", "Arbiter User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "arbiter@example.com", "Arbiter User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 	deviceA := h.mintSession(t, userID)
 	deviceB := h.mintSession(t, userID)
@@ -187,7 +187,7 @@ func TestRefreshArbiterRejectsStaleToken(t *testing.T) {
 	h := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
 		t.Errorf("stale-token refresh must not reach upstream: %s", req.URL.Path)
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "stale@example.com", "Stale User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "stale@example.com", "Stale User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 
 	if status, _ := h.postRefresh(t, "never-seen-token"); status != http.StatusUnauthorized {
@@ -212,7 +212,7 @@ func TestRefreshArbiterClearsVaultOnUpstreamRejection(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"code":401,"message":"invalid refresh token"}`))
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "doomed@example.com", "Doomed User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "doomed@example.com", "Doomed User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 	session := h.mintSession(t, userID)
 
@@ -241,7 +241,7 @@ func TestRefreshArbiterServesCachedFreshToken(t *testing.T) {
 	h := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
 		t.Errorf("fresh-cache refresh must not reach upstream: %s", req.URL.Path)
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "fresh@example.com", "Fresh User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "fresh@example.com", "Fresh User", "user", "")
 	session := h.mintSession(t, userID)
 	// Seed a vault whose access_token is a JWT with a far-future exp; the login
 	// capture path stores access_expires_at the same way.
@@ -275,7 +275,7 @@ func TestRefreshArbiterRetainsVaultOnTransientUpstreamFailure(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"code":429,"message":"rate limited"}`))
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "transient@example.com", "Transient User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "transient@example.com", "Transient User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 	session := h.mintSession(t, userID)
 
@@ -305,7 +305,7 @@ func TestRefreshArbiterNeverReplaysUncertainRotation(t *testing.T) {
 		atomic.AddInt32(&calls, 1)
 		t.Errorf("uncertain rotation must not reach upstream: %s", req.URL.Path)
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "uncertain@example.com", "Uncertain User", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "uncertain@example.com", "Uncertain User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 	session := h.mintSession(t, userID)
 	if _, err := h.db.Exec(`UPDATE als_sub2api_auth_tokens SET rotation_state = 'uncertain' WHERE user_id = ?`, userID); err != nil {
@@ -335,7 +335,7 @@ func TestRefreshArbiterMarksTransportFailureUncertain(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
 	h := &arbiterHarness{mux: mux, db: database}
-	userID, _ := createUserViaAPI(t, mux, "transport@example.com", "Transport User", "user", "")
+	userID, _ := createTestUser(t, database, mux, "transport@example.com", "Transport User", "user", "")
 	h.seedVault(t, userID, "A0", "R0")
 	session := h.mintSession(t, userID)
 
@@ -391,7 +391,7 @@ func TestRefreshArbiterResponseCarriesUpstreamAnchor(t *testing.T) {
 	h := setupArbiterHarness(t, func(w http.ResponseWriter, req *http.Request) {
 		t.Errorf("cached-fresh anchor refresh must not reach upstream: %s", req.URL.Path)
 	})
-	userID, _ := createUserViaAPI(t, h.mux, "anchor-fresh@example.com", "Anchor Fresh", "user", "")
+	userID, _ := createTestUser(t, h.db, h.mux, "anchor-fresh@example.com", "Anchor Fresh", "user", "")
 	session := h.mintSession(t, userID)
 	anchorTTL := 7*time.Hour + 30*time.Minute
 	anchorAt := time.Now().UTC().Add(anchorTTL)
@@ -423,7 +423,7 @@ func TestRefreshArbiterResponseCarriesUpstreamAnchor(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"rotated-opaque-access","refresh_token":"R1","expires_in":3600,"token_type":"Bearer"}}`))
 	})
-	userID2, _ := createUserViaAPI(t, h2.mux, "anchor-fallback@example.com", "Anchor Fallback", "user", "")
+	userID2, _ := createTestUser(t, h2.db, h2.mux, "anchor-fallback@example.com", "Anchor Fallback", "user", "")
 	session2 := h2.mintSession(t, userID2)
 	h2.seedVault(t, userID2, "A0", "R0") // NULL access_expires_at forces one rotation
 
@@ -449,7 +449,7 @@ func TestRefreshArbiterResponseCarriesUpstreamAnchor(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"access_token":"` + expiredAccess + `","refresh_token":"R1","expires_in":3600,"token_type":"Bearer"}}`))
 	})
-	userID3, _ := createUserViaAPI(t, h3.mux, "anchor-clamp@example.com", "Anchor Clamp", "user", "")
+	userID3, _ := createTestUser(t, h3.db, h3.mux, "anchor-clamp@example.com", "Anchor Clamp", "user", "")
 	session3 := h3.mintSession(t, userID3)
 	if _, err := h3.db.ExecContext(context.Background(), `
 		INSERT INTO als_sub2api_auth_tokens(user_id, upstream_user_id, access_token, refresh_token, access_expires_at)

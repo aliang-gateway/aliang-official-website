@@ -58,6 +58,29 @@ type AuthConfig struct {
 type RegisterConfig struct {
 	AllowedEmailDomains      []string `yaml:"allowed_email_domains"`
 	RequireEmailVerification *bool    `yaml:"require_email_verification"`
+	// Anti-abuse guard. Turnstile activates only when the secret is set
+	// (config file or TURNSTILE_SECRET_KEY env), so the rollout can stage:
+	// deploy code first, then add the key to enforce the captcha.
+	TurnstileSecretKey string `yaml:"turnstile_secret_key"`
+	// Registration rate limits. 0 → built-in default, negative → disabled.
+	MaxPerIPPerHour   int `yaml:"max_per_ip_per_hour"`
+	MaxPerEmailPerDay int `yaml:"max_per_email_per_day"`
+	// BlockDisposableDomains nil → true (block the built-in disposable list).
+	BlockDisposableDomains *bool `yaml:"block_disposable_domains"`
+	// SliderCaptcha nil → true (self-hosted go-captcha slider on register).
+	SliderCaptcha *bool `yaml:"slider_captcha"`
+}
+
+// ShouldBlockDisposableDomains reports whether well-known disposable email
+// providers should be rejected at registration (default true).
+func (c RegisterConfig) ShouldBlockDisposableDomains() bool {
+	return c.BlockDisposableDomains == nil || *c.BlockDisposableDomains
+}
+
+// SliderCaptchaEnabled reports whether the self-hosted slider captcha gates
+// the public registration path (default true).
+func (c RegisterConfig) SliderCaptchaEnabled() bool {
+	return c.SliderCaptcha == nil || *c.SliderCaptcha
 }
 
 type SMTPConfig struct {
@@ -114,6 +137,7 @@ func Load(path string) (*Config, error) {
 	applyEnvString(&cfg.Stripe.SuccessURL, "STRIPE_SUCCESS_URL")
 	applyEnvString(&cfg.Stripe.CancelURL, "STRIPE_CANCEL_URL")
 	applyEnvString(&cfg.LogLevel, "LOG_LEVEL")
+	applyEnvString(&cfg.Register.TurnstileSecretKey, "TURNSTILE_SECRET_KEY")
 
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -154,6 +178,14 @@ func (c *Config) applyDefaults() {
 	c.LogLevel = strings.ToLower(strings.TrimSpace(c.LogLevel))
 	if c.LogLevel == "" {
 		c.LogLevel = "info"
+	}
+
+	c.Register.TurnstileSecretKey = strings.TrimSpace(c.Register.TurnstileSecretKey)
+	if c.Register.MaxPerIPPerHour == 0 {
+		c.Register.MaxPerIPPerHour = 10
+	}
+	if c.Register.MaxPerEmailPerDay == 0 {
+		c.Register.MaxPerEmailPerDay = 5
 	}
 }
 

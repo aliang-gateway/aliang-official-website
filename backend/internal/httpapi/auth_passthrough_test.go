@@ -236,7 +236,7 @@ func TestAuthMeReturnsLocalProfileWhenUpstreamTokenExists(t *testing.T) {
 	m := http.NewServeMux()
 	RegisterRoutesWithOptions(m, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret", ProxyClient: proxyClient})
 
-	userID, localSessionToken := createUserViaAPI(t, m, "passthrough-authme@example.com", "Auth Me User", "distributor", "test-admin-secret")
+	userID, localSessionToken := createTestUser(t, database, m, "passthrough-authme@example.com", "Auth Me User", "distributor", "test-admin-secret")
 
 	_, err = database.ExecContext(ctx, `
 		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
@@ -292,7 +292,7 @@ func TestAuthMeReturnsLocalProfileWhenNoUpstreamTokenExists(t *testing.T) {
 		ProxyClient:          proxyClient,
 	})
 
-	_, adminSessionToken := createUserViaAPI(t, m, "local-admin@example.com", "Local Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, m, "local-admin@example.com", "Local Admin", "admin", "test-admin-secret")
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+adminSessionToken)
@@ -346,7 +346,7 @@ func TestDashboardPassthroughSwapsLocalSessionForStoredUpstreamToken(t *testing.
 	m := http.NewServeMux()
 	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
 
-	userID, localSessionToken := createUserViaAPI(t, m, "dashboard-auth@example.com", "Dashboard User", "user", "")
+	userID, localSessionToken := createTestUser(t, database, m, "dashboard-auth@example.com", "Dashboard User", "user", "")
 
 	_, err = database.ExecContext(ctx, `
 		INSERT INTO als_sub2api_auth_tokens(user_id, access_token, refresh_token)
@@ -405,7 +405,7 @@ func TestDashboardPassthroughRotatesExpiredUpstreamToken(t *testing.T) {
 	m := http.NewServeMux()
 	RegisterRoutesWithOptions(m, database, RoutesOptions{ProxyClient: proxyClient})
 
-	userID, localSessionToken := createUserViaAPI(t, m, "rotate@example.com", "Rotate User", "user", "")
+	userID, localSessionToken := createTestUser(t, database, m, "rotate@example.com", "Rotate User", "user", "")
 
 	// Seed an EXPIRED upstream credential.
 	if _, err := database.ExecContext(ctx, `
@@ -631,7 +631,7 @@ func TestAuthLogoutRevokesOnlyLocalSessionAndNeverCallsUpstream(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{ProxyClient: proxyClient})
-	userID, sessionToken := createUserViaAPI(t, mux, "logout-local@example.com", "Logout Local", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "logout-local@example.com", "Logout Local", "user", "")
 	otherSession, otherHash, err := auth.NewSessionToken()
 	if err != nil {
 		t.Fatalf("mint second local session: %v", err)

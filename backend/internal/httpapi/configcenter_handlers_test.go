@@ -20,7 +20,7 @@ func TestGetDefaultConfigRendersKnownGlobalVarsForAuthorizedUser(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
 
-	userID, sessionToken := createUserViaAPI(t, mux, "config-user@example.com", "Config User", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "config-user@example.com", "Config User", "user", "")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	insertDefaultConfigFixture(t, ctx, database, "codex", "Codex", 101, "codex", "default", "json", `{"api_key":"{{apikey}}","base_url":"{{base_url}}"}`)
 	insertGlobalTemplateVar(t, ctx, database, "base_url", "https://example.com")
@@ -67,7 +67,7 @@ func TestGetDefaultConfigRejectsUnauthorizedGroup(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, database)
 
-	userID, sessionToken := createUserViaAPI(t, mux, "config-user-2@example.com", "Config User 2", "user", "")
+	userID, sessionToken := createTestUser(t, database, mux, "config-user-2@example.com", "Config User 2", "user", "")
 	insertActiveSubscription(t, ctx, database, userID, tierID, "2026-01-01T00:00:00Z")
 	insertDefaultConfigFixture(t, ctx, database, "claude", "Claude", 202, "claude", "default", "json", `{"api_key":"{{apikey}}"}`)
 
@@ -90,7 +90,7 @@ func TestGetDefaultConfigAllowsAdminByTag(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutesWithOptions(mux, database, RoutesOptions{AdminBootstrapSecret: "test-admin-secret"})
 
-	_, adminSessionToken := createUserViaAPI(t, mux, "config-admin@example.com", "Config Admin", "admin", "test-admin-secret")
+	_, adminSessionToken := createTestUser(t, database, mux, "config-admin@example.com", "Config Admin", "admin", "test-admin-secret")
 	insertDefaultConfigFixture(t, ctx, database, "opencode", "OpenCode", 303, "opencode", "default", "yaml", "api_key: {{apikey}}")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/configs/default?tag=opencode", nil)

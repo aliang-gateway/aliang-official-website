@@ -1,52 +1,77 @@
 package httpapi
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
+	"database/sql"
 	"net/http"
-	"net/http/httptest"
 	"testing"
+	"time"
+
+	"ai-api-portal/backend/internal/auth"
 )
 
 func setBearerAuth(req *http.Request, sessionToken string) {
 	req.Header.Set("Authorization", "Bearer "+sessionToken)
 }
 
-func createUserViaAPI(t *testing.T, mux *http.ServeMux, email, name, role, adminBootstrapSecret string) (int64, string) {
+// createTestUser is the shared user fixture: inserts the user directly with
+// the requested role and mints a live session for it. It used to drive
+// POST /users, but that endpoint now requires an authenticated admin
+// (register-abuse hardening), and seeding keeps auto-increment ids and
+// admin-count invariants (e.g. the last-admin guard) deterministic. The
+// mux and adminBootstrapSecret parameters are kept for call-site
+// compatibility and are unused.
+func createTestUser(t *testing.T, database *sql.DB, mux *http.ServeMux, email, name, role, adminBootstrapSecret string) (int64, string) {
+	t.Helper()
+	_, _ = mux, adminBootstrapSecret
+
+	ctx := context.Background()
+	result, err := database.ExecContext(ctx,
+		`INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, email, name, role)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	userID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("seed user id: %v", err)
+	}
+
+	plaintext, tokenHash, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatalf("mint session: %v", err)
+	}
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO als_sessions(user_id, token_hash, expires_at) VALUES (?, ?, ?);`,
+		userID, tokenHash, time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	return userID, plaintext
+}
+
+// seedUserWithSession inserts a local user with the given role and mints a
+// session for it, returning the plaintext bearer token.
+func seedUserWithSession(t *testing.T, database *sql.DB, email, role string) string {
 	t.Helper()
 
-	body, err := json.Marshal(map[string]string{
-		"email": email,
-		"name":  name,
-		"role":  role,
-	})
+	ctx := context.Background()
+	result, err := database.ExecContext(ctx,
+		`INSERT INTO als_users(email, name, role) VALUES (?, ?, ?);`, email, "Seedy "+role, role)
 	if err != nil {
-		t.Fatalf("marshal create user request: %v", err)
+		t.Fatalf("seed user: %v", err)
+	}
+	userID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("seed user id: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewReader(body))
-	if (role == "admin" || role == "distributor") && adminBootstrapSecret != "" {
-		req.Header.Set("X-Admin-Bootstrap-Secret", adminBootstrapSecret)
+	plaintext, tokenHash, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatalf("mint session: %v", err)
 	}
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create user status = %d, body=%s", rec.Code, rec.Body.String())
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO als_sessions(user_id, token_hash, expires_at) VALUES (?, ?, ?);`,
+		userID, tokenHash, time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatalf("seed session: %v", err)
 	}
-
-	var response struct {
-		ID           int64  `json:"id"`
-		SessionToken string `json:"session_token"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
-		t.Fatalf("decode create user response: %v", err)
-	}
-	if response.ID <= 0 {
-		t.Fatalf("expected positive user id, got %d", response.ID)
-	}
-	if response.SessionToken == "" {
-		t.Fatalf("expected non-empty session token")
-	}
-
-	return response.ID, response.SessionToken
+	return plaintext
 }
