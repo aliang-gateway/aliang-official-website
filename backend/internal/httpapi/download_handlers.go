@@ -20,10 +20,10 @@ type downloadResponse struct {
 	DownloadURL  string    `json:"download_url"`
 	Version      string    `json:"version"`
 	ForceUpdate  bool      `json:"force_update"`
-	Changelog    string    `json:"changelog"`
+	Changelog   string    `json:"changelog"`
 	IsDefault    bool      `json:"is_default"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func downloadToResponse(d *model.Download) downloadResponse {
