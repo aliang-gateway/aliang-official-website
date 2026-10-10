@@ -303,9 +303,7 @@ func (s *Service) CheckVersion(ctx context.Context, platform, softwareName, user
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		iMaj, iMin, iPat, _ := parseVersion(candidates[i].Version)
-		jMaj, jMin, jPat, _ := parseVersion(candidates[j].Version)
-		return compareVersions(iMaj, iMin, iPat, jMaj, jMin, jPat) > 0
+		return preferLatestDownload(candidates[i], candidates[j])
 	})
 
 	latest := candidates[0]
@@ -362,4 +360,22 @@ func (s *Service) ListSoftwareNames(ctx context.Context) ([]string, error) {
 		names = append(names, n)
 	}
 	return names, rows.Err()
+}
+
+// preferLatestDownload 报告 a 是否应排在 b 之前(latest 候选):版本不等按
+// 版本降序;相等时按 updated_at 新者、再退 id 大者。sort.Slice 非稳定,相等
+// 版本键必须显式 tie-break,否则 latest(连带 force_update/changelog)会在
+// 跨请求间随机翻转。唯一约束(0030)防新重复行,此比较器兜历史数据。
+func preferLatestDownload(a, b model.Download) bool {
+	aMajor, aMinor, aPatch, aOK := parseVersion(a.Version)
+	bMajor, bMinor, bPatch, bOK := parseVersion(b.Version)
+	if aOK && bOK {
+		if cmp := compareVersions(aMajor, aMinor, aPatch, bMajor, bMinor, bPatch); cmp != 0 {
+			return cmp > 0
+		}
+	}
+	if !a.UpdatedAt.Equal(b.UpdatedAt) {
+		return a.UpdatedAt.After(b.UpdatedAt)
+	}
+	return a.ID > b.ID
 }
