@@ -93,13 +93,14 @@ func (s *ChallengeStore) sweepLocked(now time.Time) {
 // --- go-captcha resource synthesis ---
 //
 // go-captcha ships no embedded assets: Generate() refuses to run without
-// backgrounds and graph images. We synthesize both at first use — gradient
-// backgrounds with speckle noise, translucent rounded tiles — so the repo
-// stays free of binary blobs while the captcha stays fully self-hosted.
+// backgrounds and graph images. Backgrounds are synthesized fresh for every
+// challenge (random palette, gradient axis, noise and decoy shapes) so an
+// attacker cannot pre-build templates for a fixed image pool; tiles come
+// from a small static shape pool. The repo stays free of binary blobs.
 
 var (
-	slideResourcesOnce sync.Once
-	slideResources     []goslide.Resource
+	slideTilesOnce sync.Once
+	slideTilePool  []*goslide.GraphImage
 )
 
 const (
@@ -137,11 +138,20 @@ func (c *SlideCaptcha) Verify(key string, x, y int) bool {
 }
 
 // NewChallenge renders a fresh slider challenge and registers its answer.
+// The background is synthesized per challenge from a crypto-random seed —
+// fixed pools would let a bot precompute template matches.
 func (c *SlideCaptcha) NewChallenge() (*SlideChallenge, error) {
-	slideResourcesOnce.Do(initSlideResources)
+	slideTilesOnce.Do(initSlideTiles)
 
+	seed, err := randomSeed()
+	if err != nil {
+		return nil, err
+	}
 	builder := goslide.NewBuilder()
-	builder.SetResources(slideResources...)
+	builder.SetResources(
+		goslide.WithBackgrounds([]image.Image{synthRandomBackground(seed)}),
+		goslide.WithGraphImages(slideTilePool),
+	)
 	data, err := builder.Make().Generate()
 	if err != nil {
 		return nil, err
@@ -170,49 +180,129 @@ func (c *SlideCaptcha) NewChallenge() (*SlideChallenge, error) {
 	}, nil
 }
 
-func initSlideResources() {
-	backgrounds := make([]image.Image, 0, 3)
-	for seed := int64(1); seed <= 3; seed++ {
-		backgrounds = append(backgrounds, synthBackground(seed))
-	}
-	tiles := []*goslide.GraphImage{
-		synthTile(11),
-		synthTile(12),
-		synthTile(13),
-	}
-	slideResources = []goslide.Resource{
-		goslide.WithBackgrounds(backgrounds),
-		goslide.WithGraphImages(tiles),
+func initSlideTiles() {
+	slideTilePool = []*goslide.GraphImage{
+		synthTileShape(11, 10),              // squarish
+		synthTileShape(12, 22),              // soft corners
+		synthTileShape(13, slideTileSize/2), // circle
 	}
 }
 
-// synthBackground paints a deterministic vertical gradient with sparse noise
-// speckles — enough texture for the slider visual, zero binary assets.
-func synthBackground(seed int64) image.Image {
+func randomSeed() (int64, error) {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return 0, err
+	}
+	var seed int64
+	for _, b := range buf {
+		seed = seed<<8 | int64(b)
+	}
+	if seed < 0 {
+		seed = -seed
+	}
+	return seed, nil
+}
+
+// synthRandomBackground paints a seed-determined one-off background: random
+// palette, random gradient axis, translucent decoy geometry and speckle
+// noise. A fresh background per challenge is the template-match defence —
+// a fixed pool would let a bot precompute gap positions offline.
+func synthRandomBackground(seed int64) image.Image {
 	rng := mrand.New(mrand.NewSource(seed))
 	img := image.NewRGBA(image.Rect(0, 0, slideMasterWidth, slideMasterHeight))
-	top := color.RGBA{R: uint8(38 + seed*17), G: 52 + uint8(seed*9), B: 74, A: 255}
-	bottom := color.RGBA{R: 16, G: 24, B: 40, A: 255}
+
+	top := color.RGBA{
+		R: uint8(24 + rng.Intn(90)),
+		G: uint8(34 + rng.Intn(90)),
+		B: uint8(48 + rng.Intn(110)),
+		A: 255,
+	}
+	bottom := color.RGBA{
+		R: uint8(10 + rng.Intn(40)),
+		G: uint8(14 + rng.Intn(50)),
+		B: uint8(24 + rng.Intn(70)),
+		A: 255,
+	}
+	diagonal := rng.Intn(2) == 0
 	for y := 0; y < slideMasterHeight; y++ {
-		row := lerpColor(top, bottom, float64(y)/float64(slideMasterHeight))
 		for x := 0; x < slideMasterWidth; x++ {
-			img.Set(x, y, row)
+			var t float64
+			if diagonal {
+				t = float64(x+y) / float64(slideMasterWidth+slideMasterHeight)
+			} else {
+				t = float64(y) / float64(slideMasterHeight)
+			}
+			img.Set(x, y, lerpColor(top, bottom, t))
 		}
 	}
-	for n := 0; n < 900; n++ {
+
+	// Decoy geometry: translucent circles and lines that break up uniform
+	// gradients and waste edge-detection cycles.
+	for n := 0; n < 3+rng.Intn(3); n++ {
+		decoy := color.RGBA{
+			R: uint8(120 + rng.Intn(120)),
+			G: uint8(130 + rng.Intn(110)),
+			B: uint8(150 + rng.Intn(100)),
+			A: uint8(14 + rng.Intn(26)),
+		}
+		cx, cy := rng.Intn(slideMasterWidth), rng.Intn(slideMasterHeight)
+		radius := 20 + rng.Intn(60)
+		if rng.Intn(2) == 0 {
+			for y := cy - radius; y <= cy+radius; y++ {
+				for x := cx - radius; x <= cx+radius; x++ {
+					dx, dy := x-cx, y-cy
+					if dx*dx+dy*dy <= radius*radius {
+						img.Set(x, y, blendPixel(img.At(x, y), decoy))
+					}
+				}
+			}
+		} else {
+			x0, y0 := rng.Intn(slideMasterWidth), rng.Intn(slideMasterHeight)
+			x1, y1 := rng.Intn(slideMasterWidth), rng.Intn(slideMasterHeight)
+			steps := 2 * maxInt(absInt(x1-x0), absInt(y1-y0), 1)
+			for i := 0; i <= steps; i++ {
+				x := clampInt(x0+(x1-x0)*i/steps, 0, slideMasterWidth-1)
+				y := clampInt(y0+(y1-y0)*i/steps, 0, slideMasterHeight-1)
+				img.Set(x, y, blendPixel(img.At(x, y), decoy))
+				img.Set(clampInt(x+1, 0, slideMasterWidth-1), y, blendPixel(img.At(x, y), decoy))
+			}
+		}
+	}
+
+	// Speckle noise on top.
+	for n := 0; n < 700+rng.Intn(500); n++ {
 		x, y := rng.Intn(slideMasterWidth), rng.Intn(slideMasterHeight)
-		shade := uint8(rng.Intn(60))
-		img.Set(x, y, color.RGBA{R: 200 + shade, G: 210 + shade, B: 230, A: uint8(20 + rng.Intn(50))})
+		shade := uint8(rng.Intn(70))
+		img.Set(x, y, color.RGBA{R: 190 + shade, G: 200 + shade, B: 225, A: uint8(16 + rng.Intn(46))})
 	}
 	return img
 }
 
-// synthTile draws a translucent rounded square with a bright rim: overlay is
-// the draggable piece, shadow sits behind it, mask carves the rounded shape.
-func synthTile(seed int64) *goslide.GraphImage {
+func blendPixel(base color.Color, overlay color.RGBA) color.RGBA {
+	br, bg, bb, ba := base.RGBA()
+	a := float64(overlay.A) / 255
+	return color.RGBA{
+		R: uint8(float64(overlay.R)*a + float64(br>>8)*(1-a)),
+		G: uint8(float64(overlay.G)*a + float64(bg>>8)*(1-a)),
+		B: uint8(float64(overlay.B)*a + float64(bb>>8)*(1-a)),
+		A: uint8(ba >> 8),
+	}
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// synthTileShape draws a translucent tile with a bright rim: overlay is the
+// draggable piece, shadow sits behind it, mask carves the shape. The corner
+// radius varies per pool entry (squarish → soft → circle) so the draggable
+// silhouette is not always the same.
+func synthTileShape(seed int64, radius int) *goslide.GraphImage {
 	rng := mrand.New(mrand.NewSource(seed))
 	bounds := image.Rect(0, 0, slideTileSize, slideTileSize)
-	radius := 12
 
 	overlay := image.NewRGBA(bounds)
 	shadow := image.NewRGBA(bounds)
@@ -291,6 +381,16 @@ func minInt(vals ...int) int {
 	m := vals[0]
 	for _, v := range vals[1:] {
 		if v < m {
+			m = v
+		}
+	}
+	return m
+}
+
+func maxInt(vals ...int) int {
+	m := vals[0]
+	for _, v := range vals[1:] {
+		if v > m {
 			m = v
 		}
 	}

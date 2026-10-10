@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import {
-  SlideCaptcha,
+  SliderCaptchaField,
   fetchRegisterCaptcha,
   type SlideCaptchaChallenge,
   type SlideCaptchaSolve,
@@ -335,11 +335,19 @@ export default function RegisterPage() {
 
             {slideChallenge ? (
               <div className="field">
-                <label>{t("sliderCaptcha")}</label>
-                <SlideCaptcha
+                <SliderCaptchaField
                   challenge={slideChallenge}
+                  solved={sliderSolve !== null}
                   onSolve={setSliderSolve}
                   onReset={() => setSliderSolve(null)}
+                  onRefresh={refreshSlideChallenge}
+                  labels={{
+                    button: t("sliderCaptchaButton"),
+                    verified: t("sliderCaptchaVerified"),
+                    hint: t("sliderCaptchaHint"),
+                    refresh: t("sliderCaptchaRefresh"),
+                    close: t("sliderCaptchaClose"),
+                  }}
                 />
               </div>
             ) : null}

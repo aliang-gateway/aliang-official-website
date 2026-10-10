@@ -70,26 +70,40 @@ export function Modal({ isOpen, onClose, closeLabel, triggerRef, children, panel
 
   if (!isOpen) return null;
 
+  // 关键定位走内联样式：某些营销页的 unlayered 样式会盖过 utilities layer 的
+  // position 声明（实测 register 页弹窗被压成 relative），内联不可被覆盖。
   return (
     <section
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 70,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+      }}
       role="dialog"
       aria-modal="true"
     >
       <button
         type="button"
         className="absolute inset-0 bg-[var(--ink)]/55 backdrop-blur-sm"
+        style={{ position: "absolute", inset: 0, background: "rgba(2, 6, 23, 0.55)", backdropFilter: "blur(6px)", border: 0, cursor: "pointer" }}
         aria-label={closeLabel}
         onClick={onClose}
       />
       <div
         ref={panelRef}
         className={`relative z-[1] flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[1.4rem] border border-[var(--line)] bg-[var(--paper-warm)] shadow-[var(--shadow)] ${panelClassName}`}
+        style={{ position: "relative", zIndex: 1, maxHeight: "90vh" }}
       >
         <button
           type="button"
           ref={closeBtnRef}
           className="absolute right-3 top-3 z-[2] inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--paper)] text-xl font-semibold leading-none text-[var(--ink)] transition-transform duration-200 hover:-translate-y-[1px]"
+          style={{ position: "absolute", right: "0.75rem", top: "0.75rem", zIndex: 2 }}
           aria-label={closeLabel}
           onClick={onClose}
         >
