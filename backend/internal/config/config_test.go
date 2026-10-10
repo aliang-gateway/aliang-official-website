@@ -371,3 +371,26 @@ register:
 		t.Fatalf("MaxPerIPPerHour = %d, want -1 (explicitly disabled)", cfg.Register.MaxPerIPPerHour)
 	}
 }
+
+func TestLoad_SliderCaptchaDefaultsEnabled(t *testing.T) {
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.Register.SliderCaptchaEnabled() {
+		t.Fatal("slider captcha must default to enabled")
+	}
+
+	cfg, err = Load(writeConfigFile(t, guardTestConfig()+`
+register:
+  slider_captcha: false
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Register.SliderCaptchaEnabled() {
+		t.Fatal("explicit slider_captcha=false must win over the default")
+	}
+}

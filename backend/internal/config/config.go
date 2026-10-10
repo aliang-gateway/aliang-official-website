@@ -67,12 +67,20 @@ type RegisterConfig struct {
 	MaxPerEmailPerDay int `yaml:"max_per_email_per_day"`
 	// BlockDisposableDomains nil → true (block the built-in disposable list).
 	BlockDisposableDomains *bool `yaml:"block_disposable_domains"`
+	// SliderCaptcha nil → true (self-hosted go-captcha slider on register).
+	SliderCaptcha *bool `yaml:"slider_captcha"`
 }
 
 // ShouldBlockDisposableDomains reports whether well-known disposable email
 // providers should be rejected at registration (default true).
 func (c RegisterConfig) ShouldBlockDisposableDomains() bool {
 	return c.BlockDisposableDomains == nil || *c.BlockDisposableDomains
+}
+
+// SliderCaptchaEnabled reports whether the self-hosted slider captcha gates
+// the public registration path (default true).
+func (c RegisterConfig) SliderCaptchaEnabled() bool {
+	return c.SliderCaptcha == nil || *c.SliderCaptcha
 }
 
 type SMTPConfig struct {

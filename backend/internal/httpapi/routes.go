@@ -29,6 +29,7 @@ import (
 	"ai-api-portal/backend/internal/doc"
 	"ai-api-portal/backend/internal/download"
 	"ai-api-portal/backend/internal/fulfillment"
+	"ai-api-portal/backend/internal/guard"
 	"ai-api-portal/backend/internal/model"
 	"ai-api-portal/backend/internal/proxy"
 	"ai-api-portal/backend/internal/scanlogin"
@@ -104,6 +105,12 @@ type RoutesOptions struct {
 	RegisterMaxPerEmailPerDay      int
 	RegisterBlockDisposableDomains bool
 	RegisterAllowedEmailDomains    []string
+	// RegisterSliderCaptcha enables the self-hosted go-captcha slider on
+	// registration. RegisterChallengeStore injects the store backing the
+	// challenges (tests seed known answers through it); nil → the guard
+	// creates its own.
+	RegisterSliderCaptcha  bool
+	RegisterChallengeStore *guard.ChallengeStore
 }
 
 type UserUsageCache interface {
@@ -834,6 +841,7 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	// inside the handler). This endpoint used to be fully public and handed
 	// out session tokens to anonymous callers.
 	mux.Handle("POST /users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleCreateUser))))
+	mux.HandleFunc("GET /auth/register-captcha", r.handleRegisterCaptcha)
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
 	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
 	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -22,6 +23,7 @@ import (
 // captcha.
 type registerGuard struct {
 	turnstile         *guard.TurnstileVerifier // nil → turnstile off
+	slider            *guard.SlideCaptcha      // nil → slider captcha off
 	limiter           *guard.RateLimiter
 	maxPerIPPerHour   int
 	maxPerEmailPerDay int
@@ -42,8 +44,15 @@ func newRegisterGuardFromOptions(opts RoutesOptions) *registerGuard {
 	if opts.RegisterBlockDisposableDomains {
 		g.disposable = guard.NewDefaultDisposableChecker()
 	}
+	if opts.RegisterSliderCaptcha {
+		store := opts.RegisterChallengeStore
+		if store == nil {
+			store = guard.NewChallengeStore(5 * time.Minute)
+		}
+		g.slider = guard.NewSlideCaptcha(store)
+	}
 
-	if g.turnstile == nil && g.maxPerIPPerHour <= 0 && g.maxPerEmailPerDay <= 0 &&
+	if g.turnstile == nil && g.slider == nil && g.maxPerIPPerHour <= 0 && g.maxPerEmailPerDay <= 0 &&
 		g.disposable == nil && len(g.allowedDomains) == 0 {
 		return nil
 	}
@@ -57,6 +66,9 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 	var payload struct {
 		Email          string `json:"email"`
 		TurnstileToken string `json:"turnstile_token"`
+		CaptchaKey     string `json:"captcha_key"`
+		CaptchaX       int    `json:"captcha_x"`
+		CaptchaY       int    `json:"captcha_y"`
 	}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -86,6 +98,12 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 	if g.turnstile != nil {
 		if err := g.turnstile.Verify(req.Context(), payload.TurnstileToken, clientIP); err != nil {
 			return http.StatusForbidden, "captcha verification failed, please retry"
+		}
+	}
+
+	if g.slider != nil {
+		if payload.CaptchaKey == "" || !g.slider.Verify(payload.CaptchaKey, payload.CaptchaX, payload.CaptchaY) {
+			return http.StatusForbidden, "slider verification failed, please retry"
 		}
 	}
 
@@ -151,4 +169,29 @@ func containsDomain(allowed []string, domain string) bool {
 		}
 	}
 	return false
+}
+
+// handleRegisterCaptcha issues a fresh slider challenge. Public, but rate
+// limited per client IP — rendering the challenge images costs CPU, so this
+// endpoint must not be freely farmable.
+func (r *routes) handleRegisterCaptcha(w http.ResponseWriter, req *http.Request) {
+	g := r.registerGuard
+	if g == nil || g.slider == nil {
+		writeError(w, http.StatusNotFound, "captcha is not enabled")
+		return
+	}
+
+	clientIP := registerClientIP(req)
+	if !g.limiter.Allow("captcha:"+clientIP, 30, time.Minute) {
+		writeError(w, http.StatusTooManyRequests, "too many captcha requests, please retry later")
+		return
+	}
+
+	challenge, err := g.slider.NewChallenge()
+	if err != nil {
+		slog.Error("register captcha generation failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to issue captcha")
+		return
+	}
+	writeJSON(w, http.StatusOK, challenge)
 }

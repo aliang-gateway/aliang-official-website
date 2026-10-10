@@ -199,6 +199,7 @@ func main() {
 		// Zero was already defaulted in config; a negative limit means the
 		// operator explicitly disabled that dimension.
 		RegisterBlockDisposableDomains: cfg.Register.ShouldBlockDisposableDomains(),
+		RegisterSliderCaptcha:          cfg.Register.SliderCaptchaEnabled(),
 		RegisterAllowedEmailDomains:    cfg.Register.AllowedEmailDomains,
 		BackgroundCtx:                  ctx,
 		WorkerInterval:                 time.Duration(loadIntEnv("FULFILLMENT_WORKER_INTERVAL_MS", 10000)) * time.Millisecond,

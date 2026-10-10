@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
+	"time"
+
+	"ai-api-portal/backend/internal/guard"
 	"ai-api-portal/backend/internal/proxy"
 )
 
@@ -310,5 +314,100 @@ func TestRegisterClientIPPrefersPenultimateXFFHop(t *testing.T) {
 				t.Fatalf("registerClientIP = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRegisterGuardRequiresSliderCaptcha(t *testing.T) {
+	t.Parallel()
+
+	store := guard.NewChallengeStore(time.Minute)
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{
+		RegisterSliderCaptcha:  true,
+		RegisterChallengeStore: store,
+	})
+
+	// No captcha fields at all → rejected before reaching upstream.
+	rec := postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without slider captcha, got %d", rec.Code)
+	}
+	if hits := upstreamHits.Load(); hits != 0 {
+		t.Fatalf("captcha-less registration must not reach upstream, got %d hits", hits)
+	}
+
+	// Wrong drop position → rejected, and the consumed key cannot be reused.
+	key := store.Put(120, 90)
+	rec = postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw","captcha_key":"`+key+`","captcha_x":1,"captcha_y":1}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a wrong slider position, got %d", rec.Code)
+	}
+	rec = postRegister(t, mux, "", `{"email":"a@gmail.com","name":"u","password":"pw","captcha_key":"`+key+`","captcha_x":120,"captcha_y":90}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a replayed key, got %d", rec.Code)
+	}
+
+	// Fresh key with the exact position registered in the store → forwarded.
+	key = store.Put(120, 90)
+	rec = postRegister(t, mux, "", `{"email":"human@gmail.com","name":"u","password":"pw","captcha_key":"`+key+`","captcha_x":118,"captcha_y":92}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a correct slider solve, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if hits := upstreamHits.Load(); hits != 1 {
+		t.Fatalf("expected the solved registration forwarded upstream, got %d hits", hits)
+	}
+}
+
+func TestRegisterCaptchaEndpointIssuesChallenge(t *testing.T) {
+	t.Parallel()
+
+	mux, _ := newRegisterGuardTestRoutes(t, RoutesOptions{
+		RegisterSliderCaptcha: true,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/register-captcha", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from register-captcha, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		CaptchaKey  string `json:"captcha_key"`
+		MasterImage string `json:"master_image"`
+		TileImage   string `json:"tile_image"`
+		Width       int    `json:"width"`
+		Height      int    `json:"height"`
+		TileSize    int    `json:"tile_size"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode captcha payload: %v", err)
+	}
+	if payload.CaptchaKey == "" {
+		t.Fatal("expected non-empty captcha_key")
+	}
+	if !strings.HasPrefix(payload.MasterImage, "data:image/jpeg;base64,") {
+		t.Fatalf("master image should be a jpeg data URI, got %q", payload.MasterImage[:min(40, len(payload.MasterImage))])
+	}
+	if !strings.HasPrefix(payload.TileImage, "data:image/png;base64,") {
+		t.Fatalf("tile image should be a png data URI, got %q", payload.TileImage[:min(40, len(payload.TileImage))])
+	}
+	if payload.Width == 0 || payload.Height == 0 || payload.TileSize == 0 {
+		t.Fatalf("expected geometry hints, got %+v", payload)
+	}
+}
+
+func TestRegisterGuardSkipsSliderWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	// Zero-value options: no slider, register flows through untouched.
+	mux, upstreamHits := newRegisterGuardTestRoutes(t, RoutesOptions{})
+	for i := 0; i < 3; i++ {
+		rec := postRegister(t, mux, "", `{"email":"no-slider@gmail.com","name":"u","password":"pw"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200 without slider captcha, got %d", i+1, rec.Code)
+		}
+	}
+	if hits := upstreamHits.Load(); hits != 3 {
+		t.Fatalf("expected 3 upstream hits, got %d", hits)
 	}
 }

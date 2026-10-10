@@ -52,6 +52,23 @@ describe("validateRegisterSubmit", () => {
       validateRegisterSubmit({ ...base, turnstileEnabled: false }),
     ).toBeNull();
   });
+
+  it("requires a solved slider when the slider captcha is loaded", () => {
+    expect(
+      validateRegisterSubmit({ ...base, sliderRequired: true }),
+    ).toMatch(/slider/i);
+    expect(
+      validateRegisterSubmit({
+        ...base,
+        sliderRequired: true,
+        sliderSolved: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not require a slider when no challenge was issued", () => {
+    expect(validateRegisterSubmit({ ...base, sliderRequired: false })).toBeNull();
+  });
 });
 
 describe("buildRegisterBody", () => {
@@ -76,5 +93,26 @@ describe("buildRegisterBody", () => {
     });
     expect(withoutToken).toEqual({ email: "a@b.co", name: "n", password: "pw" });
     expect("turnstile_token" in withoutToken).toBe(false);
+  });
+
+  it("carries slider captcha fields when solved", () => {
+    const body = buildRegisterBody({
+      email: "a@b.co",
+      name: "n",
+      password: "pw",
+      slider: { key: "cap-key", x: 118, y: 92 },
+    });
+    expect(body).toEqual({
+      email: "a@b.co",
+      name: "n",
+      password: "pw",
+      captcha_key: "cap-key",
+      captcha_x: 118,
+      captcha_y: 92,
+    });
+    expect(
+      "captcha_key" in
+        buildRegisterBody({ email: "a@b.co", name: "n", password: "pw" }),
+    ).toBe(false);
   });
 });
