@@ -19,6 +19,11 @@ import (
 const portalSettingEmailVerification = "register_email_verification"
 
 func (r *routes) getEmailVerificationEnabled(ctx context.Context) bool {
+	// SMTP 未配置时功能物理不可用（发码会静默丢失），开关一律视为关闭——
+	// 否则 config/DB 里的开启值会制造"输码永远失败"的注册死锁。
+	if !r.smtpConfigured {
+		return false
+	}
 	var value string
 	err := r.db.QueryRowContext(ctx,
 		`SELECT value FROM als_portal_settings WHERE key = ?;`,
