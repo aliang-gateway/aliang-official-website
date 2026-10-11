@@ -69,6 +69,30 @@ describe("validateRegisterSubmit", () => {
   it("does not require a slider when no challenge was issued", () => {
     expect(validateRegisterSubmit({ ...base, sliderRequired: false })).toBeNull();
   });
+
+  it("开启时必须填写邮箱验证码", () => {
+    expect(validateRegisterSubmit({ ...base, emailCodeRequired: true })).toMatch(
+      /verification code/i,
+    );
+    expect(
+      validateRegisterSubmit({
+        ...base,
+        emailCodeRequired: true,
+        emailCode: "  ",
+      }),
+    ).toMatch(/verification code/i);
+    expect(
+      validateRegisterSubmit({
+        ...base,
+        emailCodeRequired: true,
+        emailCode: "ABC12345",
+      }),
+    ).toBeNull();
+  });
+
+  it("关闭时不要求邮箱验证码", () => {
+    expect(validateRegisterSubmit({ ...base, emailCodeRequired: false })).toBeNull();
+  });
 });
 
 describe("buildRegisterBody", () => {
@@ -102,17 +126,24 @@ describe("buildRegisterBody", () => {
       password: "pw",
       slider: { key: "cap-key", x: 118, y: 92 },
     });
-    expect(body).toEqual({
+    expect(body.captcha_key).toBe("cap-key");
+    expect(body.captcha_x).toBe(118);
+    expect(body.captcha_y).toBe(92);
+    expect(
+      "captcha_key" in buildRegisterBody({ email: "a@b.co", name: "n", password: "pw" }),
+    ).toBe(false);
+  });
+
+  it("carries email_code only when present", () => {
+    const body = buildRegisterBody({
       email: "a@b.co",
       name: "n",
       password: "pw",
-      captcha_key: "cap-key",
-      captcha_x: 118,
-      captcha_y: 92,
+      emailCode: "ABC12345",
     });
+    expect(body.email_code).toBe("ABC12345");
     expect(
-      "captcha_key" in
-        buildRegisterBody({ email: "a@b.co", name: "n", password: "pw" }),
+      "email_code" in buildRegisterBody({ email: "a@b.co", name: "n", password: "pw" }),
     ).toBe(false);
   });
 });

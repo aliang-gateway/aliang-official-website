@@ -65,8 +65,12 @@ type routes struct {
 	refreshMu     sync.Mutex
 	refreshUserMu map[int64]*userRefreshMutex
 	// registerGuard enforces the anti-abuse checks on POST /auth/register.
-	// nil when every check is disabled (tests, local dev).
+	// Always present; each step self-gates at check time.
 	registerGuard *registerGuard
+	// 注册邮箱验证的运行时开关默认值（config）；admin 运行时改的值存
+	// als_portal_settings。smtpConfigured 供开启校验。
+	emailVerificationDefault bool
+	smtpConfigured           bool
 }
 
 type userRefreshMutex struct {
@@ -111,6 +115,9 @@ type RoutesOptions struct {
 	// creates its own.
 	RegisterSliderCaptcha  bool
 	RegisterChallengeStore *guard.ChallengeStore
+	// 注册邮箱验证（portal 自有）：启动默认值与 SMTP 配置状态。
+	RegisterEmailVerificationDefault bool
+	SmtpConfigured                   bool
 }
 
 type UserUsageCache interface {
@@ -821,7 +828,17 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 		scanLogin:                scanlogin.NewService(database, scanlogin.Options{Dialect: strings.TrimSpace(opts.SQLDialect), Minter: userSvc}),
 		phoneServerAdminURL:      strings.TrimSpace(opts.PhoneServerAdminURL),
 		phoneServerAdminPassword: strings.TrimSpace(opts.PhoneServerAdminPassword),
+		emailVerificationDefault: opts.RegisterEmailVerificationDefault,
+		smtpConfigured:           opts.SmtpConfigured,
 		registerGuard:            newRegisterGuardFromOptions(opts),
+	}
+
+	// 注册邮箱验证的运行时开关读取与验码能力注入守卫（构造时 routes 尚未存在）。
+	if r.registerGuard != nil {
+		r.registerGuard.emailVerificationEnabled = r.getEmailVerificationEnabled
+		if r.userSvc != nil {
+			r.registerGuard.verifyEmailCode = r.userSvc.VerifyRegisterEmailCode
+		}
 	}
 	authenticated := auth.RequireUserWithDialect(database, r.sqlDialect)
 
@@ -843,6 +860,10 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.Handle("POST /users", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleCreateUser))))
 	mux.HandleFunc("GET /auth/register-captcha", r.handleRegisterCaptcha)
 	mux.HandleFunc("POST /auth/register", r.handleAuthRegisterPassthrough)
+	mux.HandleFunc("POST /auth/register/send-code", r.handleRegisterSendCode)
+	mux.HandleFunc("GET /auth/register/options", r.handleRegisterOptions)
+	mux.Handle("GET /admin/register-settings", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetRegisterSettings))))
+	mux.Handle("PUT /admin/register-settings", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateRegisterSettings))))
 	mux.Handle("GET /admin/cache-stats", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCacheStats))))
 	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
 	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)

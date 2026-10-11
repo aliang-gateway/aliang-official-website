@@ -83,6 +83,13 @@ func (c RegisterConfig) SliderCaptchaEnabled() bool {
 	return c.SliderCaptcha == nil || *c.SliderCaptcha
 }
 
+// EmailVerificationEnabled reports whether registration requires a pre-verified
+// email code (portal-side, independent of upstream sub2api). nil → false:
+// the admin toggles it at runtime; this config only seeds the default.
+func (c RegisterConfig) EmailVerificationEnabled() bool {
+	return c.RequireEmailVerification != nil && *c.RequireEmailVerification
+}
+
 type SMTPConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Host     string `yaml:"host"`
@@ -138,6 +145,7 @@ func Load(path string) (*Config, error) {
 	applyEnvString(&cfg.Stripe.CancelURL, "STRIPE_CANCEL_URL")
 	applyEnvString(&cfg.LogLevel, "LOG_LEVEL")
 	applyEnvString(&cfg.Register.TurnstileSecretKey, "TURNSTILE_SECRET_KEY")
+	applyEnvBool(&cfg.Register.RequireEmailVerification, "REGISTER_REQUIRE_EMAIL_VERIFICATION")
 
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -223,6 +231,10 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if c.Register.EmailVerificationEnabled() && !c.SMTP.Enabled {
+		return fmt.Errorf("register.require_email_verification requires smtp.enabled=true (verification codes are sent by this portal)")
+	}
+
 	return nil
 }
 
@@ -233,6 +245,15 @@ func isEncoded32ByteKey(value string) bool {
 		}
 	}
 	return false
+}
+
+func applyEnvBool(target **bool, key string) {
+	value, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		return
+	}
+	enabled := strings.EqualFold(strings.TrimSpace(value), "true") || strings.TrimSpace(value) == "1"
+	*target = &enabled
 }
 
 func applyEnvString(target *string, key string) {

@@ -50,6 +50,10 @@ export default function RegisterPage() {
   const [turnstileReset, setTurnstileReset] = useState(0);
   const [slideChallenge, setSlideChallenge] = useState<SlideCaptchaChallenge | null>(null);
   const [sliderSolve, setSliderSolve] = useState<SlideCaptchaSolve | null>(null);
+  const [emailCodeRequired, setEmailCodeRequired] = useState(false);
+  const [emailCode, setEmailCode] = useState("");
+  const [sendCodeCooldown, setSendCodeCooldown] = useState(0);
+  const [codeSentNotice, setCodeSentNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -85,6 +89,60 @@ export default function RegisterPage() {
     setSlideChallenge(await fetchRegisterCaptcha());
   }, []);
 
+  // 注册选项探测：邮箱验证运行时开关（admin 可随时切换，这里只影响渲染）。
+  useEffect(() => {
+    if (isCheckingSession) {
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/auth/register/options", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!cancelled && payload && typeof payload === "object") {
+          setEmailCodeRequired(Boolean((payload as Record<string, unknown>).email_verification));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isCheckingSession]);
+
+  // 发码倒计时
+  useEffect(() => {
+    if (sendCodeCooldown <= 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setSendCodeCooldown((seconds) => (seconds <= 1 ? 0 : seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [sendCodeCooldown]);
+
+  const handleSendCode = async () => {
+    setError(null);
+    setCodeSentNotice(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError(t("invalidEmailForCode"));
+      return;
+    }
+    try {
+      const response = await fetch("/api/auth/register/send-code", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const payload = (await response.json()) as unknown;
+      if (!response.ok) {
+        throw new Error(extractApiError(payload, "Failed to send code"));
+      }
+      setCodeSentNotice(t("codeSent"));
+      setSendCodeCooldown(60);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Failed to send code");
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -99,6 +157,8 @@ export default function RegisterPage() {
       turnstileToken,
       sliderRequired: slideChallenge !== null,
       sliderSolved: sliderSolve !== null,
+      emailCodeRequired,
+      emailCode,
     });
     if (validationError) {
       setError(validationError);
@@ -120,6 +180,7 @@ export default function RegisterPage() {
             password,
             turnstileToken,
             slider: sliderSolve,
+            emailCode,
           }),
         ),
       });
@@ -131,6 +192,9 @@ export default function RegisterPage() {
         setTurnstileReset((signal) => signal + 1);
         if (slideChallenge !== null) {
           void refreshSlideChallenge();
+        }
+        if (emailCodeRequired) {
+          setEmailCode("");
         }
         throw new Error(extractApiError(payload, "Register failed"));
       }
@@ -326,6 +390,31 @@ export default function RegisterPage() {
                 <Link href="/privacy">{t("privacyPolicy")}</Link>
               </span>
             </label>
+
+            {emailCodeRequired ? (
+              <div className="field">
+                <label htmlFor="register-email-code">{t("emailCodeLabel")}</label>
+                <div className="field-row">
+                  <input
+                    id="register-email-code"
+                    className="field-input"
+                    placeholder={t("emailCodePlaceholder")}
+                    value={emailCode}
+                    onChange={(event) => setEmailCode(event.target.value)}
+                    autoComplete="one-time-code"
+                  />
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={handleSendCode}
+                    disabled={sendCodeCooldown > 0 || isSubmitting}
+                  >
+                    {sendCodeCooldown > 0 ? t("resendIn", { seconds: sendCodeCooldown }) : t("sendCode")}
+                  </button>
+                </div>
+                {codeSentNotice ? <p className="text-xs font-bold text-emerald-500">{codeSentNotice}</p> : null}
+              </div>
+            ) : null}
 
             {turnstileEnabled ? (
               <div className="field">

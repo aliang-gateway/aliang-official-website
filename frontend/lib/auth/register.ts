@@ -14,6 +14,9 @@ export type RegisterSubmitInput = {
   // backend actually issued a challenge (it 404s when the slider is off).
   sliderRequired?: boolean;
   sliderSolved?: boolean;
+  // 注册邮箱验证码（portal 自有）。emailCodeRequired 来自运行时开关探测。
+  emailCodeRequired?: boolean;
+  emailCode?: string;
 };
 
 // validateRegisterSubmit returns the first user-facing error message, or
@@ -36,6 +39,9 @@ export function validateRegisterSubmit(
   if (input.sliderRequired && !input.sliderSolved) {
     return "Please complete the slider verification";
   }
+  if (input.emailCodeRequired && !(input.emailCode ?? "").trim()) {
+    return "Please enter the email verification code";
+  }
   return null;
 }
 
@@ -48,6 +54,7 @@ export function buildRegisterBody(input: {
   password: string;
   turnstileToken?: string;
   slider?: { key: string; x: number; y: number } | null;
+  emailCode?: string;
 }): Record<string, string | number> {
   const body: Record<string, string | number> = {
     email: input.email.trim(),
@@ -62,6 +69,10 @@ export function buildRegisterBody(input: {
     body["captcha_key"] = input.slider.key;
     body["captcha_x"] = input.slider.x;
     body["captcha_y"] = input.slider.y;
+  }
+  const emailCode = (input.emailCode ?? "").trim();
+  if (emailCode) {
+    body["email_code"] = emailCode;
   }
   return body;
 }
