@@ -111,6 +111,10 @@ func main() {
 	}
 	slog.Info("stored sub2api credentials encrypted")
 
+	if cfg.Register.EmailVerificationEnabled() && !cfg.SMTP.Enabled {
+		slog.Warn("register.require_email_verification is enabled but smtp is not configured — codes cannot be delivered and the admin toggle stays blocked; configure smtp.* and restart")
+	}
+
 	opts := user.ServiceOptions{
 		AllowedEmailDomains:      cfg.Register.AllowedEmailDomains,
 		RequireEmailVerification: cfg.Register.RequireEmailVerification,

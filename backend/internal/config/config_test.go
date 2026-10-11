@@ -433,15 +433,18 @@ func TestLoad_EmailVerificationRequiresSMTP(t *testing.T) {
 	t.Setenv("REGISTER_REQUIRE_EMAIL_VERIFICATION", "")
 	t.Setenv("TURNSTILE_SECRET_KEY", "")
 
-	body := guardTestConfig() + `
+	// 历史教训（v1.0.53 事故）：生产配置休眠着 true 且 SMTP 未配，启动联动
+	// 拒绝曾把服务炸掉。config 值只是运行时回退默认，SMTP 把关移交 admin
+	// 更新端点——这里只断言 Load 成功且默认值可见。
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()+`
 register:
   require_email_verification: true
-`
-	if _, err := Load(writeConfigFile(t, body)); err == nil {
-		t.Fatal("enabling email verification without SMTP must fail at startup")
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-	if !strings.Contains(errText(t, writeConfigFile(t, body)), "smtp.enabled") {
-		t.Fatal("error should mention smtp.enabled")
+	if !cfg.Register.EmailVerificationEnabled() {
+		t.Fatal("explicit true should be reflected in Enabled()")
 	}
 }
 
