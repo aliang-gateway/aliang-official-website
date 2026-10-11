@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net"
@@ -29,6 +30,10 @@ type registerGuard struct {
 	maxPerEmailPerDay int
 	disposable        *guard.DisposableChecker // nil → disposable blocking off
 	allowedDomains    []string                 // empty → no allowlist
+	// 邮箱验证是运行时开关（admin 可切）：enabled fn 读 portal settings，
+	// verify fn 消费一次性验证码。两者由 RegisterRoutesWithOptions 注入。
+	emailVerificationEnabled func(ctx context.Context) bool
+	verifyEmailCode          func(ctx context.Context, email, code string) error
 }
 
 func newRegisterGuardFromOptions(opts RoutesOptions) *registerGuard {
@@ -52,10 +57,8 @@ func newRegisterGuardFromOptions(opts RoutesOptions) *registerGuard {
 		g.slider = guard.NewSlideCaptcha(store)
 	}
 
-	if g.turnstile == nil && g.slider == nil && g.maxPerIPPerHour <= 0 && g.maxPerEmailPerDay <= 0 &&
-		g.disposable == nil && len(g.allowedDomains) == 0 {
-		return nil
-	}
+	// 恒返回守卫：邮箱验证是运行时开关（admin 随时开启），若在其他开关全关
+	// 时把守卫置 nil，运行时开启就会失去强制点。所有步骤各自带启用判断。
 	return g
 }
 
@@ -69,6 +72,7 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 		CaptchaKey     string `json:"captcha_key"`
 		CaptchaX       int    `json:"captcha_x"`
 		CaptchaY       int    `json:"captcha_y"`
+		EmailCode      string `json:"email_code"`
 	}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -98,6 +102,19 @@ func (g *registerGuard) check(req *http.Request, body []byte) (int, string) {
 	if g.turnstile != nil {
 		if err := g.turnstile.Verify(req.Context(), payload.TurnstileToken, clientIP); err != nil {
 			return http.StatusForbidden, "captcha verification failed, please retry"
+		}
+	}
+
+	// 邮箱验证码放在滑块之后、邮箱限额之前消费：前面任何一步失败都不浪费
+	// 已发出的码。
+	if g.emailVerificationEnabled != nil && g.emailVerificationEnabled(req.Context()) {
+		if strings.TrimSpace(payload.EmailCode) == "" {
+			return http.StatusForbidden, "email verification code is required"
+		}
+		if g.verifyEmailCode != nil {
+			if err := g.verifyEmailCode(req.Context(), email, payload.EmailCode); err != nil {
+				return http.StatusForbidden, "email verification failed, please request a new code"
+			}
 		}
 	}
 

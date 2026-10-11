@@ -394,3 +394,62 @@ register:
 		t.Fatal("explicit slider_captcha=false must win over the default")
 	}
 }
+
+func TestLoad_EmailVerificationDefaultsDisabled(t *testing.T) {
+	t.Setenv("REGISTER_REQUIRE_EMAIL_VERIFICATION", "")
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Register.EmailVerificationEnabled() {
+		t.Fatal("email verification must default to disabled")
+	}
+}
+
+func TestLoad_EmailVerificationEnvOverride(t *testing.T) {
+	t.Setenv("REGISTER_REQUIRE_EMAIL_VERIFICATION", "true")
+
+	// env 开启邮箱验证时，SMTP 联动校验同样生效——fixture 需带合法 SMTP。
+	cfg, err := Load(writeConfigFile(t, guardTestConfig()+`
+smtp:
+  enabled: true
+  host: "smtp.example.com"
+  port: 587
+  username: "noreply@example.com"
+  password: "secret"
+  from: "noreply@example.com"
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.Register.EmailVerificationEnabled() {
+		t.Fatal("env REGISTER_REQUIRE_EMAIL_VERIFICATION=true must enable it")
+	}
+}
+
+func TestLoad_EmailVerificationRequiresSMTP(t *testing.T) {
+	t.Setenv("REGISTER_REQUIRE_EMAIL_VERIFICATION", "")
+	t.Setenv("TURNSTILE_SECRET_KEY", "")
+
+	body := guardTestConfig() + `
+register:
+  require_email_verification: true
+`
+	if _, err := Load(writeConfigFile(t, body)); err == nil {
+		t.Fatal("enabling email verification without SMTP must fail at startup")
+	}
+	if !strings.Contains(errText(t, writeConfigFile(t, body)), "smtp.enabled") {
+		t.Fatal("error should mention smtp.enabled")
+	}
+}
+
+func errText(t *testing.T, path string) string {
+	t.Helper()
+	_, err := Load(path)
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}

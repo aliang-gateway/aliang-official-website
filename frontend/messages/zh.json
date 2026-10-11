@@ -734,7 +734,13 @@
     "emailVerification": "邮箱验证",
     "verificationCodePlaceholder": "输入验证码",
     "verifying": "验证中...",
-    "verifyEmail": "验证邮箱"
+    "verifyEmail": "验证邮箱",
+    "emailCodeLabel": "邮箱验证码",
+    "emailCodePlaceholder": "输入邮件中的验证码",
+    "sendCode": "发送验证码",
+    "resendIn": "{seconds} 秒后重发",
+    "codeSent": "验证码已发送，请查收邮箱",
+    "invalidEmailForCode": "请先输入有效的邮箱地址"
   },
   "services": {
     "nowAvailable": "现已提供 {version}",
@@ -802,7 +808,8 @@
     "configCenter": "配置中心",
     "downloads": "下载",
     "services": "服务时间线",
-    "cacheStats": "缓存率"
+    "cacheStats": "缓存率",
+    "registerSettings": "注册设置"
   },
   "adminHome": {
     "checking": "正在检查管理会话...",
@@ -821,7 +828,9 @@
     "downloads": "下载",
     "downloadsDesc": "管理软件下载与版本控制",
     "cacheStats": "缓存率",
-    "cacheStatsDesc": "全站提示缓存命中率统计"
+    "cacheStatsDesc": "全站提示缓存命中率统计",
+    "registerSettings": "注册设置",
+    "registerSettingsDesc": "注册是否需要邮箱验证码的开关"
   },
   "adminUsers": {
     "title": "用户管理",
@@ -1509,5 +1518,14 @@
     "multiplier": "倍率",
     "noData": "该时间范围内没有用量记录。",
     "loading": "加载中…"
+  },
+  "adminRegisterSettings": {
+    "title": "注册设置",
+    "emailVerificationToggle": "注册需要邮箱验证码",
+    "emailVerificationDesc": "开启后，新用户注册需先通过邮箱收取验证码并在注册时填写。验证码 10 分钟过期、一次性使用，发码有严格限流。",
+    "stateOn": "已开启",
+    "stateOff": "已关闭",
+    "smtpMissingHint": "portal 后端尚未配置 SMTP。请先配置 smtp.*（并重启）再开启，否则验证码无法发出、注册会被阻塞。",
+    "runtimeHint": "立即生效，无需重启。开关存储在 portal 数据库中，重启后保持。"
   }
 }

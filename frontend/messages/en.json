@@ -734,7 +734,13 @@
     "emailVerification": "Email Verification",
     "verificationCodePlaceholder": "Enter verification code",
     "verifying": "Verifying...",
-    "verifyEmail": "Verify Email"
+    "verifyEmail": "Verify Email",
+    "emailCodeLabel": "Email verification code",
+    "emailCodePlaceholder": "Paste the code from your email",
+    "sendCode": "Send code",
+    "resendIn": "Resend in {seconds}s",
+    "codeSent": "Code sent — check your inbox",
+    "invalidEmailForCode": "Enter a valid email address first"
   },
   "services": {
     "nowAvailable": "Now {version} Available",
@@ -802,7 +808,8 @@
     "configCenter": "Config Center",
     "downloads": "Downloads",
     "services": "Services",
-    "cacheStats": "Cache stats"
+    "cacheStats": "Cache stats",
+    "registerSettings": "Register settings"
   },
   "adminHome": {
     "checking": "Checking admin session...",
@@ -821,7 +828,9 @@
     "downloads": "Downloads",
     "downloadsDesc": "Manage software downloads and version control",
     "cacheStats": "Cache stats",
-    "cacheStatsDesc": "Site-wide prompt cache hit rate"
+    "cacheStatsDesc": "Site-wide prompt cache hit rate",
+    "registerSettings": "Register settings",
+    "registerSettingsDesc": "Toggle email verification for sign-ups"
   },
   "adminUsers": {
     "title": "User Management",
@@ -1509,5 +1518,14 @@
     "multiplier": "Multiplier",
     "noData": "No usage records in this range.",
     "loading": "Loading…"
+  },
+  "adminRegisterSettings": {
+    "title": "Registration settings",
+    "emailVerificationToggle": "Email verification for sign-ups",
+    "emailVerificationDesc": "When on, new sign-ups must request a 6+ character code by email and enter it during registration. Codes expire in 10 minutes, are single-use, and sending is rate-limited.",
+    "stateOn": "ON",
+    "stateOff": "OFF",
+    "smtpMissingHint": "SMTP is not configured on the portal backend. Configure smtp.* (and restart) before enabling, otherwise verification codes cannot be delivered and registration would be blocked.",
+    "runtimeHint": "Takes effect immediately — no restart needed. The setting is stored in the portal database and survives restarts."
   }
 }
