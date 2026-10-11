@@ -92,6 +92,29 @@ func TestRegisterSendCode_IssuesAndMailsCode(t *testing.T) {
 	}
 }
 
+func TestRegisterSendCode_PhysicallyOffWithoutSMTP(t *testing.T) {
+	t.Parallel()
+
+	// SMTP 未配置（生产现状）：即使 settings 开关为 true，功能也必须物理
+	// 失效——否则发码 200 但信件被 noop 吞掉，注册进入死锁。
+	database := setupTestDB(t)
+	mailSender := &capturingMailSender{}
+	userSvc := user.NewServiceWithOptions(database, user.ServiceOptions{MailSender: mailSender, SQLDialect: "sqlite"})
+	mux := http.NewServeMux()
+	RegisterRoutesWithOptions(mux, database, RoutesOptions{UserService: userSvc, SQLDialect: "sqlite", SmtpConfigured: false})
+	enableEmailVerification(t, database)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/register/options", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), `"email_verification":true`) {
+		t.Fatalf("without SMTP the switch must report off: %s", rec.Body.String())
+	}
+	if rec := postJSON(t, mux, "/auth/register/send-code", `{"email":"deadlock@example.com"}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 without SMTP, got %d", rec.Code)
+	}
+}
+
 func TestRegisterSendCode_DisabledWhenSwitchOff(t *testing.T) {
 	t.Parallel()
 
