@@ -231,9 +231,10 @@ func (c *Config) validate() error {
 		}
 	}
 
-	if c.Register.EmailVerificationEnabled() && !c.SMTP.Enabled {
-		return fmt.Errorf("register.require_email_verification requires smtp.enabled=true (verification codes are sent by this portal)")
-	}
+	// 注意：require_email_verification 只是运行时开关（als_portal_settings）
+	// 的启动默认。真正的开启把关在 admin 更新端点（SMTP 未配置时拒绝开启），
+	// 这里不做联动拒绝——历史上生产配置长期带着 true 且 SMTP 未配，联动
+	// 校验曾把它变成部署炸弹（v1.0.53 事故）。
 
 	return nil
 }
