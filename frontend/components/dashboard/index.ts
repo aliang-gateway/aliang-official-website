@@ -11,3 +11,5 @@ export { ConfigPanel } from "./ConfigPanel";
 export { PurchaseCard } from "./PurchaseCard";
 export { TicketCard } from "./TicketCard";
 export { DetailsLinkCard } from "./DetailsLinkCard";
+export { UsageBriefingCard } from "./UsageBriefingCard";
+export { WalletTransactionsCard } from "./WalletTransactionsCard";
