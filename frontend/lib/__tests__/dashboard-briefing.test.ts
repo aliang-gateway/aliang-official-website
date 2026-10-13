@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { parseTrendUsageSummary } from "../dashboard-home";
+import { parseTrendUsageSummary, parseWalletTransactions } from "../dashboard-home";
 
 const trendPayload = {
   data: {
@@ -61,5 +61,49 @@ describe("parseTrendUsageSummary 按范围聚合 trend 行", () => {
     const summary = parseTrendUsageSummary(null);
     expect(summary.total_tokens).toBe(0);
     expect(summary.start_date).toBe("");
+  });
+});
+
+describe("parseWalletTransactions 宽容解析三种形态", () => {
+  const row = {
+    id: 7,
+    type: "recharge",
+    amount_micros: 50_000_000,
+    currency: "CNY",
+    balance_after_micros: 120_500_000,
+    description: "Recharge via card code",
+    created_at: "2026-10-12T14:30:00Z",
+  };
+
+  it("标准形态 {transactions:[...]},金额 micros→主体单位", () => {
+    const list = parseWalletTransactions({ transactions: [row] });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toEqual({
+      id: 7,
+      type: "recharge",
+      amount: 50,
+      currency: "CNY",
+      balance_after: 120.5,
+      description: "Recharge via card code",
+      created_at: "2026-10-12T14:30:00Z",
+    });
+  });
+
+  it("data 包裹形态 {data:[...]} 与裸数组", () => {
+    expect(parseWalletTransactions({ data: [row] })).toHaveLength(1);
+    expect(parseWalletTransactions([row])).toHaveLength(1);
+  });
+
+  it("字段缺失回退:type→unknown,currency→CNY,金额→0", () => {
+    const list = parseWalletTransactions({ transactions: [{ id: 1 }] });
+    expect(list[0].type).toBe("unknown");
+    expect(list[0].currency).toBe("CNY");
+    expect(list[0].amount).toBe(0);
+    expect(list[0].balance_after).toBe(0);
+  });
+
+  it("非列表 payload 返回空数组", () => {
+    expect(parseWalletTransactions(null)).toEqual([]);
+    expect(parseWalletTransactions({})).toEqual([]);
   });
 });

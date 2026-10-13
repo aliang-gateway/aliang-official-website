@@ -311,4 +311,31 @@ export function parseTrendUsageSummary(trendPayload: unknown): TrendUsageSummary
   };
 }
 
+export function parseWalletTransactions(payload: unknown): WalletTransactionItem[] {
+  const root = asRecord(payload);
+  const inner = asRecord(root?.data) ?? root;
+  // 当前后端只返回 {transactions:[...]}(routes.go walletTransactionsResponse);
+  // data 包裹与裸数组是防御性兼容,与库内 extractEnvelope 风格一致。
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(inner?.transactions)
+      ? inner.transactions
+      : Array.isArray(inner?.data)
+        ? inner.data
+        : [];
+
+  return list
+    .map((item) => asRecord(item))
+    .filter((item): item is UnknownRecord => Boolean(item))
+    .map((item) => ({
+      id: asNumber(item.id),
+      type: asString(item.type) || "unknown",
+      amount: asNumber(item.amount_micros) / 1_000_000,
+      currency: asString(item.currency, "CNY"),
+      balance_after: asNumber(item.balance_after_micros) / 1_000_000,
+      description: asString(item.description),
+      created_at: asString(item.created_at),
+    }));
+}
+
 export { parseTokenTrendResponse };
