@@ -312,8 +312,7 @@ export function parseTrendUsageSummary(trendPayload: unknown): TrendUsageSummary
 }
 
 export function parseWalletTransactions(payload: unknown): WalletTransactionItem[] {
-  const root = asRecord(payload);
-  const inner = asRecord(root?.data) ?? root;
+  const inner = extractEnvelopeOrRoot(payload);
   // 当前后端只返回 {transactions:[...]}(routes.go walletTransactionsResponse);
   // data 包裹与裸数组是防御性兼容,与库内 extractEnvelope 风格一致。
   const list = Array.isArray(payload)

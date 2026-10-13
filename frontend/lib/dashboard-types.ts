@@ -44,6 +44,7 @@ export type PackageSummary = {
 };
 
 export type BalanceSummary = {
+  /** 保留原始 micros 单位;WalletTransactionItem 在解析层已换算为主体单位,两处约定不同 */
   balance_micros: number;
   currency: string;
   updated_at: string | null;

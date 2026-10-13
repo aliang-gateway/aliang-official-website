@@ -62,6 +62,19 @@ describe("parseTrendUsageSummary 按范围聚合 trend 行", () => {
     expect(summary.total_tokens).toBe(0);
     expect(summary.start_date).toBe("");
   });
+
+  it("行内显式 total_tokens 优先于 input+output 回退", () => {
+    const summary = parseTrendUsageSummary({
+      data: {
+        granularity: "day",
+        start_date: "2026-10-07",
+        end_date: "2026-10-07",
+        trend: [{ date: "2026-10-07", requests: 1, input_tokens: 100, output_tokens: 50, total_tokens: 200 }],
+      },
+    });
+    // 上游已算好的 total_tokens(200)不被 input+output(150)覆盖
+    expect(summary.total_tokens).toBe(200);
+  });
 });
 
 describe("parseWalletTransactions 宽容解析三种形态", () => {
@@ -92,6 +105,15 @@ describe("parseWalletTransactions 宽容解析三种形态", () => {
   it("data 包裹形态 {data:[...]} 与裸数组", () => {
     expect(parseWalletTransactions({ data: [row] })).toHaveLength(1);
     expect(parseWalletTransactions([row])).toHaveLength(1);
+  });
+
+  it("双层包裹形态 {data:{transactions:[...]}} 同样可解析", () => {
+    expect(parseWalletTransactions({ data: { transactions: [row] } })).toHaveLength(1);
+  });
+
+  it("负数 amount_micros 表示扣减,amount 为负主体单位", () => {
+    const list = parseWalletTransactions({ transactions: [{ ...row, amount_micros: -5_000_000 }] });
+    expect(list[0].amount).toBe(-5);
   });
 
   it("字段缺失回退:type→unknown,currency→CNY,金额→0", () => {
