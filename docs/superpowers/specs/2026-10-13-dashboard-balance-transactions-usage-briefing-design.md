@@ -58,7 +58,7 @@ export function parseTrendUsageSummary(trendPayload: unknown): TrendUsageSummary
 - 标题「用量简报」+ 范围标签(复用 trend 范围的 label,含 start_date ~ end_date)
 - 三主指标:总 tokens(formatMetricNumber)、请求次数、消费金额(actual_cost,formatMetricCurrency)
 - 拆分行:输入 / 输出 / 缓存读 / 缓存写 四项数字
-- 最常用模型:`modelShare.items[0]`(模型名 + 占比百分比);items 为空时该行隐藏
+- 最常用模型:`modelShare.items[0]`(模型名 + 占比百分比;注意 `ModelShareDatum.share` 是 0–1 小数,展示需 ×100);items 为空时该行隐藏
 
 空态:范围内无请求(points 全 0 或缺失)时指标显示 `--` 并给一句空态文案;不整卡隐藏(简报是本需求主体)。
 
@@ -72,7 +72,7 @@ BFF:新增 `frontend/app/api/wallet/transactions/route.ts`,仿 `frontend/app/api
 
 取数:卡片内 `useEffect` 自取数(逐字仿 `frontend/components/dashboard/CacheRateCard.tsx` 的模式:sessionToken 空则跳过、AbortController、cancelled 标志、失败静默)。卡片挂了只影响自己,不拖累首页(与 CacheRateCard 同等地位)。
 
-解析:卡内新增宽容解析(或抽到 `frontend/lib/dashboard-home.ts` 便于复用/测试):容忍 `{transactions:[...]}` / `{data:[...]}` / 裸数组三种形态,字段走 asNumber/asString 归一,金额/时间缺失显示 `--`。
+解析:抽到 `frontend/lib/dashboard-home.ts`(便于 vitest 复用测试):容忍 `{transactions:[...]}` / `{data:[...]}` / 裸数组三种形态(当前后端只返回第一种,`routes.go:495`;后两种是防御性兼容,与库内 `extractEnvelopeData` 风格一致),字段走 asNumber/asString 归一,金额/时间缺失显示 `--`。
 
 展示(最近 8 条,按 id 倒序即后端默认):
 
@@ -118,13 +118,14 @@ BFF:新增 `frontend/app/api/wallet/transactions/route.ts`,仿 `frontend/app/api
 | 流水列表为空 | 「暂无流水记录」 |
 | trend 范围内无数据 | 简报指标 `--` + 空态文案,卡不隐藏 |
 | modelShare 空 | top 模型行隐藏 |
-| session 失效 | 既有页面级 401 跳转逻辑覆盖(卡片请求也会 401,静默) |
+| session 失效 | 既有页面级 401 跳转覆盖——注意 `useDashboardData` 只检查 home 响应的 401(`use-dashboard-data.ts:104`),trend/流水卡的 401 各自静默 no-op,不触发跳转,由 home 侧兜底 |
 
 ## 验证
 
 - `pnpm lint` + `pnpm build`(frontend)
+- `pnpm test`(frontend,已有 vitest 基建,现有用例见 `frontend/lib/__tests__/`)
+- 给 `parseTrendUsageSummary` 与流水解析补单测,放 `frontend/lib/__tests__/`(空数组/字段缺失/形态变体)
 - 本地 `pnpm dev` 用真实账号目验:两卡渲染、范围切换联动简报、流水空态
-- 前端若有测试基建(vitest 等)则给 `parseTrendUsageSummary` 与流水解析补单测(空数组/字段缺失/形态变体);plan 阶段确认基建后定
 - 不部署;部署走既有流程(另行确认)
 
 ## 非目标(YAGNI)
