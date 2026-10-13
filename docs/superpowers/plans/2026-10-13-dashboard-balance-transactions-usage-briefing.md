@@ -79,7 +79,7 @@ export type WalletTransactionItem = {
 ```ts
 import { describe, it, expect } from "vitest";
 
-import { parseTrendUsageSummary, parseWalletTransactions } from "../dashboard-home";
+import { parseTrendUsageSummary } from "../dashboard-home";
 
 const trendPayload = {
   data: {
@@ -207,7 +207,7 @@ git commit -m "feat: parseTrendUsageSummary——按范围聚合 trend 行的 to
 - Modify: `frontend/lib/dashboard-home.ts`
 - Test: `frontend/lib/__tests__/dashboard-briefing.test.ts`
 
-- [ ] **Step 1: 追加失败测试**
+- [ ] **Step 1: 追加失败测试(把文件顶部 import 改为 `import { parseTrendUsageSummary, parseWalletTransactions } from "../dashboard-home";`)**
 
 ```ts
 describe("parseWalletTransactions 宽容解析三种形态", () => {
@@ -427,6 +427,7 @@ zh.json:
 "walletTransactions": "余额变动",
 "walletTransactionsDescription": "最近的钱包流水与每笔变动后的余额。",
 "transactionRecharge": "充值",
+"transactionCount": "{count} 笔",
 "walletTransactionsEmpty": "暂无流水记录。"
 ```
 
@@ -446,6 +447,7 @@ en.json:
 "walletTransactions": "Balance Activity",
 "walletTransactionsDescription": "Recent wallet transactions and the balance after each one.",
 "transactionRecharge": "Recharge",
+"transactionCount": "{count} transactions",
 "walletTransactionsEmpty": "No transactions yet."
 ```
 
@@ -504,16 +506,16 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
   const hasData = (usageSummary?.requests ?? 0) > 0;
 
   const headline = [
-    { label: t("totalTokens"), value: usageSummary ? compact(usageSummary.total_tokens) : "--" },
-    { label: t("briefingRequests"), value: usageSummary ? formatMetricNumber(usageSummary.requests) : "--" },
-    { label: t("briefingSpend"), value: usageSummary ? formatMetricCurrency(usageSummary.actual_cost) : "--" },
+    { label: t("totalTokens"), value: usageSummary && hasData ? compact(usageSummary.total_tokens) : "--" },
+    { label: t("briefingRequests"), value: usageSummary && hasData ? formatMetricNumber(usageSummary.requests) : "--" },
+    { label: t("briefingSpend"), value: usageSummary && hasData ? formatMetricCurrency(usageSummary.actual_cost) : "--" },
   ];
 
   const breakdown = [
-    { label: t("briefingInputTokens"), value: usageSummary?.input_tokens ?? null },
-    { label: t("briefingOutputTokens"), value: usageSummary?.output_tokens ?? null },
-    { label: t("briefingCacheRead"), value: usageSummary?.cache_read_tokens ?? null },
-    { label: t("briefingCacheCreation"), value: usageSummary?.cache_creation_tokens ?? null },
+    { label: t("briefingInputTokens"), value: hasData ? (usageSummary?.input_tokens ?? null) : null },
+    { label: t("briefingOutputTokens"), value: hasData ? (usageSummary?.output_tokens ?? null) : null },
+    { label: t("briefingCacheRead"), value: hasData ? (usageSummary?.cache_read_tokens ?? null) : null },
+    { label: t("briefingCacheCreation"), value: hasData ? (usageSummary?.cache_creation_tokens ?? null) : null },
   ];
 
   const topModel = modelShare?.items[0] ?? null;
@@ -568,7 +570,7 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
 }
 ```
 
-(样式变量与 StatusCard/ModelShareCard 同系:`block-card`、`--portal-*`、MONO 小标签;`share` 是 0–1 小数,展示 ×100。若 `--accent-wash` 等变量在两种主题下观感不对,以相邻卡实际用色为准微调,不改数据逻辑。)
+(样式变量与 StatusCard/ModelShareCard 同系:`block-card`、`--portal-*`、MONO 小标签;`share` 是 0–1 小数,展示 ×100。注:范围内无请求时全部指标显示 `--` + 空态文案,符合 spec「指标显示 -- 并给一句空态文案」。)
 
 - [ ] **Step 2: lint 检查**
 
@@ -690,7 +692,7 @@ export function WalletTransactionsCard({ sessionToken }: { sessionToken: string 
           <p className="mt-2 text-sm text-[var(--portal-muted)]">{t("walletTransactionsDescription")}</p>
         </div>
         <div className="shrink-0 rounded-full border border-[var(--portal-line)] bg-[var(--portal-clay)] px-3 py-1 text-xs font-semibold text-[var(--portal-muted)]">
-          {t("points", { count: list.length })}
+          {t("transactionCount", { count: list.length })}
         </div>
       </div>
 
@@ -729,7 +731,7 @@ export function WalletTransactionsCard({ sessionToken }: { sessionToken: string 
 }
 ```
 
-(`--bone` 变量来自 ModelShareCard 同款用法;余额列复用既有 `balance` key。)
+(`--bone` 变量来自 ModelShareCard 同款用法;余额列复用既有 `balance` key。注:后端总会下发 amount_micros,「金额缺失」实际不会发生——解析层对缺失回退 0,渲染为中性色 ¥0.00,与「真实 0 元流水」同形,故不在渲染层区分 null。)
 
 - [ ] **Step 2: lint 检查**
 
