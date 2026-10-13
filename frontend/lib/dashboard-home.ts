@@ -19,7 +19,9 @@ import type {
   PurchaseOptions,
   TokenTrendResponse,
   TrendSeries,
+  TrendUsageSummary,
   UnknownRecord,
+  WalletTransactionItem,
 } from "./dashboard-types";
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -276,6 +278,36 @@ export function parseDashboardHomePayload(
     package_summaries: parsePackageSummaries(subscriptionPayload),
     balance_summary: balanceSummary,
     purchase_options: purchaseOptions,
+  };
+}
+
+export function parseTrendUsageSummary(trendPayload: unknown): TrendUsageSummary {
+  const envelope = parseDashboardTrendEnvelope(trendPayload);
+  const summary = envelope.trend.reduce(
+    (acc, row) => ({
+      requests: acc.requests + row.requests,
+      input_tokens: acc.input_tokens + row.input_tokens,
+      output_tokens: acc.output_tokens + row.output_tokens,
+      cache_read_tokens: acc.cache_read_tokens + row.cache_read_tokens,
+      cache_creation_tokens: acc.cache_creation_tokens + row.cache_creation_tokens,
+      total_tokens: acc.total_tokens + row.total_tokens,
+      actual_cost: acc.actual_cost + row.actual_cost,
+    }),
+    {
+      requests: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      total_tokens: 0,
+      actual_cost: 0,
+    },
+  );
+
+  return {
+    ...summary,
+    start_date: envelope.start_date,
+    end_date: envelope.end_date,
   };
 }
 
