@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 
 import {
   TREND_RANGE_OPTIONS,
+  describePercentage,
   formatMetricCurrency,
   formatMetricNumber,
   formatShortDate,
@@ -72,7 +73,7 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
         ))}
       </ol>
 
-      <ol className="mt-3 grid grid-cols-4 gap-3">
+      <ol className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {breakdown.map((cell) => (
           <li key={cell.label} className="min-w-0">
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--portal-muted)]" style={MONO}>
@@ -85,7 +86,7 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
 
       {topModel ? (
         <p className="mt-3 truncate text-sm text-[var(--portal-muted)]">
-          {t("topModel")}:{topModel.model} · {(topModel.share * 100).toFixed(1)}%
+          {t("topModelLine", { model: topModel.model, share: describePercentage(topModel.share) })}
         </p>
       ) : null}
 

@@ -1064,7 +1064,7 @@
     "briefingOutputTokens": "Output",
     "briefingCacheRead": "Cache read",
     "briefingCacheCreation": "Cache write",
-    "topModel": "Top model",
+    "topModelLine": "Top model: {model} ({share})",
     "briefingEmpty": "No requests recorded in this range yet.",
     "walletTransactions": "Balance Activity",
     "walletTransactionsDescription": "Recent wallet transactions and the balance after each one.",

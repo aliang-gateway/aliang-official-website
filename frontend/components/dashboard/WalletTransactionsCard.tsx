@@ -95,7 +95,13 @@ export function WalletTransactionsCard({ sessionToken }: { sessionToken: string 
         </div>
       </div>
 
-      {list.length === 0 ? (
+      {transactions === null ? (
+        <div className="mt-4 space-y-2" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-10 animate-pulse rounded-[1rem] bg-[var(--portal-clay)]" />
+          ))}
+        </div>
+      ) : list.length === 0 ? (
         <p className="mt-4 rounded-[1rem] border border-dashed border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 text-sm text-[var(--portal-muted)]">
           {t("walletTransactionsEmpty")}
         </p>

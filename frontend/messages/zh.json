@@ -1064,7 +1064,7 @@
     "briefingOutputTokens": "输出",
     "briefingCacheRead": "缓存读",
     "briefingCacheCreation": "缓存写",
-    "topModel": "最常用模型",
+    "topModelLine": "最常用模型:{model}({share})",
     "briefingEmpty": "所选范围内暂无请求数据。",
     "walletTransactions": "余额变动",
     "walletTransactionsDescription": "最近的钱包流水与每笔变动后的余额。",
