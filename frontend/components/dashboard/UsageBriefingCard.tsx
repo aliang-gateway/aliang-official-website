@@ -68,7 +68,7 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--portal-muted)]" style={MONO}>
               {cell.label}
             </p>
-            <p className="mt-1 truncate text-2xl font-extrabold tracking-tight text-[var(--portal-ink)]">{cell.value}</p>
+            <p className="mt-1 truncate text-2xl font-extrabold tracking-tight tabular-nums text-[var(--portal-ink)]">{cell.value}</p>
           </li>
         ))}
       </ol>
@@ -79,7 +79,7 @@ export function UsageBriefingCard({ usageSummary, modelShare, selectedRange }: U
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--portal-muted)]" style={MONO}>
               {cell.label}
             </p>
-            <p className="mt-1 truncate font-semibold text-[var(--portal-ink)]">{cell.value === null ? "--" : compact(cell.value)}</p>
+            <p className="mt-1 truncate font-semibold tabular-nums text-[var(--portal-ink)]">{cell.value === null ? "--" : compact(cell.value)}</p>
           </li>
         ))}
       </ol>

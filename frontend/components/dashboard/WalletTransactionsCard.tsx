@@ -60,6 +60,7 @@ export function WalletTransactionsCard({ sessionToken }: { sessionToken: string 
           signal: controller.signal,
         });
         if (!response.ok) {
+          setTransactions([]);
           return;
         }
         const payload = (await response.json()) as unknown;
@@ -70,7 +71,8 @@ export function WalletTransactionsCard({ sessionToken }: { sessionToken: string 
         if ((fetchError as Error).name === "AbortError") {
           return;
         }
-        // 静默:流水取不到就维持空态,不打断首屏。
+        // 静默降级为空态:流水取不到就不展示,不打断首屏。
+        setTransactions([]);
       }
     };
 

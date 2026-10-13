@@ -1069,7 +1069,7 @@
     "walletTransactions": "Balance Activity",
     "walletTransactionsDescription": "Recent wallet transactions and the balance after each one.",
     "transactionRecharge": "Recharge",
-    "transactionCount": "{count} transactions",
+    "transactionCount": "{count, plural, one {# transaction} other {# transactions}}",
     "walletTransactionsEmpty": "No transactions yet.",
     "configApiKey": "Config & API key",
     "clientSetupEntry": "Client setup entry",
