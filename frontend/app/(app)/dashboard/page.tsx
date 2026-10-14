@@ -11,6 +11,8 @@ import {
   StatusCard,
   TicketCard,
   TokenTrendCard,
+  UsageBriefingCard,
+  WalletTransactionsCard,
 } from "@/components/dashboard";
 import { CacheRateCard } from "@/components/dashboard/CacheRateCard";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -50,6 +52,16 @@ function DashboardPageContent() {
         onPurchase={() => setShowPurchase(true)}
         purchaseButtonRef={purchaseTriggerRef}
       />
+
+      {/* ★ 用量简报 + 余额变动(一行两列,窄屏堆叠) */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <UsageBriefingCard
+          usageSummary={data.usageSummary}
+          modelShare={data.modelShare}
+          selectedRange={trend.selectedRange}
+        />
+        <WalletTransactionsCard sessionToken={data.sessionToken} />
+      </div>
 
       {/* 缓存命中率(随所选时间范围聚合) */}
       <CacheRateCard sessionToken={data.sessionToken} queryString={trend.queryString} />

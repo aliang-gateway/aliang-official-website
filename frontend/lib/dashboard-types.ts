@@ -44,6 +44,7 @@ export type PackageSummary = {
 };
 
 export type BalanceSummary = {
+  /** 保留原始 micros 单位;WalletTransactionItem 在解析层已换算为主体单位,两处约定不同 */
   balance_micros: number;
   currency: string;
   updated_at: string | null;
@@ -90,6 +91,29 @@ export type ModelShareDatum = {
   value: number;
   share: number;
   stroke: string;
+};
+
+export type TrendUsageSummary = {
+  start_date: string;
+  end_date: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  total_tokens: number;
+  actual_cost: number;
+};
+
+export type WalletTransactionItem = {
+  id: number;
+  type: string;
+  /** 主体单位(元/美元):amount_micros / 1e6,正=入账 负=扣减 */
+  amount: number;
+  currency: string;
+  balance_after: number;
+  description: string;
+  created_at: string;
 };
 
 export type UnknownRecord = Record<string, unknown>;

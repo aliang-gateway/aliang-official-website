@@ -19,7 +19,9 @@ import type {
   PurchaseOptions,
   TokenTrendResponse,
   TrendSeries,
+  TrendUsageSummary,
   UnknownRecord,
+  WalletTransactionItem,
 } from "./dashboard-types";
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -277,6 +279,62 @@ export function parseDashboardHomePayload(
     balance_summary: balanceSummary,
     purchase_options: purchaseOptions,
   };
+}
+
+export function parseTrendUsageSummary(trendPayload: unknown): TrendUsageSummary {
+  const envelope = parseDashboardTrendEnvelope(trendPayload);
+  const summary = envelope.trend.reduce(
+    (acc, row) => ({
+      requests: acc.requests + row.requests,
+      input_tokens: acc.input_tokens + row.input_tokens,
+      output_tokens: acc.output_tokens + row.output_tokens,
+      cache_read_tokens: acc.cache_read_tokens + row.cache_read_tokens,
+      cache_creation_tokens: acc.cache_creation_tokens + row.cache_creation_tokens,
+      total_tokens: acc.total_tokens + row.total_tokens,
+      actual_cost: acc.actual_cost + row.actual_cost,
+    }),
+    {
+      requests: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      total_tokens: 0,
+      actual_cost: 0,
+    },
+  );
+
+  return {
+    ...summary,
+    start_date: envelope.start_date,
+    end_date: envelope.end_date,
+  };
+}
+
+export function parseWalletTransactions(payload: unknown): WalletTransactionItem[] {
+  const inner = extractEnvelopeOrRoot(payload);
+  // 当前后端只返回 {transactions:[...]}(routes.go walletTransactionsResponse);
+  // data 包裹与裸数组是防御性兼容,与库内 extractEnvelope 风格一致。
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(inner?.transactions)
+      ? inner.transactions
+      : Array.isArray(inner?.data)
+        ? inner.data
+        : [];
+
+  return list
+    .map((item) => asRecord(item))
+    .filter((item): item is UnknownRecord => Boolean(item))
+    .map((item) => ({
+      id: asNumber(item.id),
+      type: asString(item.type) || "unknown",
+      amount: asNumber(item.amount_micros) / 1_000_000,
+      currency: asString(item.currency, "CNY"),
+      balance_after: asNumber(item.balance_after_micros) / 1_000_000,
+      description: asString(item.description),
+      created_at: asString(item.created_at),
+    }));
 }
 
 export { parseTokenTrendResponse };

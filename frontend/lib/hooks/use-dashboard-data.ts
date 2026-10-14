@@ -9,12 +9,14 @@ import {
   parseDashboardHomePayload,
   parseDashboardMetricSummary,
   parseTokenTrendResponse,
+  parseTrendUsageSummary,
 } from "@/lib/dashboard-home";
 import type {
   DashboardHomeResponse,
   DashboardMetricSummary,
   ModelShareDatum,
   TokenTrendResponse,
+  TrendUsageSummary,
 } from "@/lib/dashboard-types";
 
 const SESSION_TOKEN_STORAGE_KEY = "session_token";
@@ -29,6 +31,7 @@ export type DashboardData = {
   clearError: () => void;
   dashboard: DashboardHomeResponse | null;
   tokenTrend: TokenTrendResponse | null;
+  usageSummary: TrendUsageSummary | null;
   modelShare: ModelShare | null;
   metricSummary: DashboardMetricSummary | null;
   loadDashboard: (signal?: AbortSignal) => Promise<void>;
@@ -46,6 +49,7 @@ export function useDashboardData(queryString: string): DashboardData {
   const [error, setError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardHomeResponse | null>(null);
   const [tokenTrend, setTokenTrend] = useState<TokenTrendResponse | null>(null);
+  const [usageSummary, setUsageSummary] = useState<TrendUsageSummary | null>(null);
   const [modelShare, setModelShare] = useState<ModelShare | null>(null);
   const [metricSummary, setMetricSummary] = useState<DashboardMetricSummary | null>(null);
 
@@ -70,6 +74,7 @@ export function useDashboardData(queryString: string): DashboardData {
       if (!sessionToken) {
         setDashboard(null);
         setTokenTrend(null);
+        setUsageSummary(null);
         setModelShare(null);
         setMetricSummary(null);
         setLoading(false);
@@ -142,6 +147,7 @@ export function useDashboardData(queryString: string): DashboardData {
 
         setDashboard(parseDashboardHomePayload(homePayload, subscriptionPayload, accountPayload, packagesPayload));
         setTokenTrend(parseTokenTrendResponse(trendPayload));
+        setUsageSummary(parseTrendUsageSummary(trendPayload));
         setModelShare(normalizeModelShareData(modelsPayload));
         setMetricSummary(parseDashboardMetricSummary(homePayload, accountPayload));
       } catch (fetchError) {
@@ -150,6 +156,7 @@ export function useDashboardData(queryString: string): DashboardData {
         }
         setDashboard(null);
         setTokenTrend(null);
+        setUsageSummary(null);
         setModelShare(null);
         setMetricSummary(null);
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load dashboard home");
@@ -170,6 +177,7 @@ export function useDashboardData(queryString: string): DashboardData {
     if (!sessionToken) {
       setDashboard(null);
       setTokenTrend(null);
+      setUsageSummary(null);
       setModelShare(null);
       setMetricSummary(null);
       setLoading(false);
@@ -203,6 +211,7 @@ export function useDashboardData(queryString: string): DashboardData {
     clearError,
     dashboard,
     tokenTrend,
+    usageSummary,
     modelShare,
     metricSummary,
     loadDashboard,
