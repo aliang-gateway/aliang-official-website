@@ -28,6 +28,12 @@ describe("claude shell 模板(默认,行为不变)", () => {
     const out = buildTemplateContent("claude", "it's", undefined, "shell");
     expect(out).toContain("export ANTHROPIC_AUTH_TOKEN='it'\\''s'");
   });
+
+  it("不支持的 format 值回退 shell 输出", () => {
+    expect(buildTemplateContent("claude", "k", undefined, "toml")).toBe(
+      buildTemplateContent("claude", "k", undefined, "shell"),
+    );
+  });
 });
 
 describe("claude settings.json 模板(format='json')", () => {

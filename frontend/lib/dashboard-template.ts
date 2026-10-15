@@ -1,6 +1,6 @@
 // Dashboard 客户端配置模板(opencode/claude/codex)定义与生成。
 // 生成结果应直接可用:opencode → ~/.opencode.json;codex → ~/.codex/config.toml;
-// claude → 终端环境变量。网关根地址统一取自 GATEWAY_BASE_URL,改一处即全改。
+// claude → 终端环境变量(shell)或 ~/.claude/settings.json(json)。网关根地址统一取自 GATEWAY_BASE_URL,改一处即全改。
 
 import type { ClientTemplateId, TemplateFormat } from "./dashboard-types";
 
