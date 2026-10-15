@@ -88,7 +88,8 @@ export function SelectMenu({
         }}
         className={`field flex items-center justify-between gap-2 text-left ${triggerClassName}`}
       >
-        <span className={`truncate ${selected ? "" : "text-[var(--ink-muted)]"}`}>{selected ? selected.label : placeholder}</span>
+        <span className={`min-w-0 flex-1 truncate ${selected ? "" : "text-[var(--ink-muted)]"}`}>{selected ? selected.label : placeholder}</span>
+        {selected?.hint ? <span className="max-w-[60%] shrink-0 truncate text-xs text-[var(--ink-muted)]">{selected.hint}</span> : null}
         <MaterialIcon name={rect ? "expand_less" : "expand_more"} size={18} className="shrink-0 text-[var(--ink-muted)]" />
       </button>
       {rect ? (
@@ -123,7 +124,7 @@ export function SelectMenu({
                       }`}
                     >
                       <span className="truncate">{option.label}</span>
-                      {option.hint ? <span className="shrink-0 text-xs text-[var(--ink-muted)]">{option.hint}</span> : null}
+                      {option.hint ? <span className="max-w-[60%] shrink-0 truncate text-xs text-[var(--ink-muted)]">{option.hint}</span> : null}
                     </button>
                   </li>
                 );

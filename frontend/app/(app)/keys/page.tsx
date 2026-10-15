@@ -19,6 +19,7 @@ import {
   parseApiKeysList,
   parseAvailableGroups,
   platformBadgeLabel,
+  platformRowClasses,
   type ApiKeyFormatFilter,
   type ApiKeyItem,
   type AvailableGroup,
@@ -500,7 +501,7 @@ function KeyRow({ apiKey, busyKeyId, copiedKeyId, onCopy, onToggle, onDelete, t 
   const expires = apiKey.expires_at?.split("T")[0];
 
   return (
-    <li className="clay-panel p-4">
+    <li className={`clay-panel p-4 ${platformRowClasses(apiKey.group_platform)}`}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

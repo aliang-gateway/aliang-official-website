@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatRateMultiplier, parseAvailableGroups, parseApiKeysList } from "../api-keys";
+import { buildKeySelectOption, formatRateMultiplier, maskApiKey, parseAvailableGroups, parseApiKeysList, platformRowClasses } from "../api-keys";
 
 describe("parseAvailableGroups 的倍率解析", () => {
   it("保留上游的 rate_multiplier 字段", () => {
@@ -63,5 +63,73 @@ describe("formatRateMultiplier", () => {
   it("异常值回退 ×1", () => {
     expect(formatRateMultiplier(0)).toBe("×1");
     expect(formatRateMultiplier(Number.NaN)).toBe("×1");
+  });
+});
+
+describe("buildKeySelectOption 下拉选项组装", () => {
+  const fullKey = {
+    id: 7,
+    name: "my-key",
+    key: "sk-abcdefghij1234567890",
+    group_id: 22,
+    group_name: "anthropic-duration",
+    group_platform: "anthropic",
+    group_rate_multiplier: 1.5,
+    status: "active",
+    quota: 0,
+    quota_used: 0,
+    expires_at: "",
+    created_at: "2026-10-15T00:00:00Z",
+  };
+
+  it("label=名称·略写,hint=类型 倍率", () => {
+    const option = buildKeySelectOption(fullKey);
+    expect(option.value).toBe("7");
+    expect(option.label).toBe(`my-key · ${maskApiKey(fullKey.key)}`);
+    expect(option.hint).toBe("Anthropic ×1.5");
+  });
+
+  it("platform 缺失时 hint 仅倍率", () => {
+    expect(buildKeySelectOption({ ...fullKey, group_platform: "" }).hint).toBe("×1.5");
+    expect(buildKeySelectOption({ ...fullKey, group_platform: "  " }).hint).toBe("×1.5");
+  });
+
+  it("name 缺失时回退 Key #id", () => {
+    expect(buildKeySelectOption({ ...fullKey, name: "" }).label).toBe(
+      `Key #7 · ${maskApiKey(fullKey.key)}`,
+    );
+  });
+});
+
+describe("platformRowClasses 平台行背景", () => {
+  it("anthropic → key-row-anthropic 类", () => {
+    expect(platformRowClasses("anthropic")).toBe("key-row-anthropic");
+  });
+
+  it("openai → key-row-openai 类", () => {
+    expect(platformRowClasses("openai")).toBe("key-row-openai");
+  });
+
+  it("大小写归一(OpenAI 同 openai)", () => {
+    expect(platformRowClasses("OpenAI")).toBe("key-row-openai");
+  });
+
+  it("未知/空平台返回空串(默认样式)", () => {
+    expect(platformRowClasses("")).toBe("");
+    expect(platformRowClasses("unknown")).toBe("");
+  });
+});
+
+describe("maskApiKey 直接覆盖(安全相邻)", () => {
+  it("常规 key 掐头去尾", () => {
+    expect(maskApiKey("sk-abcdefghij1234567890")).toBe("sk-abcde***7890");
+  });
+
+  it("空串返回 ***", () => {
+    expect(maskApiKey("")).toBe("***");
+  });
+
+  it("短 key 仅前 3 字符+***", () => {
+    expect(maskApiKey("abc")).toBe("abc***");
   });
 });

@@ -303,6 +303,16 @@ body {
   box-shadow: var(--shadow);
 }
 
+.key-row-anthropic {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--paper-warm) 60%, var(--accent-wash) 40%);
+}
+
+.key-row-openai {
+  border-left: 3px solid #10b981;
+  background: color-mix(in srgb, var(--paper-warm) 96%, #10b981 4%);
+}
+
 .block-card {
   border: 1px solid var(--line);
   border-radius: 16px;
