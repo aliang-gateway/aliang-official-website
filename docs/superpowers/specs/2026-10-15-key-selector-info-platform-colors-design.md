@@ -52,7 +52,7 @@ export function buildKeySelectOption(item: ApiKeyItem): KeySelectOption {
 
 `frontend/app/(app)/keys/page.tsx` KeyRow 行容器 `<li className="clay-panel p-4">` 改为按平台附加左边框色条与淡背景(色条模式沿用 ConfigPanel 敏感警告 `border-l-[3px] border-l-[var(--mustard)]` 的既有先例):
 
-| group_platform(normalizeGroupPartner 归一后小写比较) | 附加类 |
+| group_platform(normalizeGroupPlatform 归一后小写比较) | 附加类 |
 | --- | --- |
 | `anthropic` | `border-l-[3px] border-l-[var(--accent)]/60 bg-[var(--accent-wash)]/40` |
 | `openai` | `border-l-[3px] border-l-emerald-500/60 bg-emerald-500/[0.04]` |
