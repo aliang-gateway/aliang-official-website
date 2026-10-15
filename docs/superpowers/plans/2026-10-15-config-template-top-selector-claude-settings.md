@@ -201,12 +201,12 @@ export function buildTemplateContent(
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pnpm vitest run lib/__tests__/dashboard-template.test.ts`
-Expected: PASS(11 tests)
+Expected: PASS(10 tests)
 
 - [ ] **Step 5: 全量回归**
 
 Run: `pnpm test`
-Expected: 全部 PASS(基线 62 + 新增 11 = 73)
+Expected: 全部 PASS(基线 62 + 新增 10 = 72)
 
 - [ ] **Step 6: Commit**
 
@@ -233,7 +233,7 @@ git commit -m "feat: claude 模板支持 settings.json(env 注入)格式"
 - [ ] **Step 2: 验证**
 
 Run: `npx eslint lib/hooks/use-config-modal.ts && pnpm test`
-Expected: eslint 干净;73/73 通过
+Expected: eslint 干净;72/72 通过
 
 - [ ] **Step 3: Commit**
 
@@ -342,7 +342,7 @@ export function TemplateSelector({ template, onTemplateChange }: TemplateSelecto
 import { TemplateSelector } from "./TemplateSelector";
 ```
 
-2b. 返回结构:在最外层包一层,顶部插入 TemplateSelector,原两栏 grid 原样内移(左栏删除整个模板选择块,即 `{t("template")}` 起到该 `</div>` 收尾的 `<div className="space-y-2">` 区块,约 170-192 行):
+2b. 返回结构:在最外层包一层,顶部插入 TemplateSelector,原两栏 grid 原样内移(左栏删除整个模板选择块,即第 170-192 行整个 `<div className="space-y-2">…</div>` 区块(含 `{t("template")}` 标签与三张模板卡)):
 
 ```tsx
   return (
@@ -358,7 +358,7 @@ import { TemplateSelector } from "./TemplateSelector";
   );
 ```
 
-注意:原外层 grid 上的 `overflow-y-auto` 移到新外层;左栏 `border-b lg:border-b-0` 等类名不变。
+注意:原外层 grid 上的 `overflow-y-auto` 移到新外层;左栏 `border-b lg:border-b-0` 等类名不变。顶部选择条会比旧布局多出约一行(`pt-5 pb-4 + space-y-4`)垂直空间,属预期设计。
 
 - [ ] **Step 3: `index.ts` barrel 追加**
 
@@ -369,7 +369,7 @@ export { TemplateSelector } from "./TemplateSelector";
 - [ ] **Step 4: 验证**
 
 Run: `npx eslint components/dashboard/TemplateSelector.tsx components/dashboard/ConfigPanel.tsx components/dashboard/index.ts && pnpm test`
-Expected: eslint 干净;73/73 通过
+Expected: eslint 干净;72/72 通过
 
 - [ ] **Step 5: Commit**
 
@@ -382,7 +382,7 @@ git commit -m "feat: 模板选择抽为顶部全宽 TemplateSelector"
 
 ### Task 5: 终验
 
-- [ ] **Step 1: 全量测试** — `pnpm test` → 73/73 PASS
+- [ ] **Step 1: 全量测试** — `pnpm test` → 72/72 PASS
 - [ ] **Step 2: lint + build** — `npx eslint` 于全部变更文件干净;`pnpm build` exit 0(在 worktree 内首次运行会生成 next-env.d.ts/.next,属正常)
 - [ ] **Step 3: 汇报** — `git log --oneline <base>..HEAD`、门禁输出、git status(应只剩未跟踪安装产物)
 
