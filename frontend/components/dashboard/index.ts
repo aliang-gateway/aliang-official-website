@@ -8,6 +8,7 @@ export { MetricsCard } from "./MetricsCard";
 export { ConfigEntryCard } from "./ConfigEntryCard";
 export { ConfigModal } from "./ConfigModal";
 export { ConfigPanel } from "./ConfigPanel";
+export { TemplateSelector } from "./TemplateSelector";
 export { PurchaseCard } from "./PurchaseCard";
 export { TicketCard } from "./TicketCard";
 export { DetailsLinkCard } from "./DetailsLinkCard";

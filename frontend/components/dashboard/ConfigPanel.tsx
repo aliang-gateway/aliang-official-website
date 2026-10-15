@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { SelectMenu } from "@/components/ui/SelectMenu";
-import { GATEWAY_BASE_URL, TEMPLATE_DEFINITIONS, type TemplateDefinition } from "@/lib/dashboard-template";
+import { GATEWAY_BASE_URL, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
 import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
+
+import { TemplateSelector } from "./TemplateSelector";
 
 type ConfigPanelProps = {
   userKey: string;
@@ -78,8 +80,12 @@ export function ConfigPanel({
   }, [sessionToken]);
 
   return (
-    <div className="grid min-h-0 gap-0 overflow-y-auto lg:grid-cols-[280px_minmax(0,1fr)]">
-      <div className="border-b border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 lg:border-b-0 lg:border-r">
+    <div className="min-h-0 space-y-4 overflow-y-auto">
+      <div className="border-b border-[var(--portal-line)] px-5 pb-4 pt-5 sm:px-6">
+        <TemplateSelector template={template} onTemplateChange={onTemplateChange} />
+      </div>
+      <div className="grid min-h-0 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="border-b border-[var(--portal-line)] bg-[var(--portal-clay)] p-5 lg:border-b-0 lg:border-r">
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="config-key-select" className="text-sm font-semibold text-[var(--portal-ink)]">
@@ -166,30 +172,6 @@ export function ConfigPanel({
           <div className="rounded-[1rem] border border-[var(--line)] border-l-[3px] border-l-[var(--mustard)] bg-[var(--paper-warm)] p-4 text-sm text-[var(--ink-soft)]">
             {t("sensitiveKeyWarning")}
           </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-[var(--portal-ink)]">{t("template")}</p>
-            <div className="grid gap-2">
-              {TEMPLATE_DEFINITIONS.map((templateDef) => {
-                const isActive = templateDef.id === template;
-                return (
-                  <button
-                    key={templateDef.id}
-                    type="button"
-                    className={`rounded-[1rem] border px-4 py-3 text-left transition-all duration-200 ${
-                      isActive
-                        ? "border-[var(--accent)]/40 bg-[var(--accent-wash)]"
-                        : "border-[var(--portal-line)] bg-[var(--portal-clay-strong)] hover:-translate-y-[1px]"
-                    }`}
-                    onClick={() => onTemplateChange(templateDef.id)}
-                  >
-                    <p className="text-sm font-semibold text-[var(--portal-ink)]">{t(templateDef.labelKey)}</p>
-                    <p className="mt-1 text-xs leading-5 text-[var(--portal-muted)]">{t(templateDef.helperKey)}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -251,6 +233,7 @@ export function ConfigPanel({
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
