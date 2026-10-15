@@ -103,8 +103,8 @@ export function useConfigModal(): ConfigModalState {
   }, [userKey]);
 
   const renderedConfig = useMemo(() => {
-    return buildTemplateContent(template, userKey.trim(), availableModels);
-  }, [template, userKey, availableModels]);
+    return buildTemplateContent(template, userKey.trim(), availableModels, format);
+  }, [template, userKey, availableModels, format]);
 
   const setUserKey = useCallback((value: string) => {
     setUserKeyState(value);
