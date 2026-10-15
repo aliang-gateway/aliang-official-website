@@ -25,9 +25,8 @@ type ConfigPanelProps = {
 };
 
 /**
- * The configuration UI (user key + existing keys + template selector on the
- * left, rendered client config + copy on the right). Shared by the dashboard
- * ConfigModal and the /keys page's "配置" tab so both stay in sync.
+ * 配置 UI:顶部全宽模板选择条 + 下方两栏(左=密钥区,右=渲染后的客户端配置与复制)。
+ * dashboard 弹窗与 /keys 配置 tab 共用,保持同步。
  */
 export function ConfigPanel({
   userKey,
@@ -234,7 +233,7 @@ export function ConfigPanel({
             </div>
           </div>
         </div>
-        </div>
+      </div>
     </div>
   );
 }
