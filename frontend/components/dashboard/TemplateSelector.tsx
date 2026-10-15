@@ -18,14 +18,15 @@ export function TemplateSelector({ template, onTemplateChange }: TemplateSelecto
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold text-[var(--portal-ink)]">{t("template")}</p>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <p id="template-selector-label" className="text-sm font-semibold text-[var(--portal-ink)]">{t("template")}</p>
+      <div role="group" aria-labelledby="template-selector-label" className="grid gap-2 sm:grid-cols-3">
         {TEMPLATE_DEFINITIONS.map((templateDef) => {
           const isActive = templateDef.id === template;
           return (
             <button
               key={templateDef.id}
               type="button"
+              aria-pressed={isActive}
               className={`rounded-[1rem] border px-4 py-3 text-left transition-all duration-200 ${
                 isActive
                   ? "border-[var(--accent)]/40 bg-[var(--accent-wash)]"
