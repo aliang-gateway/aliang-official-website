@@ -34,6 +34,7 @@
 | Modify | `frontend/lib/__tests__/api-keys.test.ts` | 两函数单测 |
 | Modify | `frontend/components/ui/SelectMenu.tsx` | 触发按钮回显 hint |
 | Modify | `frontend/components/dashboard/ConfigPanel.tsx` | options 换 `buildKeySelectOption` |
+| Modify | `frontend/app/globals.css` | 新增 `.key-row-anthropic`/`.key-row-openai` 未分层类 |
 | Modify | `frontend/app/(app)/keys/page.tsx` | KeyRow 附加平台类 |
 
 ---
