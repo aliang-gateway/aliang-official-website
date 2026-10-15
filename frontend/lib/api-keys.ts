@@ -164,3 +164,33 @@ export function formatRateMultiplier(rate: number): string {
   }
   return `×${Number.isInteger(rate) ? rate : Number(rate.toFixed(2))}`;
 }
+
+export type KeySelectOption = {
+  value: string;
+  label: string;
+  hint: string;
+};
+
+/** 配置面板「选择已有密钥」下拉选项:label=名称·略写,hint=类型 倍率(缺失走各自回退)。 */
+export function buildKeySelectOption(item: ApiKeyItem): KeySelectOption {
+  const badge = item.group_platform ? platformBadgeLabel(item.group_platform) : "";
+  const rate = formatRateMultiplier(item.group_rate_multiplier);
+  return {
+    value: String(item.id),
+    label: `${item.name || `Key #${item.id}`} · ${maskApiKey(item.key)}`,
+    hint: badge ? `${badge} ${rate}` : rate,
+  };
+}
+
+/** /keys 密钥行按平台区分的附加类(globals.css 中 .clay-panel 之后定义的未分层类,
+ *  能覆盖 .clay-panel 的 border/background);未知/缺失平台返回空串(默认样式)。 */
+export function platformRowClasses(platform: string): string {
+  const normalized = normalizeGroupPlatform(platform);
+  if (normalized === "anthropic") {
+    return "key-row-anthropic";
+  }
+  if (normalized === "openai") {
+    return "key-row-openai";
+  }
+  return "";
+}
