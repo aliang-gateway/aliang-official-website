@@ -24,7 +24,7 @@
 1. **所有工作在 git worktree**(sibling 惯例,如 `../aliang-official-website-keyinfo`,分支 `feat/key-select-info`,基于最新 main)。
 2. **装依赖用 `npm install`,严禁 pnpm**(pnpm 布局缺提升传递依赖会让 tsc/build 假红);跑测试用 `pnpm test`。
 3. 门禁 = 变更文件级 `npx eslint <files>` 干净 + `pnpm test` 全过 + `pnpm build` exit 0(仓库约 70 个既有 lint 噪音不是门禁)。
-4. commit 消息体末尾 `Co-Authored-By: Claude Code <noreply@anthropic.com>`。
+4. commit 消息体末尾 `Co-Authored-By: Claude Code <noreply@anthropic.com>`(下文各 commit 命令为简洁省略该行,提交时一律补上)。
 
 ## 文件结构(改动全景)
 
@@ -82,13 +82,12 @@ describe("buildKeySelectOption 下拉选项组装", () => {
 });
 
 describe("platformRowClasses 平台行背景", () => {
-  it("anthropic → accent 左条 + 淡背景", () => {
-    expect(platformRowClasses("anthropic")).toContain("border-l-[3px]");
-    expect(platformRowClasses("anthropic")).toContain("var(--accent)");
+  it("anthropic → key-row-anthropic 类", () => {
+    expect(platformRowClasses("anthropic")).toBe("key-row-anthropic");
   });
 
-  it("openai → emerald 左条 + 淡背景", () => {
-    expect(platformRowClasses("openai")).toContain("emerald");
+  it("openai → key-row-openai 类", () => {
+    expect(platformRowClasses("openai")).toBe("key-row-openai");
   });
 
   it("大小写归一(OpenAI 同 openai)", () => {
@@ -127,23 +126,26 @@ export function buildKeySelectOption(item: ApiKeyItem): KeySelectOption {
   };
 }
 
-/** /keys 密钥行按平台区分的左边框色条+淡背景附加类;未知/缺失平台返回空串(默认样式)。 */
+/** /keys 密钥行按平台区分的附加类(globals.css 中 .clay-panel 之后定义的未分层类,
+ *  能覆盖 .clay-panel 的 border/background);未知/缺失平台返回空串(默认样式)。 */
 export function platformRowClasses(platform: string): string {
   const normalized = normalizeGroupPlatform(platform);
   if (normalized === "anthropic") {
-    return "border-l-[3px] border-l-[var(--accent)]/60 bg-[var(--accent-wash)]/40";
+    return "key-row-anthropic";
   }
   if (normalized === "openai") {
-    return "border-l-[3px] border-l-emerald-500/60 bg-emerald-500/[0.04]";
+    return "key-row-openai";
   }
   return "";
 }
 ```
 
+> ⚠️ 为什么返回类名而不是 Tailwind 工具类:`.clay-panel` 是 globals.css 里的**未分层**手写 CSS(unlayered),按 CSS 级联层规则压过 `@layer utilities` 的 Tailwind v4 工具类——`border-l-*`/`bg-*` 工具类会被 `.clay-panel` 的 `border`/`background` 静默覆盖。必须在 `.clay-panel` 之后定义未分层类(Task 3)才能生效。
+
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pnpm vitest run lib/__tests__/api-keys.test.ts`
-Expected: PASS(既有 + 新增 7 例全过)
+Expected: PASS(该文件既有 7 例 + 新增 7 例 = 14 全过)
 
 - [ ] **Step 5: Commit**
 
@@ -192,28 +194,43 @@ git commit -m "feat: 密钥下拉展示类型与倍率,触发按钮回显 hint"
 
 ---
 
-### Task 3: /keys KeyRow 平台背景色
+### Task 3: /keys KeyRow 平台背景色(含 globals.css 平台类)
 
 **Files:**
+- Modify: `frontend/app/globals.css`
 - Modify: `frontend/app/(app)/keys/page.tsx`
 
-- [ ] **Step 1: import 块(`@/lib/api-keys`,第 13-25 行)加入 `platformRowClasses`**
+- [ ] **Step 1: `frontend/app/globals.css` 在 `.clay-panel` 规则块(第 299 行起)之后追加两个未分层类(必须在其后定义,同特异性后者胜出;`color-mix` 组合底色,亮暗主题随 CSS 变量自动适配;实色左边框与 `.clay-panel` 的 mustard 色条先例同款手法)**
 
-- [ ] **Step 2: KeyRow 行容器(原 `<li className="clay-panel p-4">`,~line 503)改为**
+```css
+.key-row-anthropic {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--paper-warm) 60%, var(--accent-wash) 40%);
+}
+
+.key-row-openai {
+  border-left: 3px solid #10b981;
+  background: color-mix(in srgb, var(--paper-warm) 96%, #10b981 4%);
+}
+```
+
+- [ ] **Step 2: keys/page.tsx 的 import 块(`@/lib/api-keys`,第 13-25 行)加入 `platformRowClasses`**
+
+- [ ] **Step 3: KeyRow 行容器(原 `<li className="clay-panel p-4">`,~line 503)改为**
 
 ```tsx
     <li className={`clay-panel p-4 ${platformRowClasses(apiKey.group_platform)}`}>
 ```
 
-- [ ] **Step 3: 验证**
+- [ ] **Step 4: 验证**
 
-Run: `npx eslint "app/(app)/keys/page.tsx" && pnpm test`
-Expected: eslint 干净;全部 PASS
+Run: `npx eslint "app/(app)/keys/page.tsx" && pnpm test && pnpm build`
+Expected: eslint 干净;全部 PASS;build exit 0
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add "frontend/app/(app)/keys/page.tsx"
+git add frontend/app/globals.css "frontend/app/(app)/keys/page.tsx"
 git commit -m "feat: /keys 密钥行按平台渲染左边框色条与淡背景"
 ```
 

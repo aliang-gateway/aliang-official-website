@@ -54,11 +54,11 @@ export function buildKeySelectOption(item: ApiKeyItem): KeySelectOption {
 
 | group_platform(normalizeGroupPlatform 归一后小写比较) | 附加类 |
 | --- | --- |
-| `anthropic` | `border-l-[3px] border-l-[var(--accent)]/60 bg-[var(--accent-wash)]/40` |
-| `openai` | `border-l-[3px] border-l-emerald-500/60 bg-emerald-500/[0.04]` |
+| `anthropic` | `.key-row-anthropic` |
+| `openai` | `.key-row-openai` |
 | 其他/缺失 | 无附加(默认 clay-panel) |
 
-实现为行内小工具(如 `platformRowClasses(platform): string` 放 KeyRow 同文件或 api-keys.ts,返回附加类字符串,未知平台返回空串)。行内既有平台徽章、倍率徽章保持不变(信息双通道,不删旧展示)。
+⚠️ 实现约束:`.clay-panel` 是 globals.css 里的**未分层**手写 CSS,按 CSS 级联层规则会压过 `@layer utilities` 的 Tailwind v4 工具类——因此两个平台类必须以未分层类形式定义在 globals.css 中 `.clay-panel` 规则之后(同特异性,后者胜出),用 `color-mix` 组合底色(随 CSS 变量自动适配亮暗主题),实色 3px 左边框沿用 mustard 色条先例。`platformRowClasses(platform)`(放 api-keys.ts)返回上述类名,未知平台返回空串。行内既有平台徽章、倍率徽章保持不变(信息双通道,不删旧展示)。
 
 ### 5. 风格一致性
 
