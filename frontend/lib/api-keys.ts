@@ -173,7 +173,7 @@ export type KeySelectOption = {
 
 /** 配置面板「选择已有密钥」下拉选项:label=名称·略写,hint=类型 倍率(缺失走各自回退)。 */
 export function buildKeySelectOption(item: ApiKeyItem): KeySelectOption {
-  const badge = item.group_platform ? platformBadgeLabel(item.group_platform) : "";
+  const badge = item.group_platform.trim() ? platformBadgeLabel(item.group_platform) : "";
   const rate = formatRateMultiplier(item.group_rate_multiplier);
   return {
     value: String(item.id),

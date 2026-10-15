@@ -91,6 +91,7 @@ describe("buildKeySelectOption 下拉选项组装", () => {
 
   it("platform 缺失时 hint 仅倍率", () => {
     expect(buildKeySelectOption({ ...fullKey, group_platform: "" }).hint).toBe("×1.5");
+    expect(buildKeySelectOption({ ...fullKey, group_platform: "  " }).hint).toBe("×1.5");
   });
 
   it("name 缺失时回退 Key #id", () => {
@@ -110,11 +111,25 @@ describe("platformRowClasses 平台行背景", () => {
   });
 
   it("大小写归一(OpenAI 同 openai)", () => {
-    expect(platformRowClasses("OpenAI")).toBe(platformRowClasses("openai"));
+    expect(platformRowClasses("OpenAI")).toBe("key-row-openai");
   });
 
   it("未知/空平台返回空串(默认样式)", () => {
     expect(platformRowClasses("")).toBe("");
     expect(platformRowClasses("unknown")).toBe("");
+  });
+});
+
+describe("maskApiKey 直接覆盖(安全相邻)", () => {
+  it("常规 key 掐头去尾", () => {
+    expect(maskApiKey("sk-abcdefghij1234567890")).toBe("sk-abcde***7890");
+  });
+
+  it("空串返回 ***", () => {
+    expect(maskApiKey("")).toBe("***");
+  });
+
+  it("短 key 仅前 3 字符+***", () => {
+    expect(maskApiKey("abc")).toBe("abc***");
   });
 });
