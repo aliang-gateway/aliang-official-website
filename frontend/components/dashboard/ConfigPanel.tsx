@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { SelectMenu } from "@/components/ui/SelectMenu";
 import { GATEWAY_BASE_URL, type TemplateDefinition } from "@/lib/dashboard-template";
 import type { ClientTemplateId, TemplateFormat } from "@/lib/dashboard-types";
-import { maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
+import { buildKeySelectOption, maskApiKey, parseApiKeysList, type ApiKeyItem } from "@/lib/api-keys";
 
 import { TemplateSelector } from "./TemplateSelector";
 
@@ -95,10 +95,7 @@ export function ConfigPanel({
               <SelectMenu
                 id="config-key-select"
                 value={selectedKeyId === null ? "" : String(selectedKeyId)}
-                options={existingKeys.map((existingKey) => ({
-                  value: String(existingKey.id),
-                  label: `${existingKey.name || `Key #${existingKey.id}`} · ${maskApiKey(existingKey.key)}`,
-                }))}
+                options={existingKeys.map(buildKeySelectOption)}
                 onChange={(value) => {
                   const id = value ? Number(value) : null;
                   setSelectedKeyId(id);
