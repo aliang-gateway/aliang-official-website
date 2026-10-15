@@ -1,6 +1,6 @@
 // Dashboard 客户端配置模板(opencode/claude/codex)定义与生成。
 // 生成结果应直接可用:opencode → ~/.opencode.json;codex → ~/.codex/config.toml;
-// claude → 终端环境变量。网关根地址统一取自 GATEWAY_BASE_URL,改一处即全改。
+// claude → 终端环境变量(shell)或 ~/.claude/settings.json(json)。网关根地址统一取自 GATEWAY_BASE_URL,改一处即全改。
 
 import type { ClientTemplateId, TemplateFormat } from "./dashboard-types";
 
@@ -33,7 +33,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     id: "claude",
     labelKey: "templateClaudeLabel",
     helperKey: "templateClaudeHelper",
-    supportedFormats: ["shell"],
+    supportedFormats: ["shell", "json"],
   },
   {
     id: "codex",
@@ -84,9 +84,24 @@ function buildOpencodeConfig(userKey: string, models?: string[]): string {
   return JSON.stringify(config, null, 2);
 }
 
-function buildClaudeConfig(userKey: string): string {
+function buildClaudeConfig(userKey: string, format: TemplateFormat = "shell"): string {
   // Claude Code 走 Anthropic Messages 协议(网关已暴露 /v1/messages)。
-  // AUTH_TOKEN 以 Bearer 发送,适配中转网关的自定义令牌。
+  // shell 形态:AUTH_TOKEN 以 Bearer 发送,适配中转网关的自定义令牌。
+  // json 形态:Claude Code 官方 settings.json 的 env 注入——写入或合并
+  // ~/.claude/settings.json 即可;转义全权交给 JSON.stringify。
+  if (format === "json") {
+    return JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: GATEWAY_BASE_URL,
+          ANTHROPIC_AUTH_TOKEN: userKey,
+        },
+      },
+      null,
+      2,
+    );
+  }
+
   return [
     `export ANTHROPIC_BASE_URL='${escapeSingleQuotedShell(GATEWAY_BASE_URL)}'`,
     `export ANTHROPIC_AUTH_TOKEN='${escapeSingleQuotedShell(userKey)}'`,
@@ -117,13 +132,18 @@ function buildCodexConfig(userKey: string, models?: string[]): string {
   ].join("\n");
 }
 
-export function buildTemplateContent(templateId: ClientTemplateId, userKey: string, models?: string[]) {
+export function buildTemplateContent(
+  templateId: ClientTemplateId,
+  userKey: string,
+  models?: string[],
+  format?: TemplateFormat,
+) {
   if (templateId === "opencode") {
     return buildOpencodeConfig(userKey, models);
   }
 
   if (templateId === "claude") {
-    return buildClaudeConfig(userKey);
+    return buildClaudeConfig(userKey, format);
   }
 
   if (templateId === "codex") {

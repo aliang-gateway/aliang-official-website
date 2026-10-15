@@ -1170,7 +1170,7 @@
     "templateOpencodeLabel": "OpenCode",
     "templateOpencodeHelper": "OpenCode client config. Save it as opencode.json in your project root (or ~/.config/opencode/config.json). The key is inlined — no extra login needed.",
     "templateClaudeLabel": "Claude Code",
-    "templateClaudeHelper": "Quick terminal export for Anthropic-compatible CLI setup.",
+    "templateClaudeHelper": "Claude Code client config: shell exports env vars and launches Claude Code; settings.json goes into (or merges with) ~/.claude/settings.json.",
     "templateCodexLabel": "Codex",
     "templateCodexHelper": "OpenAI-compatible config for Codex-style local tooling.",
     "stripeSuccess": "Stripe payment completed. We are refreshing your dashboard package summary and applying entitlements now.",

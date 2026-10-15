@@ -1170,7 +1170,7 @@
     "templateOpencodeLabel": "OpenCode",
     "templateOpencodeHelper": "OpenCode 客户端配置。保存为项目根目录的 opencode.json（或全局 ~/.config/opencode/config.json）；密钥已内联，无需额外登录。",
     "templateClaudeLabel": "Claude Code",
-    "templateClaudeHelper": "适用于 Anthropic 兼容 CLI 设置的快速终端导出。",
+    "templateClaudeHelper": "Claude Code 客户端配置：shell 在终端导出环境变量后直接启动；settings.json 写入或合并到 ~/.claude/settings.json。",
     "templateCodexLabel": "Codex",
     "templateCodexHelper": "用于 Codex 风格本地工具的 OpenAI 兼容配置。",
     "stripeSuccess": "Stripe 支付已完成。正在刷新您的控制台套餐摘要并应用权益。",
