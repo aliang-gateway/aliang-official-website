@@ -57,14 +57,14 @@
 
 ### 3. 状态与数据流
 
-- `use-config-modal.ts` 的 `renderedConfig` memo 改为 `buildTemplateContent(template, userKey.trim(), availableModels, format)`
+- `use-config-modal.ts` 的 `renderedConfig` memo 改为 `buildTemplateContent(template, userKey.trim(), availableModels, format)`,**format 必须同时加入 memo 依赖数组**
 - 格式联动沿用既有 effect:切模板时 format 不受支持才回退。推论:opencode(json)→claude 停留 json(settings.json 视图),codex(toml)→claude 回退 shell——已上线的可预期行为,不改
 - `/keys` 页与 dashboard 共用同一 hook 与 ConfigPanel,自动一致
 
 ### 4. i18n
 
 - 更新 `templateClaudeHelper`(zh/en):覆盖两条落盘路径——shell → 终端 export 后运行 `claude`;json → 写入或合并 `~/.claude/settings.json`
-- 顶部选择区标签复用既有 `t("template")`,不新增 key(helper 两个 key 名不变,只改值)
+- 顶部选择区标签复用既有 `t("template")`,不新增 key(helper 两个 key 名不变,只改值);`copyIdle` 文案两侧语言本就写明「当前模板与格式」,确认无需改动
 
 ### 5. 错误处理
 
