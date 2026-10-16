@@ -1,13 +1,13 @@
 "use client";
 
 import { Suspense, useRef, useState } from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import {
   DashboardHeader,
   ModelShareCard,
   PurchaseCard,
+  QuickActionsBar,
   StatusCard,
   TicketCard,
   TokenTrendCard,
@@ -15,7 +15,6 @@ import {
   WalletTransactionsCard,
 } from "@/components/dashboard";
 import { CacheRateCard } from "@/components/dashboard/CacheRateCard";
-import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { Modal } from "@/components/ui/Modal";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 import { useTrendControls } from "@/lib/hooks/use-trend-controls";
@@ -42,6 +41,8 @@ function DashboardPageContent() {
   return (
     <section className="portal-shell space-y-8 py-10">
       <DashboardHeader onRefresh={() => data.reload()} onSignOut={data.signOut} />
+
+      <QuickActionsBar onOpenTicket={() => setShowTicket(true)} ticketTriggerRef={ticketTriggerRef} />
 
       {data.error ? <p className="notice">{t("errorPrefix")}{data.error}</p> : null}
 
@@ -77,38 +78,6 @@ function DashboardPageContent() {
 
       {/* 模型分布 */}
       <ModelShareCard modelShare={data.modelShare} />
-
-      {/* 入口 tile:密钥与配置(跳转页) / 工单(modal) / 详情(跳转,最右) */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Link
-          href="/keys"
-          className="clay-panel flex items-center gap-3 p-4 transition-colors hover:bg-[var(--paper)]"
-        >
-          <MaterialIcon name="key" size={22} className="text-[var(--accent)]" />
-          <span className="font-bold text-[var(--ink)]">{t("configApiKey")}</span>
-          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
-        </Link>
-
-        <button
-          ref={ticketTriggerRef}
-          type="button"
-          onClick={() => setShowTicket(true)}
-          className="clay-panel flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--paper)]"
-        >
-          <MaterialIcon name="support_agent" size={22} className="text-[var(--accent)]" />
-          <span className="font-bold text-[var(--ink)]">{t("ticketFeedback")}</span>
-          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
-        </button>
-
-        <Link
-          href="/dashboard/details"
-          className="clay-panel flex items-center gap-3 p-4 transition-colors hover:bg-[var(--paper)]"
-        >
-          <MaterialIcon name="insights" size={22} className="text-[var(--accent)]" />
-          <span className="font-bold text-[var(--ink)]">{t("details")}</span>
-          <MaterialIcon name="arrow_forward" size={18} className="ml-auto text-[var(--ink-faint)]" />
-        </Link>
-      </div>
 
       {/* 充值 modal(状态卡 CTA 触发) */}
       <Modal
