@@ -23,7 +23,7 @@
 
 1. **所有工作在 git worktree**(sibling 惯例,如 `../aliang-official-website-quickact`,分支 `feat/dashboard-quick-actions`,基于最新 main)。
 2. 装依赖用 **npm**(严禁 pnpm);测试 `pnpm test`。
-3. 门禁 = 变更文件级 `npx eslint` 干净 + `pnpm test` 全过(83 基线)+ `pnpm build` exit 0。
+3. 门禁 = 变更文件级 `npx eslint` 干净 + `pnpm test` 全过(83 基线)+ `pnpm build` exit 0。**所有命令均在 worktree 的 `frontend/` 目录下执行。**
 4. commit 消息体末尾 `Co-Authored-By: Claude Code <noreply@anthropic.com>`(下文命令省略该行,提交时补上)。
 
 ## 文件结构(改动全景)
@@ -102,7 +102,7 @@ export function QuickActionsBar({ onOpenTicket, ticketTriggerRef }: QuickActions
 }
 ```
 
-(nav 不加 aria-label——三个子项各自自述,且保持零新增 i18n key。)
+(nav 不加 aria-label——三个子项各自自述,且保持零新增 i18n key。三格显式写死而非 spec 草稿里的数组驱动——spec 该处是实现细节建议,显式三格更直白,属有意取舍。)
 
 - [ ] **Step 2: `index.ts` barrel 追加**
 
@@ -137,7 +137,7 @@ git commit -m "feat: QuickActionsBar 顶部快捷入口条组件"
       <QuickActionsBar onOpenTicket={() => setShowTicket(true)} ticketTriggerRef={ticketTriggerRef} />
 ```
 
-- [ ] **Step 3: 删除底部旧三格**——`{/* 入口 tile:密钥与配置(跳转页) / 工单(modal) / 详情(跳转,最右) */}` 注释起、含三格的整个 `<div className="grid gap-4 sm:grid-cols-3">…</div>` 区块整体删除。删除后确认:page 内不再有指向 `/keys`、`/dashboard/details` 的 Link(唯一入口已上移);`ticketTriggerRef` 仅由 QuickActionsBar 持有。
+- [ ] **Step 3: 删除底部旧三格**——`{/* 入口 tile:密钥与配置(跳转页) / 工单(modal) / 详情(跳转,最右) */}` 注释起、含三格的整个 `<div className="grid gap-4 sm:grid-cols-3">…</div>` 区块整体删除。删除后确认:page 内不再有指向 `/keys`、`/dashboard/details` 的 Link(唯一入口已上移);`ticketTriggerRef` 仅由 QuickActionsBar 持有;**`MaterialIcon` import 若因此不再被 page 使用则一并移除**(旧三格是它在本页的唯一用点),保持 eslint 字面干净。
 
 - [ ] **Step 4: 验证**
 
