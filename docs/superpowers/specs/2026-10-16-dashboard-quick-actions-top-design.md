@@ -33,7 +33,7 @@ dashboard(`frontend/app/(app)/dashboard/page.tsx`)的三个入口——配置与
   - **图标底座**:小圆角方块(`rounded-lg bg-[var(--accent-wash)] p-2` 内嵌 `MaterialIcon`,accent 色)——精致感来源
   - **短标题**:`text-sm font-bold`,复用现有 key
   - **箭头**:`MaterialIcon arrow_forward`,默认 `text-[var(--ink-faint)]`,格 hover 时 `text-[var(--accent)] translate-x-0.5`(transition)
-  - 整格 hover:底色淡染 `hover:bg-[var(--accent-wash)]` + 圆角(容器 p-2 内格自然圆角)
+  - 整格 hover:底色淡染 `hover:bg-[var(--accent-wash)]`,格自带显式 `rounded-xl`(父容器 p-2 不会给子格圆角);箭头高亮用 `group`/`group-hover:` 实现(格元素为 group)
 - 三格定义用局部数组驱动(`{icon, labelKey, render}`):配置密钥=Link `/keys`(icon `key`)、工单反馈=button(icon `support_agent`)、历史记录=Link `/dashboard/details`(icon `insights`)——与被删除的旧三格逐字同源,行为零变化
 - focus/焦点管理:工单格沿用 `ticketTriggerRef`(modal 关闭后焦点还原,既有机制)
 
@@ -41,7 +41,7 @@ dashboard(`frontend/app/(app)/dashboard/page.tsx`)的三个入口——配置与
 
 - `<DashboardHeader>` 之后插入 `<QuickActionsBar onOpenTicket={() => setShowTicket(true)} ticketTriggerRef={ticketTriggerRef} />`
 - 删除底部原「入口 tile」区块(注释 ` {/* 入口 tile:… */}` 起的整个 grid)
-- 其余卡片顺序不变:Header → **QuickActionsBar** → StatusCard → CacheRateCard → TokenTrendCard → ModelShareCard → modals
+- 其余卡片顺序不变(含 StatusCard 与 CacheRateCard 之间的「用量简报 + 余额变动」两列 grid,原样保留):Header → **QuickActionsBar** → StatusCard → 简报/流水两列 → CacheRateCard → TokenTrendCard → ModelShareCard → modals
 
 ### 3. 样式与一致性
 
