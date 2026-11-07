@@ -478,7 +478,12 @@
       "topbarMid": [
         "Desktop",
         "Mobile"
-      ]
+      ],
+      "statusZipFetch": "Fetching the package…",
+      "statusZipFetchPct": "Fetching the package… {pct}%",
+      "statusZipUnzip": "Downloaded — unpacking the package…",
+      "statusZipDone": "Package ready ({name}); your browser will start saving it.",
+      "statusZipError": "In-browser unpack failed — switched to a direct zip download; unzip manually to install."
     },
     "auth": {
       "loginLabel": "Access",

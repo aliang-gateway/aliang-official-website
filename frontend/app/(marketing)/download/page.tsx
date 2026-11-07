@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { unzip } from "fflate";
 
 type MockCard = {
   name: string;
@@ -31,6 +32,10 @@ type Card = {
   meta: string[];
   disabled?: boolean;
   downloadUrl?: string;
+  /** download_url 指向 zip 包（COS 拦 .apk 直链，Android 走 zip + 网页内解压）。 */
+  zipDownload?: boolean;
+  /** 解压后触发浏览器保存时使用的 .apk 文件名。 */
+  downloadName?: string;
   macVariants?: MacVariant[];
 };
 
@@ -58,6 +63,7 @@ export default function DownloadPage() {
   const [realDownloads, setRealDownloads] = useState<DownloadItem[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [zipBusy, setZipBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +137,19 @@ export default function DownloadPage() {
     const iosReal = (realDownloads ?? []).find((it) => /ios/i.test(it.platform ?? ""));
     const mobileBuilt = mobileMock.map((c) => {
       if (c.name === "Android" && androidReal?.download_url) {
-        return { ...c, downloadUrl: androidReal.download_url };
+        // 约定：Android 条目的 download_url 恒为 zip（内部文件中性化），
+        // file_type 落库为 zip。走网页内 fetch→解压→Blob 存 .apk 流程。
+        const isZip = /zip/i.test(androidReal.file_type ?? "");
+        return {
+          ...c,
+          downloadUrl: androidReal.download_url,
+          ...(isZip
+            ? {
+                zipDownload: true,
+                downloadName: `aliang-${androidReal.version || "latest"}-arm64.apk`,
+              }
+            : {}),
+        };
       }
       if (c.name === "iOS" && iosReal?.download_url) {
         return { ...c, downloadUrl: iosReal.download_url, disabled: false };
@@ -146,8 +164,68 @@ export default function DownloadPage() {
 
   const installText = selected && installSteps[selected] ? installSteps[selected] : s("installDefault");
 
+  // Android zip 下载：COS 拦 .apk 直链，安装包以 zip 分发（内部文件名刻意
+  // 中性化为 app-arm64.bin）。页面内 fetch(带进度) → fflate 解压 → Blob 指定
+  // .apk 文件名触发浏览器保存，zip 内部名与落盘名无关。任何一步失败都回退
+  // 为 zip 直链（浏览器存 zip，用户手动解压）。
+  const downloadAndroidZip = async (c: Card) => {
+    const url = c.downloadUrl!;
+    const name = c.downloadName ?? "aliang-arm64.apk";
+    setZipBusy(true);
+    try {
+      setStatus(s("statusZipFetch"));
+      const res = await fetch(url, { mode: "cors", cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const total = Number(res.headers.get("content-length")) || 0;
+      let buf: ArrayBuffer;
+      if (res.body && total > 0) {
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let got = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          got += value.length;
+          setStatus(s("statusZipFetchPct", { pct: Math.round((got / total) * 100) }));
+        }
+        buf = await new Blob(chunks as BlobPart[]).arrayBuffer();
+      } else {
+        buf = await res.arrayBuffer();
+      }
+      setStatus(s("statusZipUnzip"));
+      const files = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
+        unzip(new Uint8Array(buf), (err, data) => (err ? reject(err) : resolve(data)));
+      });
+      const entry =
+        Object.entries(files).find(([n]) => /\.bin$/i.test(n)) ?? Object.entries(files)[0];
+      if (!entry) throw new Error("zip empty");
+      const blob = new Blob([entry[1] as BlobPart], {
+        type: "application/vnd.android.package-archive",
+      });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 30_000);
+      setStatus(s("statusZipDone", { name }));
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setStatus(s("statusZipError"));
+    } finally {
+      setZipBusy(false);
+    }
+  };
+
   const onCardAction = (c: Card) => {
     setSelected(c.name);
+    if (c.zipDownload && c.downloadUrl && !zipBusy) {
+      void downloadAndroidZip(c);
+      return;
+    }
     if (c.downloadUrl) {
       window.open(c.downloadUrl, "_blank", "noopener,noreferrer");
       setStatus(s("statusDownloading", { name: c.name }));
@@ -204,8 +282,8 @@ export default function DownloadPage() {
           <button
             className="download-btn"
             type="button"
-            disabled={c.disabled}
-            onClick={() => !c.disabled && onCardAction(c)}
+            disabled={c.disabled || (c.zipDownload && zipBusy)}
+            onClick={() => !c.disabled && !(c.zipDownload && zipBusy) && onCardAction(c)}
           >
             {c.disabled ? s("unsupported") : s("downloadBtn", { name: c.name })}
           </button>
