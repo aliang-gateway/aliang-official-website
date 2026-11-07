@@ -442,11 +442,10 @@
           "name": "iOS",
           "platform": "mobile",
           "icon": "iOS",
-          "disabled": true,
-          "desc": "The iOS client is on the way. For now, enjoy the full workflow on Android and desktop.",
+          "desc": "Now on the App Store. Take over the AI coding agent on your computer from anywhere — every vibe coding run in your pocket.",
           "meta": [
-            "Status: Coming soon",
-            "Next: In planning, stay tuned"
+            "Version: iOS 15.1+",
+            "Type: App Store"
           ]
         }
       ],

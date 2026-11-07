@@ -442,11 +442,10 @@
           "name": "iOS",
           "platform": "mobile",
           "icon": "iOS",
-          "disabled": true,
-          "desc": "iOS 客户端正在路上，先在 Android 与桌面端体验完整工作流。",
+          "desc": "已上架 App Store。在手机上随时接管电脑端的 AI 编程代理，远程跟进每一次 vibe coding。",
           "meta": [
-            "状态：敬请期待",
-            "下一步：规划中，敬请关注"
+            "版本：iOS 15.1+",
+            "类型：App Store"
           ]
         }
       ],

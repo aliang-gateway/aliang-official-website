@@ -108,19 +108,21 @@ export function HomeApp({ variant = "full" }: HomeAppProps) {
             {/* 下载入口：应用商店按钮 */}
             <div className={`flex flex-wrap items-center gap-3 pt-2`}>
               <a
-                href="#"
+                href="https://apps.apple.com/app/id6817166383"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 py-2.5 text-sm font-semibold text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg-elevated)]"
               >
                 <MaterialIcon name="phone_iphone" size={18} />
                 {t("iosStore")}
               </a>
-              <a
-                href="#"
+              <Link
+                href="/download"
                 className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--stitch-border)] bg-[var(--stitch-bg)] px-4 py-2.5 text-sm font-semibold text-[var(--stitch-text)] transition-colors hover:bg-[var(--stitch-bg-elevated)]"
               >
                 <MaterialIcon name="android" size={18} />
                 {t("androidStore")}
-              </a>
+              </Link>
               <Link
                 href="/services"
                 className={`flex items-center gap-1 font-bold text-[var(--stitch-primary)] hover:underline ${

@@ -13,6 +13,10 @@ type MockCard = {
   meta: string[];
   disabled?: boolean;
 };
+
+// iOS App 已上架 App Store(Apple ID 6817166383)。apps.apple.com 是万能链接:
+// <a href> 导航在 iPhone 上会直接唤起 App Store App,优于 window.open。
+const APP_STORE_URL = "https://apps.apple.com/app/id6817166383";
 type DownloadItem = {
   id: number;
   software_name: string;
@@ -36,6 +40,8 @@ type Card = {
   zipDownload?: boolean;
   /** 解压后触发浏览器保存时使用的 .apk 文件名。 */
   downloadName?: string;
+  /** App Store 卡:渲染为 <a href> 万能链接(手机直接唤起 App Store),而非按钮+window.open。 */
+  appStore?: boolean;
   macVariants?: MacVariant[];
 };
 
@@ -152,8 +158,14 @@ export default function DownloadPage() {
             : {}),
         };
       }
-      if (c.name === "iOS" && iosReal?.download_url) {
-        return { ...c, downloadUrl: iosReal.download_url, disabled: false };
+      if (c.name === "iOS") {
+        // 已上架:admin 配置的链接优先,否则回退到 App Store 常量。卡片始终可用。
+        return {
+          ...c,
+          downloadUrl: iosReal?.download_url || APP_STORE_URL,
+          appStore: true,
+          disabled: false,
+        };
       }
       return { ...c };
     });
@@ -298,6 +310,18 @@ export default function DownloadPage() {
             </div>
             {zip.stage !== "done" && <div className="hint">⬇ {s("statusZipHint")}</div>}
           </div>
+        ) : c.appStore && c.downloadUrl ? (
+          // App Store 卡用 <a> 而非 window.open:apps.apple.com 是万能链接,
+          // 锚点导航在 iPhone 上直接唤起 App Store App(window.open 新标签
+          // 会落到网页版商品页,少一步直达)。
+          <a
+            className="download-btn"
+            href={c.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {s("downloadBtn", { name: c.name })}
+          </a>
         ) : (
           <button
             className="download-btn"
