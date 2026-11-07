@@ -483,7 +483,8 @@
       "statusZipFetchPct": "正在获取安装包… {pct}%",
       "statusZipUnzip": "下载完成，正在解压安装包…",
       "statusZipDone": "安装包已就绪（{name}），浏览器即将开始保存。",
-      "statusZipError": "在线解压失败，已转为直接下载 zip 压缩包，请手动解压后安装。"
+      "statusZipError": "在线解压失败，已转为直接下载 zip 压缩包，请手动解压后安装。",
+      "statusZipHint": "下载进行中，请勿刷新或离开本页"
     },
     "auth": {
       "loginLabel": "访问",

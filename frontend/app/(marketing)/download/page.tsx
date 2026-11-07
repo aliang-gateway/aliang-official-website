@@ -63,7 +63,8 @@ export default function DownloadPage() {
   const [realDownloads, setRealDownloads] = useState<DownloadItem[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [zipBusy, setZipBusy] = useState(false);
+  // Android zip 下载的阶段性状态：fetch(带百分比) → unzip(不定进度) → done(闪绿后复位)
+  const [zip, setZip] = useState<{ stage: "fetch" | "unzip" | "done"; pct: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,12 +168,12 @@ export default function DownloadPage() {
   // Android zip 下载：COS 拦 .apk 直链，安装包以 zip 分发（内部文件名刻意
   // 中性化为 app-arm64.bin）。页面内 fetch(带进度) → fflate 解压 → Blob 指定
   // .apk 文件名触发浏览器保存，zip 内部名与落盘名无关。任何一步失败都回退
-  // 为 zip 直链（浏览器存 zip，用户手动解压）。
+  // 为 zip 直链（浏览器存 zip，用户手动解压）。进度驱动卡片流光边框环动画。
   const downloadAndroidZip = async (c: Card) => {
     const url = c.downloadUrl!;
     const name = c.downloadName ?? "aliang-arm64.apk";
-    setZipBusy(true);
     try {
+      setZip({ stage: "fetch", pct: 0 });
       setStatus(s("statusZipFetch"));
       const res = await fetch(url, { mode: "cors", cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -187,12 +188,13 @@ export default function DownloadPage() {
           if (done) break;
           chunks.push(value);
           got += value.length;
-          setStatus(s("statusZipFetchPct", { pct: Math.round((got / total) * 100) }));
+          setZip({ stage: "fetch", pct: Math.min(99, Math.round((got / total) * 100)) });
         }
         buf = await new Blob(chunks as BlobPart[]).arrayBuffer();
       } else {
         buf = await res.arrayBuffer();
       }
+      setZip({ stage: "unzip", pct: 100 });
       setStatus(s("statusZipUnzip"));
       const files = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
         unzip(new Uint8Array(buf), (err, data) => (err ? reject(err) : resolve(data)));
@@ -211,18 +213,20 @@ export default function DownloadPage() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(objUrl), 30_000);
+      setZip({ stage: "done", pct: 100 });
       setStatus(s("statusZipDone", { name }));
+      // 闪绿停留一拍后复位卡片，按钮回归可再次下载
+      setTimeout(() => setZip(null), 1_600);
     } catch {
+      setZip(null);
       window.open(url, "_blank", "noopener,noreferrer");
       setStatus(s("statusZipError"));
-    } finally {
-      setZipBusy(false);
     }
   };
 
   const onCardAction = (c: Card) => {
     setSelected(c.name);
-    if (c.zipDownload && c.downloadUrl && !zipBusy) {
+    if (c.zipDownload && c.downloadUrl && !zip) {
       void downloadAndroidZip(c);
       return;
     }
@@ -246,12 +250,18 @@ export default function DownloadPage() {
 
   const renderCard = (c: Card, i: number) => {
     const isSel = selected === c.name && !c.disabled;
+    const zipActive = Boolean(c.zipDownload && zip);
+    const zipStyle = (zipActive ? { "--zip-pct": String(zip!.pct) } : undefined) as
+      | React.CSSProperties
+      | undefined;
     return (
       <article
         key={c.name}
         className={`download-card${c.disabled ? " is-disabled" : ""}`}
         data-selected={isSel ? "" : undefined}
+        data-zip-state={zipActive ? zip!.stage : undefined}
         data-platform={c.platform}
+        style={zipStyle}
         data-reveal
         data-reveal-delay={String(Math.min(i, 4))}
       >
@@ -278,12 +288,22 @@ export default function DownloadPage() {
               </button>
             ))}
           </div>
+        ) : zipActive && zip ? (
+          // 下载进行中：按钮位换成进度显示（大百分比 + 阶段 + 勿刷新提示），
+          // 边框环/顶部条动画由 data-zip-state + --zip-pct 驱动（见 editorial.css）。
+          <div className="zip-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={zip.stage === "fetch" ? zip.pct : undefined}>
+            <div className="pct">{zip.pct}%</div>
+            <div className="stage">
+              {zip.stage === "fetch" ? s("statusZipFetch") : zip.stage === "unzip" ? s("statusZipUnzip") : s("statusZipDone", { name: c.downloadName ?? "" })}
+            </div>
+            {zip.stage !== "done" && <div className="hint">⬇ {s("statusZipHint")}</div>}
+          </div>
         ) : (
           <button
             className="download-btn"
             type="button"
-            disabled={c.disabled || (c.zipDownload && zipBusy)}
-            onClick={() => !c.disabled && !(c.zipDownload && zipBusy) && onCardAction(c)}
+            disabled={c.disabled}
+            onClick={() => !c.disabled && onCardAction(c)}
           >
             {c.disabled ? s("unsupported") : s("downloadBtn", { name: c.name })}
           </button>
