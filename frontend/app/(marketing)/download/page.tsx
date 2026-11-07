@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { unzip } from "fflate";
 
 type MockCard = {
@@ -59,6 +59,7 @@ const isIntel = (ft: string) => /x64|x86_64|intel/i.test(ft);
 
 export default function DownloadPage() {
   const s = useTranslations("editorial.download");
+  const locale = useLocale();
 
   const mockCards = s.raw("cards") as MockCard[];
   const release = s.raw("release") as string[];
@@ -313,14 +314,21 @@ export default function DownloadPage() {
         ) : c.appStore && c.downloadUrl ? (
           // App Store 卡用 <a> 而非 window.open:apps.apple.com 是万能链接,
           // 锚点导航在 iPhone 上直接唤起 App Store App(window.open 新标签
-          // 会落到网页版商品页,少一步直达)。
+          // 会落到网页版商品页,少一步直达)。徽章用 Apple 官方 SVG(本地化,
+          // 已入 public/badges;规范:黑底、屏高 ≥40px、不改图、须链到产品页)。
           <a
-            className="download-btn"
             href={c.downloadUrl}
             target="_blank"
             rel="noopener noreferrer"
+            style={{ display: "inline-block", padding: "4px 0" }}
+            aria-label="Download on the App Store"
           >
-            {s("downloadBtn", { name: c.name })}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/badges/app-store-${locale?.startsWith("zh") ? "zh-cn" : "en-us"}.svg`}
+              alt="Download on the App Store"
+              style={{ height: 52, display: "block" }}
+            />
           </a>
         ) : (
           <button
