@@ -42,6 +42,10 @@ export default function RegisterPage() {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  // True while a successful register/verify is navigating to /dashboard. The
+  // client navigation is async, so without this the submit buttons briefly
+  // re-enable and the form looks abandoned (inviting a duplicate submit).
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [requireEmailVerification, setRequireEmailVerification] = useState<boolean | null>(null);
@@ -212,6 +216,16 @@ export default function RegisterPage() {
       if (requiresVerification) {
         setPendingVerifyEmail(asString(registerPayload.email, email.trim()));
         setSuccess("Registration submitted. Please enter the email verification code to complete registration.");
+      } else if (sessionToken) {
+        // The backend mints a session at register time and the auth middleware
+        // accepts it regardless of email_verified, so a token means the user
+        // is fully signed in — go straight to the dashboard like login does.
+        setPassword("");
+        setConfirmPassword("");
+        setIsRedirecting(true);
+        setSuccess("Registration succeeded. Redirecting to your dashboard...");
+        router.replace("/dashboard");
+        return;
       } else {
         setPendingVerifyEmail("");
         setVerificationCode("");
@@ -267,6 +281,15 @@ export default function RegisterPage() {
       if (verifyPayload.verified === true) {
         setPendingVerifyEmail("");
         setVerificationCode("");
+        // Registration is now complete and the register-time session (if any)
+        // is valid for authenticated calls — land the user in the dashboard
+        // instead of sending them back to the login page.
+        if (localStorage.getItem(SESSION_TOKEN_STORAGE_KEY)) {
+          setIsRedirecting(true);
+          setSuccess("Email verified. Redirecting to your dashboard...");
+          router.replace("/dashboard");
+          return;
+        }
         setSuccess("Email verified. You can login now.");
       } else {
         setError("Email verification failed");
@@ -444,7 +467,7 @@ export default function RegisterPage() {
             {error ? <p className="auth-error">{error}</p> : null}
             {success ? <p className="auth-success">{success}</p> : null}
 
-            <button className="btn primary" type="submit" disabled={isSubmitting}>
+            <button className="btn primary" type="submit" disabled={isSubmitting || isRedirecting}>
               {isSubmitting ? t("creatingAccount") : t("createAccountButton")}
             </button>
           </form>
@@ -468,7 +491,7 @@ export default function RegisterPage() {
                     onChange={(event) => setVerificationCode(event.target.value)}
                   />
                 </div>
-                <button className="btn" type="submit" disabled={isVerifying}>
+                <button className="btn" type="submit" disabled={isVerifying || isRedirecting}>
                   {isVerifying ? t("verifying") : t("verifyEmail")}
                 </button>
               </form>
