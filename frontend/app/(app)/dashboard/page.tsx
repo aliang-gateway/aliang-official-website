@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import {
   DashboardHeader,
+  DashboardNoticeModal,
   ModelShareCard,
   PurchaseCard,
   QuickActionsBar,
@@ -30,16 +31,24 @@ function DashboardPageContent() {
 
   if (!data.isHydrated || !data.sessionToken || data.loading) {
     return (
-      <section className="portal-shell py-8">
-        <div className="clay-panel p-5">
-          <p className="text-sm text-[var(--portal-muted)]">{t("loading")}</p>
-        </div>
-      </section>
+      <>
+        <section className="portal-shell py-8">
+          <div className="clay-panel p-5">
+            <p className="text-sm text-[var(--portal-muted)]">{t("loading")}</p>
+          </div>
+        </section>
+        {/* 公告弹窗挂在 loading gate 之外：页内 reload（刷新/切时间范围）会
+            短暂置 loading=true，gate 内挂载会被卸载、reload 后重新弹出。 */}
+        {data.isHydrated && data.sessionToken ? (
+          <DashboardNoticeModal sessionToken={data.sessionToken} />
+        ) : null}
+      </>
     );
   }
 
   return (
-    <section className="portal-shell space-y-8 py-10">
+    <>
+      <section className="portal-shell space-y-8 py-10">
       <DashboardHeader onRefresh={() => data.reload()} onSignOut={data.signOut} />
 
       <QuickActionsBar onOpenTicket={() => setShowTicket(true)} ticketTriggerRef={ticketTriggerRef} />
@@ -99,7 +108,11 @@ function DashboardPageContent() {
       >
         <TicketCard sessionToken={data.sessionToken} bare />
       </Modal>
-    </section>
+
+      {/* 公告弹窗（admin 后台编辑；未确认则每次进入都弹） */}
+      <DashboardNoticeModal sessionToken={data.sessionToken} />
+      </section>
+    </>
   );
 }
 
