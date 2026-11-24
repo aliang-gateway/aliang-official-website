@@ -814,7 +814,8 @@
     "downloads": "下载",
     "services": "服务时间线",
     "cacheStats": "缓存率",
-    "registerSettings": "注册设置"
+    "registerSettings": "注册设置",
+    "dashboardNotice": "公告"
   },
   "adminHome": {
     "checking": "正在检查管理会话...",
@@ -1184,6 +1185,10 @@
     "closeConfigModal": "关闭配置弹窗",
     "closeTicketModal": "关闭工单弹窗",
     "closePurchaseModal": "关闭充值弹窗",
+    "noticeDismiss": "关闭公告",
+    "noticeConfirm": "我知道了",
+    "noticeConfirming": "提交中...",
+    "noticeConfirmFailed": "确认失败，请重试；未确认前每次进入控制台都会再次弹出。",
     "subscriptionN": "订阅 {index}",
     "detailsTitle": "控制台详情",
     "requestRecords": "请求记录",
@@ -1547,5 +1552,21 @@
     "stateOff": "已关闭",
     "smtpMissingHint": "portal 后端尚未配置 SMTP。请先配置 smtp.*（并重启）再开启，否则验证码无法发出、注册会被阻塞。",
     "runtimeHint": "立即生效，无需重启。开关存储在 portal 数据库中，重启后保持。"
+  },
+  "adminDashboardNotice": {
+    "title": "控制台公告",
+    "intro": "单条当前公告：启用后，用户每次进入控制台都会弹窗，直到点击「我知道了」确认。修改标题或正文会更换公告 id，所有用户（含已确认过旧公告的）下次进入重新弹；仅切换启用状态不重弹。",
+    "titleLabel": "标题",
+    "titlePlaceholder": "例如：维护通知",
+    "bodyLabel": "正文",
+    "bodyPlaceholder": "公告正文，支持换行。",
+    "stateOn": "已启用",
+    "stateOff": "已停用",
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "已保存。",
+    "emptyHint": "启用前请填写标题与正文。",
+    "lastUpdated": "最近更新：{time}",
+    "noneYet": "尚未创建公告。填写内容并启用后，用户进入控制台即会弹出。"
   }
 }

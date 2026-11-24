@@ -864,6 +864,12 @@ func RegisterRoutesWithOptions(mux *http.ServeMux, database *sql.DB, opts Routes
 	mux.HandleFunc("GET /auth/register/options", r.handleRegisterOptions)
 	mux.Handle("GET /admin/register-settings", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetRegisterSettings))))
 	mux.Handle("PUT /admin/register-settings", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateRegisterSettings))))
+	// Dashboard 公告（portal 本地能力，非上游透传；路径与 proxyClient 分支的
+	// /dashboard/* 透传组不重叠）。同一资源 GET=读、POST=确认当前公告。
+	mux.Handle("GET /dashboard/notice", authenticated(http.HandlerFunc(r.handleDashboardNotice)))
+	mux.Handle("POST /dashboard/notice", authenticated(http.HandlerFunc(r.handleDashboardNoticeAck)))
+	mux.Handle("GET /admin/dashboard-notice", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminGetDashboardNotice))))
+	mux.Handle("PUT /admin/dashboard-notice", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminUpdateDashboardNotice))))
 	mux.Handle("GET /admin/cache-stats", authenticated(auth.RequireAdmin(http.HandlerFunc(r.handleAdminCacheStats))))
 	mux.HandleFunc("POST /auth/login", r.handleAuthLoginPassthrough)
 	mux.HandleFunc("GET /auth/me", r.handleAuthMePassthrough)

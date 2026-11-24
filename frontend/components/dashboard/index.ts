@@ -15,3 +15,4 @@ export { DetailsLinkCard } from "./DetailsLinkCard";
 export { UsageBriefingCard } from "./UsageBriefingCard";
 export { WalletTransactionsCard } from "./WalletTransactionsCard";
 export { QuickActionsBar } from "./QuickActionsBar";
+export { DashboardNoticeModal } from "./DashboardNoticeModal";

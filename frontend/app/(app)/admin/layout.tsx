@@ -13,6 +13,7 @@ const adminNavItems = [
   { href: "/admin", labelKey: "overview", icon: "dashboard" },
   { href: "/admin/cache-stats", labelKey: "cacheStats", icon: "bolt" },
   { href: "/admin/register-settings", labelKey: "registerSettings", icon: "mark_email_read" },
+  { href: "/admin/dashboard-notice", labelKey: "dashboardNotice", icon: "campaign" },
   { href: "/admin/users", labelKey: "users", icon: "people" },
   { href: "/admin/packages", labelKey: "packages", icon: "inventory_2" },
   { href: "/admin/payments", labelKey: "payments", icon: "receipt_long" },

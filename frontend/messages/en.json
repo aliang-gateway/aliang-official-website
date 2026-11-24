@@ -814,7 +814,8 @@
     "downloads": "Downloads",
     "services": "Services",
     "cacheStats": "Cache stats",
-    "registerSettings": "Register settings"
+    "registerSettings": "Register settings",
+    "dashboardNotice": "Notice"
   },
   "adminHome": {
     "checking": "Checking admin session...",
@@ -1184,6 +1185,10 @@
     "closeConfigModal": "Close config setup modal",
     "closeTicketModal": "Close ticket modal",
     "closePurchaseModal": "Close top-up modal",
+    "noticeDismiss": "Dismiss notice",
+    "noticeConfirm": "Got it",
+    "noticeConfirming": "Confirming...",
+    "noticeConfirmFailed": "Failed to confirm. Please retry — the notice will reappear on your next visit until confirmed.",
     "subscriptionN": "Subscription {index}",
     "detailsTitle": "Dashboard details",
     "requestRecords": "Request records",
@@ -1547,5 +1552,21 @@
     "stateOff": "OFF",
     "smtpMissingHint": "SMTP is not configured on the portal backend. Configure smtp.* (and restart) before enabling, otherwise verification codes cannot be delivered and registration would be blocked.",
     "runtimeHint": "Takes effect immediately — no restart needed. The setting is stored in the portal database and survives restarts."
+  },
+  "adminDashboardNotice": {
+    "title": "Dashboard notice",
+    "intro": "Single current notice: when enabled, it pops up for every user entering the dashboard until they click Got it. Changing the title or body rotates the notice id, so all users (including those who confirmed the previous one) see it again on their next visit; toggling enabled alone does not re-show it.",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g. Maintenance notice",
+    "bodyLabel": "Body",
+    "bodyPlaceholder": "Notice body. Line breaks are preserved.",
+    "stateOn": "Enabled",
+    "stateOff": "Disabled",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved.",
+    "emptyHint": "Title and body are required before enabling.",
+    "lastUpdated": "Last updated: {time}",
+    "noneYet": "No notice yet. Fill in the content and enable it — users will see it on their next dashboard visit."
   }
 }
